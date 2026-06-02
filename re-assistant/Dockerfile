@@ -1,14 +1,11 @@
 # syntax=docker/dockerfile:1
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-nodejs:20
+ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # ── System-Pakete ────────────────────────────────────────────
-RUN apk add --no-cache \
-    nginx \
-    bash \
-    curl
+RUN apk add --no-cache nginx nodejs npm bash curl
 
 # ── App-Verzeichnis ───────────────────────────────────────────
 WORKDIR /app
