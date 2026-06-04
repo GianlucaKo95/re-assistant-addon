@@ -11,7 +11,7 @@ export ANTHROPIC_API_KEY ADMIN_PASSWORD LANGUAGE
 
 # ── PostgreSQL Setup ──────────────────────────────────────────
 PG_DATA="/data/postgres"
-PG_LOG="/tmp/postgres.log"
+PG_LOG="/data/postgres.log"
 PG_RUN="/tmp/pg_run"
 mkdir -p "${PG_RUN}"
 chown postgres:postgres "${PG_RUN}"
