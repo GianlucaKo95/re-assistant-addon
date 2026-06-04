@@ -102,7 +102,7 @@ test.describe('Projektmanager — API-Tests', () => {
     expect(res.ok()).toBeTruthy();
     const data = await res.json();
     expect(data.version).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(data.db).toBe('sqlite');
+    expect(data.db).toBeTruthy(); // DB-Engine (sqlite oder postgresql)
   });
 
   test('Unauthentifizierter Zugriff gibt 401', async ({ request }) => {
