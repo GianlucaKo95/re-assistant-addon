@@ -1,0 +1,91 @@
+version: '3.9'
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: re-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       reassistant
+      POSTGRES_USER:     reassistant
+      POSTGRES_PASSWORD: ${PGPASSWORD:-repassword}
+      PGDATA:            /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./re-assistant/backend/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${PGPORT:-5432}:5432"
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U reassistant -d reassistant"]
+      interval: 5s
+      timeout:  5s
+      retries:  10
+    networks:
+      - re-network
+
+  # ── RE-Assistent Backend ──────────────────────────────────
+  backend:
+    build:
+      context:    .
+      dockerfile: re-assistant/Dockerfile
+    container_name: re-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV:          production
+      PORT:              3001
+      PGHOST:            postgres
+      PGPORT:            5432
+      PGDATABASE:        reassistant
+      PGUSER:            reassistant
+      PGPASSWORD:        ${PGPASSWORD:-repassword}
+      SESSION_SECRET:    ${SESSION_SECRET:-changeme-in-production}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ADMIN_PASSWORD:    ${ADMIN_PASSWORD:-admin123}
+      LANGUAGE:          ${LANGUAGE:-de}
+      LOG_LEVEL:         ${LOG_LEVEL:-info}
+      DATA_DIR:          /data/re-assistant
+    volumes:
+      - app_data:/data/re-assistant
+    ports:
+      - "${APP_PORT:-3001}:3001"
+    networks:
+      - re-network
+    healthcheck:
+      test:     ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout:  10s
+      retries:  3
+      start_period: 30s
+
+  # ── pgAdmin (optional, für Entwicklung) ──────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: re-pgadmin
+    restart: unless-stopped
+    profiles:
+      - dev   # Nur mit: docker compose --profile dev up
+    environment:
+      PGADMIN_DEFAULT_EMAIL:    admin@re.local
+      PGADMIN_DEFAULT_PASSWORD: ${PGPASSWORD:-repassword}
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - re-network
+
+volumes:
+  postgres_data:
+    name: re_postgres_data
+  app_data:
+    name: re_app_data
+
+networks:
+  re-network:
+    name: re-network
+    driver: bridge

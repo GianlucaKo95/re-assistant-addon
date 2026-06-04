@@ -34,7 +34,30 @@
     <div id="tb-title">RE·Assistent</div>
     <div id="tb-right">
       <div id="user-pill"><div id="user-avatar"></div><span id="user-name-label"></span><span id="user-role-badge"></span></div>
-      <button class="tb-icon-btn" id="btn-logout" title="Abmelden"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+      <div id="presence-bar" style="display:flex;gap:4px;align-items:center;max-width:200px;overflow:hidden"></div>
+    <div id="ws-status" style="width:8px;height:8px;border-radius:50%;background:var(--amb);flex-shrink:0" title="Verbinde …"></div>
+    <span id="persona-badge" onclick="switchView('settings')"
+      style="font-size:11px;font-weight:600;cursor:pointer;padding:3px 9px;border-radius:99px;background:var(--s2);border:1px solid var(--b1);color:var(--t2);transition:all .15s"
+      title="Branchen-Profil ändern">🤖 Standard</span>
+    <div class="tb-icon-btn" id="notif-bell" title="Benachrichtigungen" onclick="toggleNotifPanel()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <div id="notif-badge"></div>
+    </div>
+    <div id="notif-panel">
+      <div id="notif-panel-head"><span style="font-size:13px;font-weight:600">Benachrichtigungen</span><button onclick="clearNotifs()" style="background:none;border:none;color:var(--t3);font-size:11px;cursor:pointer">Alle löschen</button></div>
+      <div id="notif-list"><div style="padding:20px;text-align:center;color:var(--t3);font-size:12px">Keine Benachrichtigungen</div></div>
+    </div>
+    <button class="tb-icon-btn" id="btn-theme" title="Dark/Light-Mode" onclick="toggleTheme()">
+      <svg id="theme-icon-dark" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg id="theme-icon-light" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    </button>
+    <button class="tb-icon-btn" id="btn-search" title="Suche (Ctrl+Shift+F)" onclick="toggleSearchPanel()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+    <button class="tb-icon-btn" id="btn-change-pw" title="Passwort ändern">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    </button>
+    <button class="tb-icon-btn" id="btn-logout" title="Abmelden"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
     </div>
   </div>
 
@@ -58,6 +81,9 @@
         <div class="view-header"><div><h2>Systeme &amp; Dokumentation</h2><p class="view-sub">Systeme anlegen, Quellcode hochladen</p></div><button class="btn-primary" id="btn-new-system">+ Neues System</button></div>
         <div id="systems-list"></div>
       </div>
+
+      <!-- ADMIN: License -->
+      <div class="view" id="view-admin-license"></div>
 
       <!-- BUSINESS: Chat + Live Reqs -->
       <div class="view" id="view-business-chat">
@@ -98,9 +124,24 @@
 
       <!-- BUSINESS: All Reqs -->
       <div class="view" id="view-business-reqs">
-        <div class="view-header"><div><h2>Alle Anforderungen</h2><p class="view-sub">Systemübergreifende Übersicht</p></div><div style="display:flex;gap:8px"><button class="btn-primary" id="btn-new-req-biz">+ Neue</button><button class="btn-secondary" id="btn-dedup-global">🔍 Duplikate prüfen</button></div></div>
+        <div class="view-header"><div><h2>Alle Anforderungen</h2><p class="view-sub">Systemübergreifende Übersicht</p></div><div style="display:flex;gap:8px"><button class="btn-secondary" onclick="switchView('import')">↓ Importieren</button>
+          <button class="btn-primary" id="btn-new-req-biz">+ Neue</button><button class="btn-secondary" id="btn-dedup-global">🔍 Duplikate prüfen</button></div></div>
+        <div id="biz-stats" class="stats-row" style="flex-shrink:0"></div>
         <div id="biz-req-filters" class="filter-bar"><select id="biz-filter-sys"><option value="">Alle Systeme</option></select><select id="biz-filter-status"><option value="">Alle Status</option><option value="open">Offen</option><option value="assigned">Zugewiesen</option><option value="in-progress">In Bearbeitung</option><option value="done">Erledigt</option></select><select id="biz-filter-cat-global"><option value="">Alle Kategorien</option></select><input type="text" id="biz-filter-q" placeholder="Suchen …"/></div>
         <div id="biz-reqs-list"></div>
+      </div>
+
+
+      <!-- BA: Dashboard -->
+      <div class="view" id="view-ba-dashboard">
+        <div class="view-header">
+          <div><h2>Business Analyst — Dashboard</h2><p class="view-sub">Übersicht, KPIs und Schnellzugriff auf alle BA-Werkzeuge</p></div>
+          <button class="btn-secondary" onclick="toggleSearchPanel()" id="btn-search" title="Suche (Ctrl+Shift+F)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Suche
+          </button>
+        </div>
+        <div id="ba-dashboard-wrap" class="scroll-body" style="flex:1"></div>
       </div>
 
       <!-- BA: Quality Check -->
@@ -264,6 +305,309 @@
         <div id="dev-req-list" class="scroll-body" style="flex:1"></div>
       </div>
 
+
+
+
+      <!-- QS-TRENDS -->
+      <div class="view" id="view-qs-trends">
+        <div class="view-header">
+          <div><h2>QS-Qualitätstrends</h2><p class="view-sub">Historische Entwicklung der Anforderungsqualität</p></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="qs-trends-sys-sel" class="filter-select" style="min-width:180px"><option value="">Alle Systeme</option></select>
+            <select id="qs-trends-days" class="filter-select">
+              <option value="7">7 Tage</option>
+              <option value="30" selected>30 Tage</option>
+              <option value="90">90 Tage</option>
+              <option value="365">1 Jahr</option>
+            </select>
+          </div>
+        </div>
+        <div id="qs-trends-wrap" style="flex:1;overflow-y:auto;display:flex;flex-direction:column"></div>
+      </div>
+
+      <!-- SPRINT-PLANNING -->
+      <div class="view" id="view-sprint-planning">
+        <div class="view-header">
+          <div><h2>Sprint-Planung</h2><p class="view-sub">KI erstellt optimale Sprint-Pläne basierend auf Backlog und Kapazität</p></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="sprint-sys-sel" class="filter-select" style="min-width:180px"><option value="">System wählen …</option></select>
+            <button class="btn-primary" id="btn-create-sprint">⚡ Sprint planen</button>
+          </div>
+        </div>
+        <div style="padding:8px 20px;flex-shrink:0">
+          <div id="sprint-backlog-preview" style="font-size:12px;color:var(--t3)"></div>
+        </div>
+        <div id="sprint-list-wrap" class="scroll-body" style="flex:1"></div>
+      </div>
+
+      <!-- BENACHRICHTIGUNGS-EINSTELLUNGEN -->
+      <div class="view" id="view-notification-settings">
+        <div class="view-header">
+          <div><h2>Benachrichtigungen</h2><p class="view-sub">E-Mail, Home Assistant Webhook und Slack/Teams</p></div>
+        </div>
+        <div id="notif-settings-wrap" class="scroll-body" style="flex:1;padding:16px 20px;overflow-y:auto"></div>
+      </div>
+
+      <!-- IMPORT -->
+      <div class="view" id="view-import">
+        <div class="view-header">
+          <div><h2>Requirements importieren</h2><p class="view-sub">CSV, JSON, Excel, JIRA-Export, Azure DevOps oder Text einfügen</p></div>
+        </div>
+        <div class="scroll-body" style="flex:1;padding:16px 20px">
+          <div class="sg"><div class="sg-head">Einstellungen</div><div class="sg-body">
+            <div class="frow"><label>Ziel-System</label>
+              <select id="import-sys-sel"><option value="">System wählen …</option></select>
+            </div>
+          </div></div>
+          <div class="sg"><div class="sg-head">Import-Methode</div><div class="sg-body">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:8px">
+              <button class="import-method-btn" id="btn-import-file">
+                <div style="font-size:22px;margin-bottom:5px">📂</div>
+                <div style="font-size:12px;font-weight:600">Datei öffnen</div>
+                <div style="font-size:10px;color:var(--t3);margin-top:2px">CSV, JSON, Excel, MD</div>
+              </button>
+              <button class="import-method-btn" id="btn-import-jira">
+                <div style="font-size:22px;margin-bottom:5px">🔗</div>
+                <div style="font-size:12px;font-weight:600">JIRA-Export</div>
+                <div style="font-size:10px;color:var(--t3);margin-top:2px">JSON aus JIRA</div>
+              </button>
+              <button class="import-method-btn" id="btn-import-paste">
+                <div style="font-size:22px;margin-bottom:5px">📋</div>
+                <div style="font-size:12px;font-weight:600">Text einfügen</div>
+                <div style="font-size:10px;color:var(--t3);margin-top:2px">KI strukturiert Text</div>
+              </button>
+            </div>
+          </div></div>
+          <div id="import-preview"></div>
+        </div>
+      </div>
+
+      <!-- REVIEW WORKFLOW -->
+      <div class="view" id="view-review-workflow">
+        <div class="view-header">
+          <div><h2>Review &amp; Freigabe</h2><p class="view-sub">Business schreibt · BA reviewed · PM genehmigt</p></div>
+          <div style="display:flex;gap:8px">
+            <select id="review-sys-filter" class="filter-select" style="min-width:160px"><option value="">Alle Systeme</option></select>
+            <button class="btn-primary" id="btn-submit-review">📤 In Review schicken</button>
+          </div>
+        </div>
+        <div id="review-dashboard-wrap" style="flex:1;overflow:auto"></div>
+      </div>
+
+      <!-- TRACEABILITY -->
+      <div class="view" id="view-traceability">
+        <div class="view-header">
+          <div><h2>Traceability-Matrix</h2><p class="view-sub">Anforderung → User Story → Akzeptanzkriterien → Source-Code</p></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="trace-sys-sel" class="filter-select" style="min-width:180px"><option value="">System wählen …</option></select>
+            <button class="btn-secondary" id="btn-build-trace">✦ KI Lücken finden</button>
+            <button class="btn-secondary" id="btn-export-trace">↓ CSV Export</button>
+          </div>
+        </div>
+        <div id="trace-matrix-wrap" style="flex:1;overflow:auto;display:flex;flex-direction:column">
+          <div class="empty-state"><div class="es-icon">🔗</div><h3>System auswählen</h3><p>Traceability-Matrix wird geladen.</p></div>
+        </div>
+      </div>
+
+
+      <!-- SOURCE ANALYSIS -->
+      <div class="view" id="view-source-analysis">
+        <div class="view-header">
+          <div><h2>Source-Code-Analyse</h2><p class="view-sub">KI analysiert welche Dateien und Funktionen geändert werden müssen</p></div>
+          <select id="sa-sys-sel" class="filter-select" style="min-width:180px"><option value="">System wählen …</option></select>
+        </div>
+        <div class="scroll-body" id="sa-req-list" style="flex:1"></div>
+      </div>
+
+      <!-- DECOMPOSITION -->
+      <div class="view" id="view-decomposition">
+        <div class="view-header">
+          <div><h2>Anforderungs-Dekomposition</h2><p class="view-sub">Zu große Anforderungen automatisch in atomare User Stories zerlegen</p></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="decomp-sys-sel" class="filter-select" style="min-width:180px"><option value="">System wählen …</option></select>
+            <button class="btn-secondary" id="btn-decomp-all">Alle Kandidaten</button>
+            <button class="btn-primary" id="btn-decomp-run">⚡ Ausgewählte zerlegen</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;flex:1;overflow:hidden;gap:0">
+          <div style="overflow-y:auto;border-right:1px solid var(--b1);padding:12px 16px">
+            <div id="decomp-req-list"></div>
+          </div>
+          <div style="overflow-y:auto;padding:12px 16px">
+            <div id="decomp-results"><div class="empty-state"><div class="es-icon">⚡</div><h3>System wählen und Anforderungen auswählen</h3></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NL-QUERY -->
+      <div class="view" id="view-nl-query">
+        <div class="view-header">
+          <div><h2>KI-Abfragen</h2><p class="view-sub">Natürlichsprachliche Abfragen über alle Anforderungen</p></div>
+          <button onclick="clearNLQHistory()" class="btn-secondary" style="font-size:11px">Verlauf löschen</button>
+        </div>
+        <div style="padding:12px 20px;flex-shrink:0;border-bottom:1px solid var(--b1)">
+          <div style="display:flex;gap:8px">
+            <input type="text" id="nlq-input" placeholder="z.B. Zeig mir alle Datenschutz-Anforderungen ohne Reviewer …" style="flex:1;font-size:13px"/>
+            <button class="btn-primary" id="nlq-send">Fragen</button>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+            ${['Alle offenen Anforderungen mit hoher Priorität','Anforderungen ohne Akzeptanzkriterien','Welche Systeme haben die meisten kritischen Anforderungen?','Alle freigegebenen Anforderungen diese Woche','Anforderungen die noch nicht zugewiesen wurden'].map(e=>`<button class="nlq-example" style="font-size:10px;padding:3px 9px;background:var(--s2);border:1px solid var(--b1);border-radius:99px;cursor:pointer;color:var(--t2)">${esc(e)}</button>`).join('')}
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;flex:1;overflow:hidden">
+          <div id="nlq-results" style="overflow-y:auto;padding:14px 16px;border-right:1px solid var(--b1)">
+            <div class="empty-state"><div class="es-icon">💬</div><h3>Stellen Sie eine Frage</h3><p>Die KI analysiert alle Anforderungen und antwortet direkt.</p></div>
+          </div>
+          <div id="nlq-history" style="overflow-y:auto;padding:14px 16px">
+            <div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Verlauf</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CHANGELOG -->
+      <div class="view" id="view-changelog">
+        <div class="view-header">
+          <div><h2>Changelog</h2><p class="view-sub">Automatisch generiertes Management-Dokument aus Änderungen</p></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="cl-sys-sel" class="filter-select" style="min-width:160px"><option value="">Alle Systeme</option></select>
+            <select id="cl-period" class="filter-select">
+              <option value="7">Letzte 7 Tage</option>
+              <option value="14" selected>Letzte 14 Tage</option>
+              <option value="30">Letzte 30 Tage</option>
+              <option value="90">Letztes Quartal</option>
+            </select>
+            <button class="btn-primary" id="btn-gen-changelog">📋 Changelog generieren</button>
+          </div>
+        </div>
+        <div id="cl-preview" class="scroll-body" style="flex:1;padding:16px 20px">
+          <div class="empty-state"><div class="es-icon">📋</div><h3>Zeitraum auswählen und Changelog generieren</h3><p>Die KI erstellt einen professionellen Bericht aller Änderungen.</p></div>
+        </div>
+      </div>
+
+      <!-- COMPLETENESS -->
+      <div class="view" id="view-completeness">
+        <div class="view-header">
+          <div><h2>Vollständigkeitsprüfung</h2><p class="view-sub">KI erkennt fehlende Anforderungen gegen Branchen-Standards</p></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="comp-sys-sel" class="filter-select" style="min-width:180px"><option value="">System wählen …</option></select>
+            <select id="comp-template-sel" class="filter-select" style="min-width:160px"></select>
+            <button class="btn-primary" id="btn-run-completeness">🔍 Vollständigkeit prüfen</button>
+          </div>
+        </div>
+        <div id="comp-results" class="scroll-body" style="flex:1;overflow-y:auto">
+          <div class="empty-state"><div class="es-icon">🔍</div><h3>System und Branchen-Template wählen</h3><p>KI vergleicht Ihre Anforderungen mit Branchen-Standards und erkennt Lücken.</p></div>
+        </div>
+      </div>
+
+      <!-- AUDIT LOG -->
+      <div class="view" id="view-audit-log">
+        <div class="view-header">
+          <div><h2>Audit-Log</h2><p class="view-sub">Wer hat wann was geändert — vollständige Aktivitätshistorie</p></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span style="font-size:12px;color:var(--t3)">Heute: <strong id="audit-today-count">0</strong> Einträge</span>
+            <button class="btn-secondary" onclick="exportAuditLog()">↓ CSV Export</button>
+          </div>
+        </div>
+        <div id="audit-filters" class="filter-bar">
+          <select id="audit-filter-action" onchange="loadAuditLogView()" class="filter-select">
+            <option value="">Alle Aktionen</option>
+            <option value="create">Erstellt</option>
+            <option value="update">Geändert</option>
+            <option value="delete">Gelöscht</option>
+            <option value="status_change">Status</option>
+            <option value="review">Review</option>
+            <option value="comment">Kommentar</option>
+            <option value="export">Export</option>
+          </select>
+          <select id="audit-filter-entity" onchange="loadAuditLogView()" class="filter-select">
+            <option value="">Alle Typen</option>
+            <option value="requirement">Anforderungen</option>
+            <option value="system">Systeme</option>
+            <option value="workshop">Workshops</option>
+            <option value="backlog">Backlogs</option>
+          </select>
+          <input type="text" id="audit-filter-user" placeholder="Benutzer …" oninput="loadAuditLogView()" style="min-width:140px"/>
+          <input type="date" id="audit-filter-date" onchange="loadAuditLogView()"/>
+        </div>
+        <div id="audit-log-wrap" style="flex:1;overflow-y:auto"></div>
+      </div>
+
+      <!-- MEINE AUFGABEN (Mentions) -->
+      <div class="view" id="view-my-tasks">
+        <div class="view-header">
+          <div>
+            <h2>Meine Aufgaben</h2>
+            <p class="view-sub">Mentions und zugewiesene Aufgaben aus Kommentaren</p>
+          </div>
+          <span id="tasks-badge" style="background:var(--red);color:white;font-size:11px;font-weight:700;padding:2px 9px;border-radius:99px;display:none"></span>
+        </div>
+        <div id="tasks-wrap" class="scroll-body" style="flex:1"></div>
+      </div>
+
+
+
+      <!-- ANFORDERUNGS-DNA -->
+      <div class="view" id="view-dna">
+        <div class="view-header">
+          <div>
+            <h2>Anforderungs-DNA 🧬</h2>
+            <p class="view-sub">Semantischer Fingerabdruck · Drift-Erkennung · Genealogie · Ähnlichkeitsnetzwerk</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="dna-sys-sel" class="filter-select" style="min-width:180px"><option value="">System wählen …</option></select>
+            <button class="btn-secondary" id="btn-dna-recompute">⚡ DNA berechnen</button>
+          </div>
+        </div>
+        <div id="dna-stats" class="stats-row" style="flex-shrink:0;padding:8px 20px;border-bottom:1px solid var(--b1)"></div>
+        <div style="display:flex;gap:0;padding:8px 20px;border-bottom:1px solid var(--b1);flex-shrink:0">
+          <button id="btn-dna-drift" class="btn-secondary active" onclick="switchDNATab('drift')" style="font-size:12px;border-radius:var(--r) 0 0 var(--r)">⚠ Drift-Report</button>
+          <button id="btn-dna-network" class="btn-secondary" onclick="switchDNATab('network')" style="font-size:12px;border-radius:0;border-left:none">🕸 Netzwerk</button>
+          <button id="btn-dna-genealogy" class="btn-secondary" onclick="switchDNATab('genealogy')" style="font-size:12px;border-radius:0 var(--r) var(--r) 0;border-left:none">🧬 Genealogie</button>
+        </div>
+        <div id="dna-panel-drift" class="scroll-body" style="flex:1;overflow-y:auto;padding:16px 20px"></div>
+        <div id="dna-panel-network" style="flex:1;display:none;flex-direction:column;overflow:hidden"></div>
+        <div id="dna-panel-genealogy" style="flex:1;display:none;overflow-y:auto"></div>
+      </div>
+
+
+      <!-- TOKEN DASHBOARD -->
+      <div class="view" id="view-token-dashboard">
+        <div class="view-header">
+          <div><h2>Token & Kosten</h2><p class="view-sub">KI-Verbrauch · Kostentransparenz · Feature-Budgets</p></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="token-months-sel" class="filter-select" onchange="loadTokenDashboard()">
+              <option value="1">1 Monat</option>
+              <option value="3" selected>3 Monate</option>
+              <option value="6">6 Monate</option>
+              <option value="12">12 Monate</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:0;padding:8px 20px;border-bottom:1px solid var(--b1);flex-shrink:0">
+          <button id="token-tab-usage" class="btn-secondary" onclick="switchDashboardTab('usage')"
+            style="font-size:12px;border-radius:var(--r) 0 0 var(--r)">📊 Verbrauch</button>
+          <button id="token-tab-budgets" class="btn-secondary" onclick="switchDashboardTab('budgets')"
+            style="font-size:12px;border-radius:0 var(--r) var(--r) 0;border-left:none">⚙ Budgets</button>
+        </div>
+        <div id="token-panel-usage" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+          <div id="token-dashboard-wrap" style="flex:1;display:flex;flex-direction:column;overflow:hidden"></div>
+        </div>
+        <div id="token-panel-budgets" style="flex:1;overflow-y:auto;padding:16px 20px;display:none">
+          <div id="budget-management-wrap"></div>
+        </div>
+      </div>
+
+      <!-- ARCHIV -->
+      <div class="view" id="view-archive">
+        <div class="view-header">
+          <div><h2>Archiv</h2><p class="view-sub">Archivierte Anforderungen — jederzeit wiederherstellbar</p></div>
+          <select id="archive-sys-sel" class="filter-select" style="min-width:180px"><option value="">Alle Systeme</option></select>
+        </div>
+        <div id="archive-list" class="scroll-body" style="flex:1;padding:16px 20px;overflow-y:auto">
+          <div class="empty-state"><div class="es-icon">📦</div><h3>Archiv ist leer</h3></div>
+        </div>
+      </div>
+
       <!-- VOICE BOT -->
       <div class="view" id="view-voice">
         <div id="voice-stage">
@@ -304,7 +648,80 @@
             <div class="frow"><label>Sprachbot-Stimme</label><select id="cfg-voice"></select></div>
             <div class="frow"><label>Sprachbot-Persönlichkeit</label><select id="cfg-persona"><option value="professional">Professionell &amp; präzise</option><option value="friendly">Freundlich &amp; locker</option><option value="concise">Prägnant &amp; direkt</option><option value="socratic">Sokratisch</option></select></div>
           </div></div>
+          <div class="sg"><div class="sg-head">Konto</div><div class="sg-body">
+            <p class="fhint">Angemeldet als <strong id="settings-user-name"></strong></p>
+            <button class="btn-secondary" id="btn-change-pw">🔒 Passwort ändern</button>
+          </div></div>
           <div class="sg"><div class="sg-head">Info</div><div class="sg-body"><p class="fhint">RE-Assistent v<span id="app-ver">1.0.0</span> — On-Premise, alle Daten lokal.</p><button class="btn-secondary" id="btn-docs">Anthropic Docs ↗</button></div></div>
+        </div>
+      </div>
+
+
+      <!-- ABHÄNGIGKEITEN -->
+      <div class="view" id="view-dependencies">
+        <div class="view-header"><div><h2>Abhängigkeiten</h2><p class="view-sub">Abhängigkeiten zwischen Anforderungen visualisieren und verwalten</p></div><div style="display:flex;gap:8px"><select id="dep-sys-sel" class="filter-select" style="min-width:180px"><option value="">System wählen …</option></select><button class="btn-primary" id="btn-analyze-deps">⚡ KI analysieren</button></div></div>
+        <div id="dep-toolbar" class="filter-bar"><select id="dep-view-mode"><option value="list">Listenansicht</option><option value="matrix">Matrix</option></select><button class="btn-secondary" id="btn-add-dep">+ Abhängigkeit hinzufügen</button></div>
+        <div id="dep-content" style="flex:1;overflow:auto;padding:16px 20px"><div class="empty-state"><div class="es-icon">🔗</div><h3>System auswählen</h3><p>Wählen Sie ein System aus und lassen Sie die KI Abhängigkeiten analysieren.</p></div></div>
+        <div class="dep-legend"><div class="dep-legend-item"><div class="dep-legend-dot" style="background:var(--red)"></div>Blockiert</div><div class="dep-legend-item"><div class="dep-legend-dot" style="background:var(--amb)"></div>Benötigt</div><div class="dep-legend-item"><div class="dep-legend-dot" style="background:var(--blue)"></div>Verwandt</div></div>
+      </div>
+
+      <!-- VORLAGEN -->
+      <div class="view" id="view-templates">
+        <div class="view-header"><div><h2>Anforderungsvorlagen</h2><p class="view-sub">Schnell Anforderungen aus bewährten Vorlagen erstellen</p></div><button class="btn-primary" id="btn-new-template">+ Eigene Vorlage</button></div>
+        <div class="tmpl-grid" id="tmpl-grid"></div>
+      </div>
+
+      <!-- AZURE DEVOPS + JIRA COMBINED -->
+      <div class="view" id="view-pm-integrations">
+        <div class="view-header"><div><h2>Integrationen</h2><p class="view-sub">Jira und Azure DevOps — Requirements exportieren und importieren</p></div></div>
+        <div class="integration-tabs">
+          <button class="int-tab active" onclick="switchIntTab('jira')">🔗 Jira</button>
+          <button class="int-tab" onclick="switchIntTab('azuredevops')">🔷 Azure DevOps</button>
+        </div>
+        <!-- Jira Pane -->
+        <div class="int-pane active" id="int-pane-jira">
+          <div id="jira-layout">
+            <div id="jira-config-pane">
+              <div class="sg"><div class="sg-head">Jira Verbindung</div><div class="sg-body">
+                <div class="frow"><label>Jira URL</label><input type="text" id="jira-url" placeholder="https://company.atlassian.net"/></div>
+                <div class="frow"><label>E-Mail</label><input type="text" id="jira-email" placeholder="user@company.com"/></div>
+                <div class="frow"><label>API Token</label><input type="password" id="jira-token" placeholder="API Token …"/></div>
+                <button class="btn-primary" id="btn-jira-connect">Verbinden</button>
+                <div id="jira-status"></div>
+              </div></div>
+              <div class="sg" id="jira-project-pane" style="display:none"><div class="sg-head">Projekt &amp; Aktionen</div><div class="sg-body">
+                <div class="frow"><label>Projekt</label><select id="jira-project-sel"><option value="">Projekt wählen …</option></select></div>
+                <div class="frow"><label>System (Export)</label><select id="jira-sys-sel"><option value="">System wählen …</option></select></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="btn-primary" id="btn-jira-export">↑ Nach Jira</button>
+                  <button class="btn-secondary" id="btn-jira-import">↓ Aus Jira</button>
+                </div>
+              </div></div>
+            </div>
+            <div id="jira-results-pane"><div class="empty-state"><div class="es-icon">🔗</div><h3>Jira verbinden</h3></div></div>
+          </div>
+        </div>
+        <!-- Azure DevOps Pane -->
+        <div class="int-pane" id="int-pane-azuredevops">
+          <div id="ado-layout" style="display:grid;grid-template-columns:300px 1fr;flex:1;overflow:hidden">
+            <div id="ado-config-pane" style="border-right:1px solid var(--b1);overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:12px">
+              <div class="sg"><div class="sg-head">Azure DevOps Verbindung</div><div class="sg-body">
+                <div class="frow"><label>Organisation URL</label><input type="text" id="ado-url" placeholder="https://dev.azure.com/meinorg"/></div>
+                <div class="frow"><label>Projekt</label><input type="text" id="ado-project" placeholder="MeinProjekt"/></div>
+                <div class="frow"><label>Personal Access Token</label><input type="password" id="ado-token" placeholder="PAT …"/></div>
+                <button class="btn-primary" id="btn-ado-connect">Verbinden</button>
+                <div id="ado-status"></div>
+              </div></div>
+              <div class="sg" id="ado-action-pane" style="display:none"><div class="sg-head">Aktionen</div><div class="sg-body">
+                <div class="frow"><label>System (Export)</label><select id="ado-sys-sel"><option value="">System wählen …</option></select></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="btn-primary" id="btn-ado-export">↑ Nach Azure DevOps</button>
+                  <button class="btn-secondary" id="btn-ado-import">↓ Work Items importieren</button>
+                </div>
+              </div></div>
+            </div>
+            <div id="ado-results-pane" style="overflow-y:auto;padding:16px 20px"><div class="empty-state"><div class="es-icon">🔷</div><h3>Azure DevOps verbinden</h3><p>Organisation URL, Projekt und PAT eingeben.</p></div></div>
+          </div>
         </div>
       </div>
 
@@ -313,6 +730,7 @@
 </div><!-- /app-screen -->
 
 <div id="modal-overlay" style="display:none"><div id="modal-box"><div id="modal-header"><span id="modal-title"></span><button id="modal-close">✕</button></div><div id="modal-body"></div></div></div>
+<button id="bc-mobile-req-toggle" onclick="toggleMobileReqPane()" title="Anforderungen">📋</button>
 <div id="toast"></div>
 <script type="module" src="/src/main.js"></script>
 </body>

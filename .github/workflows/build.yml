@@ -19,23 +19,21 @@ jobs:
       packages: write
 
     strategy:
-      fail-fast: false
       matrix:
         include:
           - arch: amd64
             platform: linux/amd64
-            base: ghcr.io/home-assistant/amd64-base:latest
+            base: ghcr.io/home-assistant/amd64-base-nodejs:20
           - arch: aarch64
             platform: linux/arm64
-            base: ghcr.io/home-assistant/aarch64-base:latest
+            base: ghcr.io/home-assistant/aarch64-base-nodejs:20
+          - arch: armv7
+            platform: linux/arm/v7
+            base: ghcr.io/home-assistant/armv7-base-nodejs:20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Lowercase owner name
-        id: lower
-        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -56,7 +54,7 @@ jobs:
         run: |
           VERSION=$(cat re-assistant/config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
+          echo "Add-on Version: $VERSION"
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -68,8 +66,8 @@ jobs:
           build-args: |
             BUILD_FROM=${{ matrix.base }}
           tags: |
-            ${{ env.REGISTRY }}/${{ steps.lower.outputs.owner }}/homeassistant-addon-re-assistant-${{ matrix.arch }}:latest
-            ${{ env.REGISTRY }}/${{ steps.lower.outputs.owner }}/homeassistant-addon-re-assistant-${{ matrix.arch }}:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/homeassistant-addon-re-assistant-${{ matrix.arch }}:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/homeassistant-addon-re-assistant-${{ matrix.arch }}:${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
           labels: |

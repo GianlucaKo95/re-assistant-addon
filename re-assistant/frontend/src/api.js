@@ -7,6 +7,7 @@ const API = {
   // ── AUTH ──────────────────────────────────────────────────
   async login(data)     { return post('/api/auth/login', data); },
   async logout()        { return post('/api/auth/logout'); },
+  async changePassword(d){ return post('/api/auth/change-password', d); },
   async getMe()         { return get('/api/auth/me'); },
   async getAppVersion() { const d = await get('/api/version'); return d.version; },
 
@@ -124,6 +125,11 @@ const API = {
     dlText(svg, filename || 'diagram.svg', 'image/svg+xml');
     return true;
   },
+
+  // ── LICENSE ───────────────────────────────────────────────
+  async getLicenseStatus()     { return get('/api/license/status'); },
+  async activateLicense(key)   { return post('/api/license/activate', { key }); },
+  async removeLicense()        { return del('/api/license'); },
 
   // ── EINSTELLUNGEN (localStorage) ─────────────────────────
   async loadSettings() {
