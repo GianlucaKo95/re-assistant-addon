@@ -1,0 +1,57 @@
+{
+  "name": "RE-Assistent",
+  "version": "4.2.0",
+  "slug": "re_assistant",
+  "description": "KI-gestütztes Requirements Engineering — PostgreSQL, WebSockets, Enterprise-ready.",
+  "url": "https://github.com/GianlucaKo95/re-assistant-addon",
+  "arch": [
+    "aarch64",
+    "amd64"
+  ],
+  "startup": "application",
+  "boot": "auto",
+  "init": false,
+  "ingress": true,
+  "ingress_port": 3000,
+  "panel_icon": "mdi:clipboard-text-outline",
+  "panel_title": "RE-Assistent",
+  "homeassistant_api": false,
+  "hassio_api": false,
+  "options": {
+    "anthropic_api_key": "",
+    "admin_password": "admin123",
+    "language": "de",
+    "log_level": "info",
+    "pg_host": "localhost",
+    "pg_port": 5432,
+    "pg_database": "reassistant",
+    "pg_user": "reassistant",
+    "pg_password": "repassword"
+  },
+  "schema": {
+    "anthropic_api_key": "str",
+    "admin_password": "str",
+    "language": "list(de|en)",
+    "log_level": "list(trace|debug|info|notice|warning|error|fatal)",
+    "options": {
+      "pg_host": {
+        "type": "str"
+      },
+      "pg_port": {
+        "type": "int"
+      },
+      "pg_database": {
+        "type": "str"
+      },
+      "pg_user": {
+        "type": "str"
+      },
+      "pg_password": {
+        "type": "str"
+      }
+    }
+  },
+  "map": [
+    "data"
+  ]
+}

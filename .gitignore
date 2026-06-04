@@ -1,0 +1,4 @@
+node_modules/
+re-assistant/frontend/dist/
+.env
+*.log
