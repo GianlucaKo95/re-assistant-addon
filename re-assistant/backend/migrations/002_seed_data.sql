@@ -4,11 +4,11 @@
 
 INSERT INTO users (id, name, email, role, password, systems, subcategories)
 VALUES
-  ('u1', 'Admin',         'admin@re.local',   'admin',           '$2a$10$XM0i50xvfJ7EqC9QMpgdB.Yl0CwN5M1mhBblIVfWCQ9ggxVR5kZCS', '[]', '[]'),
-  ('u2', 'Anna Müller',   'anna@re.local',    'business',        '$2a$10$E6SX4uXbNKBj1WNYEXleJeGpakIrQ9nDJrQJVE.VvG.D1tALBgSga', '[]', '[]'),
-  ('u3', 'Marcus Weber',  'marcus@re.local',  'businessanalyst', '$2a$10$E6SX4uXbNKBj1WNYEXleJeGpakIrQ9nDJrQJVE.VvG.D1tALBgSga', '["sys1"]', '[]'),
-  ('u4', 'Tobias Kern',   'tobias@re.local',  'projectmanager',  '$2a$10$E6SX4uXbNKBj1WNYEXleJeGpakIrQ9nDJrQJVE.VvG.D1tALBgSga', '["sys1"]', '[]'),
-  ('u5', 'Laura Schmidt', 'laura@re.local',   'developer',       '$2a$10$E6SX4uXbNKBj1WNYEXleJeGpakIrQ9nDJrQJVE.VvG.D1tALBgSga', '["sys1"]', '["Backend","API"]')
+  ('u1', 'Admin',         'admin@re.local',   'admin',           '$2a$10$BaLGPyzVCt46.BgJH3HDUOYEfVgI4ap3nvkMDOyyV16GxoEtL//E.', '[]', '[]'),
+  ('u2', 'Anna Müller',   'anna@re.local',    'business',        '$2a$10$j4yX3EraAux.LxDMEQpEOO7XGUHSs30.oal3HHUQtLveqSxT9TQ/.', '[]', '[]'),
+  ('u3', 'Marcus Weber',  'marcus@re.local',  'businessanalyst', '$2a$10$j4yX3EraAux.LxDMEQpEOO7XGUHSs30.oal3HHUQtLveqSxT9TQ/.', '["sys1"]', '[]'),
+  ('u4', 'Tobias Kern',   'tobias@re.local',  'projectmanager',  '$2a$10$j4yX3EraAux.LxDMEQpEOO7XGUHSs30.oal3HHUQtLveqSxT9TQ/.', '["sys1"]', '[]'),
+  ('u5', 'Laura Schmidt', 'laura@re.local',   'developer',       '$2a$10$j4yX3EraAux.LxDMEQpEOO7XGUHSs30.oal3HHUQtLveqSxT9TQ/.', '["sys1"]', '["Backend","API"]')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO systems (id, name, description, id_prefix)
