@@ -7,7 +7,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apk add --no-cache \
     nginx bash curl \
     nodejs npm \
-    postgresql postgresql-client \
+    postgresql postgresql-client postgresql18-contrib \
     python3 make g++
 
 # PostgreSQL Datenverzeichnis vorbereiten
