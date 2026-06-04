@@ -32,7 +32,8 @@ COPY frontend/ ./frontend-src/
 RUN cd frontend-src \
     && npm install --no-audit --no-fund \
     && npm run build \
-    && mv dist /app/frontend/dist \
+    && mkdir -p /app/frontend \
+    && mv /app/frontend-src/dist /app/frontend/dist
     && cd / && rm -rf /app/frontend-src
 
 COPY nginx.conf /etc/nginx/http.d/default.conf
