@@ -16,7 +16,7 @@ export PGUSER="reassistant"
 export PGDATABASE="reassistant"
 export PGPASSWORD="repassword"
 
-# /run/postgresql anlegen — PostgreSQL braucht das für Lock-Dateien
+# Lock-Verzeichnis anlegen
 mkdir -p /run/postgresql
 chown postgres:postgres /run/postgresql
 
@@ -44,24 +44,24 @@ su postgres -s /bin/sh -c \
 WAIT=0
 until pg_isready -h 127.0.0.1 -p 5432 -U postgres &>/dev/null; do
     WAIT=$((WAIT+1))
-    [ $WAIT -ge 30 ] && { log "FEHLER: Timeout"; cat "${PG_DATA}/server.log" 2>/dev/null; exit 1; }
+    [ $WAIT -ge 30 ] && { log "FEHLER: Timeout"; exit 1; }
     sleep 1
 done
 log "PostgreSQL bereit (${WAIT}s)"
 
-# Datenbank & User anlegen
-su postgres -s /bin/sh -c "psql -h 127.0.0.1 -p 5432 postgres -tc \
-    \"SELECT 1 FROM pg_user WHERE usename='reassistant'\" | grep -q 1 || \
-    psql -h 127.0.0.1 -p 5432 postgres -c \
-    \"CREATE USER reassistant WITH PASSWORD 'repassword';\""
+# User und Datenbank anlegen — alles als postgres ausführen
+log "Richte Datenbank ein …"
+su postgres -s /bin/sh -c "psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -c \
+    \"DO \\\$\\\$ BEGIN \
+    IF NOT EXISTS (SELECT FROM pg_user WHERE usename='reassistant') \
+    THEN CREATE USER reassistant WITH PASSWORD 'repassword'; END IF; END \\\$\\\$;\""
 
-su postgres -s /bin/sh -c "psql -h 127.0.0.1 -p 5432 postgres -tc \
-    \"SELECT 1 FROM pg_database WHERE datname='reassistant'\" | grep -q 1 || \
-    psql -h 127.0.0.1 -p 5432 postgres -c \
+su postgres -s /bin/sh -c "psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -c \
+    \"SELECT 'exists' FROM pg_database WHERE datname='reassistant'\" \
+    | grep -q exists || psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -c \
     \"CREATE DATABASE reassistant OWNER reassistant;\""
 
-su postgres -s /bin/sh -c \
-    "psql -h 127.0.0.1 -p 5432 postgres -c \
+su postgres -s /bin/sh -c "psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -c \
     \"GRANT ALL PRIVILEGES ON DATABASE reassistant TO reassistant;\""
 
 log "Datenbank bereit"
