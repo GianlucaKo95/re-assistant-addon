@@ -9,40 +9,63 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: reassistant
+          POSTGRES_PASSWORD: repassword
+          POSTGRES_DB: reassistant
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: 'tests/package.json'
-      
+
       - name: Install backend dependencies
         run: |
           cd re-assistant/backend
           npm install
-      
+
+      - name: Run migrations
+        run: node re-assistant/backend/migrate.js
+        env:
+          DATABASE_URL: postgresql://reassistant:repassword@localhost:5432/reassistant
+
       - name: Install frontend dependencies & build
         run: |
           cd re-assistant/frontend
           npm install
           npm run build
-      
+
       - name: Start backend
         run: |
           cd re-assistant/backend
-          NODE_ENV=test \
-          DATA_DIR=/tmp/re-test-data \
-          ADMIN_PASSWORD=admin123 \
-          PORT=3001 \
           node server.js &
           echo "Waiting for backend..."
-          sleep 3
-          curl -f http://localhost:3001/api/version || exit 1
+          for i in $(seq 1 15); do
+            curl -sf http://localhost:3001/api/health && echo "Backend ready" && exit 0
+            sleep 2
+          done
+          echo "Backend failed to start" && exit 1
         env:
+          DATABASE_URL: postgresql://reassistant:repassword@localhost:5432/reassistant
+          DATA_DIR: /tmp/re-test-data
+          PORT: 3001
+          SKIP_LICENSE_CHECK: "true"
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || 'sk-ant-test' }}
       
       - name: Install Playwright
