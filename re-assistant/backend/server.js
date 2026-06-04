@@ -1145,7 +1145,6 @@ server.listen(PORT, '127.0.0.1', async () => {
   log('info', `PostgreSQL: ${db.ok ? 'OK' : 'FEHLER — ' + db.error}`);
   log('info', `Pool: ${db.pool?.total||0} Verbindungen`);
   await notif.initAsync?.();
-  await lic.checkOnStartup(query, queryOne, log);
 });
 
 process.on('SIGTERM', async () => {
