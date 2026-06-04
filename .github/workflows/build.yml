@@ -49,11 +49,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version
+      - name: Extract version and owner
         id: version
         run: |
           VERSION=$(cat re-assistant/config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
           echo "Add-on Version: $VERSION"
 
       - name: Build and push
@@ -66,8 +67,8 @@ jobs:
           build-args: |
             BUILD_FROM=${{ matrix.base }}
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/homeassistant-addon-re-assistant-${{ matrix.arch }}:latest
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/homeassistant-addon-re-assistant-${{ matrix.arch }}:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ steps.version.outputs.owner }}/homeassistant-addon-re-assistant-${{ matrix.arch }}:latest
+            ${{ env.REGISTRY }}/${{ steps.version.outputs.owner }}/homeassistant-addon-re-assistant-${{ matrix.arch }}:${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
           labels: |
