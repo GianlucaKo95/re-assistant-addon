@@ -23,13 +23,13 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            base: ghcr.io/home-assistant/amd64-base-nodejs:20
+            base: ghcr.io/home-assistant/amd64-base:latest
           - arch: aarch64
             platform: linux/arm64
-            base: ghcr.io/home-assistant/aarch64-base-nodejs:20
+            base: ghcr.io/home-assistant/aarch64-base:latest
           - arch: armv7
             platform: linux/arm/v7
-            base: ghcr.io/home-assistant/armv7-base-nodejs:20
+            base: ghcr.io/home-assistant/armv7-base:latest
 
     steps:
       - name: Checkout
