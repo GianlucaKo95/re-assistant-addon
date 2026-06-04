@@ -16,7 +16,6 @@ const dna     = require('./dna');
 const tracker = require('./token-tracker');
 const notif = require('./notifications');
 const ws    = require('./websocket');
-const lic   = require('./license');
 
 const app      = express();
 const PORT     = parseInt(process.env.NODE_PORT || process.env.PORT || '3001');
@@ -1051,30 +1050,15 @@ app.get('/api/tokens/features', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── LICENSE ───────────────────────────────────────────────────
-app.get('/api/license/status', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const status = await lic.getStatus(queryOne);
-    res.json({ ...status, fingerprint: lic.getFingerprint() });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+// ── LICENSE (Stub — wird in späterer Version implementiert) ───
+app.get('/api/license/status', requireAuth, requireAdmin, (req, res) => {
+  res.json({ status: 'unlicensed', seats: 999, customer: 'Self-Hosted', expires_at: null });
 });
-
-app.post('/api/license/activate', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { key } = req.body;
-    if (!key) return res.status(400).json({ error: 'Kein Schlüssel angegeben' });
-    const result = await lic.activate(key, query, queryOne);
-    res.status(result.ok ? 200 : 400).json(result);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+app.post('/api/license/activate', requireAuth, requireAdmin, (req, res) => {
+  res.json({ ok: true, message: 'License-System wird in v5.0 implementiert' });
 });
-
-app.delete('/api/license', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    await query(
-      "UPDATE license_info SET license_key=NULL, customer=NULL, fingerprint=NULL, expires_at=NULL, seats=1, status='unlicensed', grace_until=NULL, updated_at=NOW() WHERE id='singleton'"
-    );
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+app.delete('/api/license', requireAuth, requireAdmin, (req, res) => {
+  res.json({ ok: true });
 });
 
 // ── JIRA PROXY ────────────────────────────────────────────────
