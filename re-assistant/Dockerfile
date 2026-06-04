@@ -13,34 +13,36 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 # Backend
-COPY re-assistant/backend/package.json ./backend/
+COPY backend/package.json ./backend/
 RUN cd backend \
     && npm install --omit=dev --no-audit --no-fund \
     && npm cache clean --force
 
-COPY re-assistant/backend/server.js   ./backend/
-COPY re-assistant/backend/db.js       ./backend/
-COPY re-assistant/backend/migrate.js  ./backend/
-COPY re-assistant/backend/notifications.js ./backend/
-COPY re-assistant/backend/websocket.js     ./backend/
-COPY re-assistant/backend/migrations/ ./backend/migrations/
+COPY backend/server.js   ./backend/
+COPY backend/db.js       ./backend/
+COPY backend/migrate.js  ./backend/
+COPY backend/notifications.js ./backend/
+COPY backend/websocket.js     ./backend/
+COPY backend/dna.js           ./backend/
+COPY backend/token-tracker.js  ./backend/
+COPY backend/migrations/ ./backend/migrations/
 
 # Frontend
-COPY re-assistant/frontend/ ./frontend-src/
+COPY frontend/ ./frontend-src/
 RUN cd frontend-src \
     && npm install --no-audit --no-fund \
     && npm run build \
     && mv dist /app/frontend/dist \
     && cd / && rm -rf /app/frontend-src
 
-COPY re-assistant/nginx.conf /etc/nginx/http.d/default.conf
-COPY re-assistant/run.sh /run.sh
+COPY nginx.conf /etc/nginx/http.d/default.conf
+COPY run.sh /run.sh
 RUN chmod +x /run.sh
 
 LABEL \
     io.hass.name="RE-Assistent" \
     io.hass.description="KI-gestütztes Requirements Engineering mit PostgreSQL" \
     io.hass.type="addon" \
-    io.hass.version="4.0.0"
+    io.hass.version="4.2.0"
 
 CMD ["/run.sh"]

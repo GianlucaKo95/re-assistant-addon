@@ -33,23 +33,11 @@
     "admin_password": "str",
     "language": "list(de|en)",
     "log_level": "list(trace|debug|info|notice|warning|error|fatal)",
-    "options": {
-      "pg_host": {
-        "type": "str"
-      },
-      "pg_port": {
-        "type": "int"
-      },
-      "pg_database": {
-        "type": "str"
-      },
-      "pg_user": {
-        "type": "str"
-      },
-      "pg_password": {
-        "type": "str"
-      }
-    }
+    "pg_host": "str",
+    "pg_port": "int",
+    "pg_database": "str",
+    "pg_user": "str",
+    "pg_password": "str"
   },
   "map": [
     "data"
