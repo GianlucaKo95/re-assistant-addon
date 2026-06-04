@@ -16,6 +16,10 @@ export PGUSER="reassistant"
 export PGDATABASE="reassistant"
 export PGPASSWORD="repassword"
 
+# /run/postgresql anlegen — PostgreSQL braucht das für Lock-Dateien
+mkdir -p /run/postgresql
+chown postgres:postgres /run/postgresql
+
 # Initialisieren falls nötig
 if [ ! -f "${PG_DATA}/PG_VERSION" ]; then
     log "Initialisiere PostgreSQL …"
@@ -25,10 +29,9 @@ if [ ! -f "${PG_DATA}/PG_VERSION" ]; then
     log "PostgreSQL initialisiert"
 fi
 
-# Rechte sicherstellen — PG_DATA gehört postgres
 chown -R postgres:postgres "${PG_DATA}"
 
-# Starten — Log geht nach PG_DATA/server.log (postgres hat dort Schreibrecht)
+# Starten
 log "Starte PostgreSQL …"
 su postgres -s /bin/sh -c \
     "pg_ctl -D ${PG_DATA} -o '-p 5432 -h 127.0.0.1' -l ${PG_DATA}/server.log start" 2>&1 || {
@@ -41,11 +44,7 @@ su postgres -s /bin/sh -c \
 WAIT=0
 until pg_isready -h 127.0.0.1 -p 5432 -U postgres &>/dev/null; do
     WAIT=$((WAIT+1))
-    if [ $WAIT -ge 30 ]; then
-        log "FEHLER: PostgreSQL startet nicht"
-        cat "${PG_DATA}/server.log" 2>/dev/null || true
-        exit 1
-    fi
+    [ $WAIT -ge 30 ] && { log "FEHLER: Timeout"; cat "${PG_DATA}/server.log" 2>/dev/null; exit 1; }
     sleep 1
 done
 log "PostgreSQL bereit (${WAIT}s)"
