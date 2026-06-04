@@ -4,18 +4,12 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 log "RE-Assistent v4.2 startet …"
 
 # ── Konfiguration ─────────────────────────────────────────────
-ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin123}"
-LANGUAGE="${LANGUAGE:-de}"
-export ANTHROPIC_API_KEY ADMIN_PASSWORD LANGUAGE
+export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+export ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin123}"
+export LANGUAGE="${LANGUAGE:-de}"
 
 # ── PostgreSQL Setup ──────────────────────────────────────────
 PG_DATA="/data/postgres"
-PG_LOG="/data/postgres.log"
-PG_RUN="/tmp/pg_run"
-mkdir -p "${PG_RUN}"
-chown postgres:postgres "${PG_RUN}"
-
 export PGHOST="127.0.0.1"
 export PGPORT="5432"
 export PGUSER="reassistant"
@@ -26,22 +20,20 @@ export PGPASSWORD="repassword"
 if [ ! -f "${PG_DATA}/PG_VERSION" ]; then
     log "Initialisiere PostgreSQL …"
     mkdir -p "${PG_DATA}"
-    chown postgres:postgres "${PG_DATA}"
-    su postgres -s /bin/sh -c "initdb -D ${PG_DATA} --auth=trust --username=postgres" >> "${PG_LOG}" 2>&1
+    chown -R postgres:postgres "${PG_DATA}"
+    su postgres -s /bin/sh -c "initdb -D ${PG_DATA} --auth=trust --username=postgres" 2>&1
     log "PostgreSQL initialisiert"
 fi
 
-# Rechte sicherstellen
-chown -R postgres:postgres "${PG_DATA}" "${PG_RUN}"
+# Rechte sicherstellen — PG_DATA gehört postgres
+chown -R postgres:postgres "${PG_DATA}"
 
-# Starten
+# Starten — Log geht nach PG_DATA/server.log (postgres hat dort Schreibrecht)
 log "Starte PostgreSQL …"
 su postgres -s /bin/sh -c \
-    "pg_ctl -D ${PG_DATA} \
-     -o \"-p 5432 -k ${PG_RUN} -h 127.0.0.1\" \
-     -l ${PG_LOG} start" 2>&1 || {
+    "pg_ctl -D ${PG_DATA} -o '-p 5432 -h 127.0.0.1' -l ${PG_DATA}/server.log start" 2>&1 || {
     log "PostgreSQL Start fehlgeschlagen — Log:"
-    cat "${PG_LOG}" || true
+    cat "${PG_DATA}/server.log" 2>/dev/null || echo "(kein Log)"
     exit 1
 }
 
@@ -50,8 +42,8 @@ WAIT=0
 until pg_isready -h 127.0.0.1 -p 5432 -U postgres &>/dev/null; do
     WAIT=$((WAIT+1))
     if [ $WAIT -ge 30 ]; then
-        log "FEHLER: PostgreSQL startet nicht nach 30s"
-        cat "${PG_LOG}" || true
+        log "FEHLER: PostgreSQL startet nicht"
+        cat "${PG_DATA}/server.log" 2>/dev/null || true
         exit 1
     fi
     sleep 1
@@ -59,24 +51,19 @@ done
 log "PostgreSQL bereit (${WAIT}s)"
 
 # Datenbank & User anlegen
-log "Prüfe Datenbank …"
-su postgres -s /bin/sh -c "psql -h 127.0.0.1 -p 5432 -c \"
-    DO \\\$\\\$ BEGIN
-      IF NOT EXISTS (SELECT FROM pg_user WHERE usename='reassistant') THEN
-        CREATE USER reassistant WITH PASSWORD 'repassword';
-      END IF;
-    END \\\$\\\$;
-    SELECT 1 FROM pg_database WHERE datname='reassistant';
-\" postgres" 2>/dev/null || true
+su postgres -s /bin/sh -c "psql -h 127.0.0.1 -p 5432 postgres -tc \
+    \"SELECT 1 FROM pg_user WHERE usename='reassistant'\" | grep -q 1 || \
+    psql -h 127.0.0.1 -p 5432 postgres -c \
+    \"CREATE USER reassistant WITH PASSWORD 'repassword';\""
 
-su postgres -s /bin/sh -c "psql -h 127.0.0.1 -p 5432 -tc \
-    \"SELECT 1 FROM pg_database WHERE datname='reassistant'\" postgres \
-    | grep -q 1 || psql -h 127.0.0.1 -p 5432 -c \
-    \"CREATE DATABASE reassistant OWNER reassistant\" postgres" 2>/dev/null || true
+su postgres -s /bin/sh -c "psql -h 127.0.0.1 -p 5432 postgres -tc \
+    \"SELECT 1 FROM pg_database WHERE datname='reassistant'\" | grep -q 1 || \
+    psql -h 127.0.0.1 -p 5432 postgres -c \
+    \"CREATE DATABASE reassistant OWNER reassistant;\""
 
 su postgres -s /bin/sh -c \
-    "psql -h 127.0.0.1 -p 5432 -c \
-    \"GRANT ALL PRIVILEGES ON DATABASE reassistant TO reassistant\" postgres" 2>/dev/null || true
+    "psql -h 127.0.0.1 -p 5432 postgres -c \
+    \"GRANT ALL PRIVILEGES ON DATABASE reassistant TO reassistant;\""
 
 log "Datenbank bereit"
 
@@ -107,7 +94,6 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT
 
-# Health-Check
 for i in $(seq 1 30); do
     curl -sf "http://127.0.0.1:${PORT}/api/health" &>/dev/null && {
         log "RE-Assistent bereit"
