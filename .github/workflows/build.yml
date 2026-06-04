@@ -60,8 +60,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: Dockerfile
+          context: re-assistant
+          file: re-assistant/Dockerfile
           platforms: ${{ matrix.platform }}
           push: ${{ github.event_name != 'pull_request' }}
           build-args: |
