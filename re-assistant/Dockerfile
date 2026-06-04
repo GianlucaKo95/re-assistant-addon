@@ -3,12 +3,16 @@ FROM ${BUILD_FROM}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# System-Pakete: nginx, node, postgresql-client (für pg_isready + migrate)
+# System-Pakete: nginx, node, postgresql (komplett, inkl. Server)
 RUN apk add --no-cache \
     nginx bash curl \
     nodejs npm \
-    postgresql-client \
+    postgresql postgresql-client \
     python3 make g++
+
+# PostgreSQL Datenverzeichnis vorbereiten
+RUN mkdir -p /data/postgres && \
+    chown -R postgres:postgres /data/postgres
 
 WORKDIR /app
 
@@ -18,16 +22,16 @@ RUN cd backend \
     && npm install --omit=dev --no-audit --no-fund \
     && npm cache clean --force
 
-COPY backend/server.js   ./backend/
-COPY backend/db.js       ./backend/
-COPY backend/migrate.js  ./backend/
+COPY backend/server.js        ./backend/
+COPY backend/db.js            ./backend/
+COPY backend/migrate.js       ./backend/
 COPY backend/notifications.js ./backend/
 COPY backend/websocket.js     ./backend/
 COPY backend/dna.js           ./backend/
-COPY backend/token-tracker.js  ./backend/
-COPY backend/migrations/ ./backend/migrations/
+COPY backend/token-tracker.js ./backend/
+COPY backend/migrations/      ./backend/migrations/
 
-# Frontend
+# Frontend bauen
 COPY frontend/ ./frontend-src/
 RUN cd frontend-src \
     && npm install --no-audit --no-fund \
@@ -42,7 +46,7 @@ RUN chmod +x /run.sh
 
 LABEL \
     io.hass.name="RE-Assistent" \
-    io.hass.description="KI-gestütztes Requirements Engineering mit PostgreSQL" \
+    io.hass.description="KI-gestütztes Requirements Engineering" \
     io.hass.type="addon" \
     io.hass.version="4.2.0"
 

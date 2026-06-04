@@ -21,25 +21,21 @@
     "anthropic_api_key": "",
     "admin_password": "admin123",
     "language": "de",
-    "log_level": "info",
-    "pg_host": "localhost",
-    "pg_port": 5432,
-    "pg_database": "reassistant",
-    "pg_user": "reassistant",
-    "pg_password": "repassword"
+    "log_level": "info"
   },
   "schema": {
     "anthropic_api_key": "str",
     "admin_password": "str",
     "language": "list(de|en)",
-    "log_level": "list(trace|debug|info|notice|warning|error|fatal)",
-    "pg_host": "str",
-    "pg_port": "int",
-    "pg_database": "str",
-    "pg_user": "str",
-    "pg_password": "str"
+    "log_level": "list(trace|debug|info|notice|warning|error|fatal)"
   },
   "map": [
-    "data"
-  ]
+    "data:rw"
+  ],
+  "environment": {
+    "ANTHROPIC_API_KEY": "{{anthropic_api_key}}",
+    "ADMIN_PASSWORD": "{{admin_password}}",
+    "LANGUAGE": "{{language}}",
+    "LOG_LEVEL": "{{log_level}}"
+  }
 }
