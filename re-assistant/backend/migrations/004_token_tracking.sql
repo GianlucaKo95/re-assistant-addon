@@ -18,8 +18,8 @@ CREATE INDEX IF NOT EXISTS idx_tu_user    ON token_usage(user_id);
 CREATE INDEX IF NOT EXISTS idx_tu_system  ON token_usage(system_id);
 CREATE INDEX IF NOT EXISTS idx_tu_feature ON token_usage(feature);
 CREATE INDEX IF NOT EXISTS idx_tu_time    ON token_usage(created_at DESC);
--- Monatliche Aggregation
-CREATE INDEX IF NOT EXISTS idx_tu_month   ON token_usage(DATE_TRUNC('month', created_at));
+-- Monatliche Aggregation via created_at (DATE_TRUNC is STABLE, not allowed in index expressions)
+CREATE INDEX IF NOT EXISTS idx_tu_month   ON token_usage(created_at);
 
 -- ── Feature-Budgets ───────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS feature_budgets (
