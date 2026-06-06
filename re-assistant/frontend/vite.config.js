@@ -2,13 +2,13 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   root: '.',
+  base: './',           // Relative Pfade — funktioniert mit HA Ingress
   publicDir: 'public',
   build: {
     outDir:     'dist',
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        // Chunk-Namen für besseres Caching
         chunkFileNames:  'assets/[name]-[hash].js',
         entryFileNames:  'assets/[name]-[hash].js',
         assetFileNames:  'assets/[name]-[hash][extname]',
