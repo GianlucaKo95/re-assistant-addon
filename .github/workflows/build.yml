@@ -69,8 +69,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ steps.version.outputs.owner }}/homeassistant-addon-re-assistant-${{ matrix.arch }}:latest
             ${{ env.REGISTRY }}/${{ steps.version.outputs.owner }}/homeassistant-addon-re-assistant-${{ matrix.arch }}:${{ steps.version.outputs.version }}
-          cache-from: type=gha,scope=${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+         # cache-from: type=gha,scope=${{ matrix.arch }}
+        #  cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
           labels: |
             io.hass.version=${{ steps.version.outputs.version }}
             io.hass.name=RE-Assistent
