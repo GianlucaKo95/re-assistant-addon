@@ -42,5 +42,3 @@ document.addEventListener('keydown', e => {
 });
 
 window.toggleMobileReqPane = toggleMobileReqPane;
-
-// ── Window Globals ──────────────────────────────────────────

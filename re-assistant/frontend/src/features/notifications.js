@@ -87,6 +87,3 @@ window.addNotif          = addNotif;
 window.toggleNotifPanel  = toggleNotifPanel;
 window.clickNotif        = clickNotif;
 window.clearNotifs       = clearNotifs;
-
-// ── Window Globals ──────────────────────────────────────────
-window.renderNotifs = renderNotifs;

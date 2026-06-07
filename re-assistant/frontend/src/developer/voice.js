@@ -83,11 +83,3 @@ window.buildVoice=buildVoice;
 window.toggleVoiceOrb=toggleVoiceOrb;
 window.stopSpeaking=stopSpeaking;
 window.populateVoices=populateVoices;
-
-// ── Window Globals ──────────────────────────────────────────
-window.startVoiceRec = startVoiceRec;
-window.stopVoiceRec = stopVoiceRec;
-window.processVoiceInput = processVoiceInput;
-window.speak = speak;
-window.setOrbState = setOrbState;
-window.appendVoiceLog = appendVoiceLog;

@@ -33,5 +33,3 @@ async function sendPMChat(){
 
 window.loadPMChat=loadPMChat;
 window.sendPMChat=sendPMChat;
-
-// ── Window Globals ──────────────────────────────────────────

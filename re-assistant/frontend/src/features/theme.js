@@ -68,6 +68,3 @@ window.initTheme        = initTheme;
 window.toggleTheme      = toggleTheme;
 window.applyTheme       = applyTheme;
 window.getCurrentTheme  = getCurrentTheme;
-
-// ── Window Globals ──────────────────────────────────────────
-window.updateThemeButton = updateThemeButton;

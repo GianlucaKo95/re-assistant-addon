@@ -183,7 +183,3 @@ function exportQSTrends(data) {
 window.loadQSTrends          = loadQSTrends;
 window.fetchAndRenderTrends  = fetchAndRenderTrends;
 window.exportQSTrends        = exportQSTrends;
-
-// ── Window Globals ──────────────────────────────────────────
-window.renderTrends = renderTrends;
-window.renderLineChart = renderLineChart;

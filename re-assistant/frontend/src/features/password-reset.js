@@ -64,7 +64,7 @@ async function submitPasswordReset() {
   const btn = $('pr-submit-btn');
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Sende …';
 
-  const res  = await fetch('/api/auth/request-reset', {
+  const res  = await fetch('api/auth/request-reset', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
   });
@@ -94,7 +94,7 @@ async function submitPasswordReset() {
 // ── Schritt 2: Token validieren + neues Passwort setzen ───────
 async function openResetWithToken(token) {
   // Token validieren
-  const checkRes = await fetch(`/api/auth/reset-token/${token}`);
+  const checkRes = await fetch(`api/auth/reset-token/${token}`);
   const checkData = await checkRes.json();
 
   if (!checkData.ok) {
@@ -150,7 +150,7 @@ async function submitNewPassword(token) {
   const btn = $('pr-new-btn');
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
 
-  const res  = await fetch('/api/auth/reset-password', {
+  const res  = await fetch('api/auth/reset-password', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, newPassword: pw }),
   });
@@ -177,7 +177,7 @@ async function submitNewPassword(token) {
 
 // ── Admin: Reset-Link für User generieren ─────────────────────
 async function adminGenerateResetLink(userId, userName) {
-  const res  = await fetch(`/api/auth/admin-reset/${userId}`, {
+  const res  = await fetch(`api/auth/admin-reset/${userId}`, {
     method: 'POST', credentials: 'include',
   });
   const data = await res.json();
@@ -224,5 +224,3 @@ window.openResetWithToken     = openResetWithToken;
 window.submitNewPassword      = submitNewPassword;
 window.adminGenerateResetLink = adminGenerateResetLink;
 window.checkResetTokenInURL   = checkResetTokenInURL;
-
-// ── Window Globals ──────────────────────────────────────────

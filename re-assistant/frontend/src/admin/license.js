@@ -149,7 +149,3 @@ window.loadAdminLicense   = loadAdminLicense;
 window.copyFingerprint    = copyFingerprint;
 window.activateLicenseKey = activateLicenseKey;
 window.removeLicenseKey   = removeLicenseKey;
-
-// ── Window Globals ──────────────────────────────────────────
-window.renderLicenseView = renderLicenseView;
-window.licenseIcon = licenseIcon;

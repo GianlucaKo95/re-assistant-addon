@@ -391,10 +391,3 @@ window.loadSourceAnalysisView = loadSourceAnalysisView;
 window.renderSAView           = renderSAView;
 window.analyzeSourceForReq    = analyzeSourceForReq;
 window.batchAnalyzeSources    = batchAnalyzeSources;
-
-// ── Window Globals ──────────────────────────────────────────
-window.extractKeywords = extractKeywords;
-window.renderAffectedFiles = renderAffectedFiles;
-window.renderDiff = renderDiff;
-window.complexityLabel = complexityLabel;
-window.riskLabel = riskLabel;

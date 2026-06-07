@@ -8,8 +8,7 @@ const $ = window.$ || (id => document.getElementById(id));
 async function loadAdminUsers() {
   S.users = await window.api.getUsers();
   renderUsersTable();
-  const newUserBtn = $('btn-new-user');
-  if (newUserBtn) newUserBtn.onclick = () => openUserModal(null);
+  $('btn-new-user').onclick = () => openUserModal(null);
 }
 
 function renderUsersTable() {
@@ -37,22 +36,14 @@ function renderUsersTable() {
           <td>
             <div style="display:flex;gap:5px">
               <button class="btn-secondary" style="font-size:11px;padding:4px 10px"
-                data-action="edit" data-id="${u.id}">Bearbeiten</button>
+                onclick="openUserModal('${u.id}')">Bearbeiten</button>
               <button class="btn-danger" style="font-size:11px;padding:4px 10px"
-                data-action="delete" data-id="${u.id}">Löschen</button>
+                onclick="deleteUser('${u.id}')">Löschen</button>
             </div>
           </td>
         </tr>`).join('')}
       </tbody>
     </table>`;
-
-  // Event-Delegation statt inline onclick (CSP-kompatibel)
-  w.addEventListener('click', function(e) {
-    const btn = e.target.closest('[data-action]');
-    if (!btn) return;
-    if (btn.dataset.action === 'edit')   openUserModal(btn.dataset.id);
-    if (btn.dataset.action === 'delete') deleteUser(btn.dataset.id);
-  });
 }
 
 function openUserModal(uid) {
@@ -82,17 +73,9 @@ function openUserModal(uid) {
     <div class="frow"><label>${uid ? 'Neues Passwort (leer = unverändert)' : 'Passwort'}</label>
       <input type="password" id="um-pass" placeholder="${uid ? 'leer lassen …' : 'Passwort …'}"/></div>
     <div style="display:flex;gap:8px;margin-top:6px">
-      <button class="btn-primary" id="btn-save-user-modal">Speichern</button>
-      <button class="btn-secondary" id="btn-cancel-user-modal">Abbrechen</button>
+      <button class="btn-primary" onclick="saveUserModal('${uid||''}')">Speichern</button>
+      <button class="btn-secondary" onclick="closeModal()">Abbrechen</button>
     </div>`);
-
-  // Buttons per addEventListener (CSP-kompatibel)
-  setTimeout(() => {
-    const saveBtn = document.getElementById('btn-save-user-modal');
-    if (saveBtn) saveBtn.onclick = () => saveUserModal(uid || '');
-    const cancelBtn = document.getElementById('btn-cancel-user-modal');
-    if (cancelBtn) cancelBtn.onclick = () => closeModal();
-  }, 0);
 }
 
 async function saveUserModal(uid) {
@@ -126,4 +109,3 @@ window.loadAdminUsers  = loadAdminUsers;
 window.openUserModal   = openUserModal;
 window.saveUserModal   = saveUserModal;
 window.deleteUser      = deleteUser;
-window.renderUsersTable = renderUsersTable;

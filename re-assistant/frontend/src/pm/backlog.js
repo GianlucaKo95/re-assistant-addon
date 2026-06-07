@@ -70,5 +70,3 @@ window.renderBacklog=renderBacklog;
 window.exportBacklogMd=exportBacklogMd;
 window.exportBacklogJira=exportBacklogJira;
 window.doBlJiraExport=doBlJiraExport;
-
-// ── Window Globals ──────────────────────────────────────────

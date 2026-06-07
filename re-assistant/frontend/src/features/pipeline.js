@@ -300,7 +300,3 @@ window.pipelineStep2       = pipelineStep2;
 window.pipelineStep3       = pipelineStep3;
 window.pipelineStep4       = pipelineStep4;
 window.pipelineExtractReqs = pipelineExtractReqs;
-
-// ── Window Globals ──────────────────────────────────────────
-window.activePipelineStep = activePipelineStep;
-window.injectPipelineStyles = injectPipelineStyles;

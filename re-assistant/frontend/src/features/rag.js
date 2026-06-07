@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/rag.js
  * RAG (Retrieval-Augmented Generation) — Frontend
@@ -35,7 +36,7 @@ async function indexDocument(systemId, doc) {
   if (!chunks.length) return;
 
   try {
-    const res = await fetch('/api/embeddings/store', {
+    const res = await fetch('api/embeddings/store', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ systemId, docId: doc.id, docName: doc.name, chunks })
@@ -65,7 +66,7 @@ async function indexSystemDocs(systemId, onProgress) {
 // ── Semantische Suche ─────────────────────────────────────────
 async function semanticSearch(systemId, query, topK = 5) {
   try {
-    const res = await fetch('/api/embeddings/search', {
+    const res = await fetch('api/embeddings/search', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ systemId, query, topK })
@@ -106,7 +107,7 @@ async function showRAGStatus(systemId) {
   if (!sys) return;
 
   try {
-    const res = await fetch(`/api/embeddings/search`, {
+    const res = await fetch('api/embeddings/search', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ systemId, query: 'test', topK: 1 })
@@ -189,6 +190,3 @@ window.indexSystemDocs   = indexSystemDocs;
 window.showRAGStatus     = showRAGStatus;
 window.runIndexing       = runIndexing;
 window.chunkDocument     = chunkDocument;
-
-// ── Window Globals ──────────────────────────────────────────
-window.log_rag = log_rag;

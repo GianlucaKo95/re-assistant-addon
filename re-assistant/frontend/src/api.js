@@ -159,12 +159,12 @@ function defaultSettings() {
 }
 
 async function get(url) {
-  const res = await fetch(url.startsWith('/') ? url.slice(1) : url, { credentials: 'include' });
+  const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
 async function post(url, data) {
-  const res = await fetch(url.startsWith('/') ? url.slice(1) : url, {
+  const res = await fetch(url, {
     method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: data !== undefined ? JSON.stringify(data) : undefined
@@ -172,7 +172,7 @@ async function post(url, data) {
   return res.json();
 }
 async function del(url) {
-  const res = await fetch(url.startsWith('/') ? url.slice(1) : url, { method: 'DELETE', credentials: 'include' });
+  const res = await fetch(url, { method: 'DELETE', credentials: 'include' });
   return res.json();
 }
 function dlText(content, filename, type) {

@@ -9,7 +9,7 @@
 async function getNextReqId(systemId) {
   if (!systemId) return 'REQ-' + Date.now();
   try {
-    const res  = await fetch(`/api/systems/${systemId}/next-id`, { credentials:'include' });
+    const res  = await fetch(`api/systems/${systemId}/next-id`, { credentials:'include' });
     const data = await res.json();
     if (data.id) {
       // Lokalen Counter in S.systems synchronisieren
@@ -126,5 +126,3 @@ function getSystemIDBadge(sys) {
 window.getNextReqId      = getNextReqId;
 window.addIDSchemaToSystemModal = addIDSchemaToSystemModal;
 window.getSystemIDBadge  = getSystemIDBadge;
-
-// ── Window Globals ──────────────────────────────────────────

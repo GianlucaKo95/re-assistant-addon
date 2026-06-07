@@ -214,6 +214,3 @@ window.populateVoices           = populateVoices;
 window.applySettingsToForm      = applySettingsToForm;
 window.openChangePasswordModal  = openChangePasswordModal;
 window.submitChangePassword     = submitChangePassword;
-
-// ── Window Globals ──────────────────────────────────────────
-window.initApp = initApp;

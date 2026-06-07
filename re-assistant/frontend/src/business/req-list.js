@@ -136,7 +136,3 @@ window.refreshReqPane = async function() {
 
 window.loadBizReqs  = loadBizReqs;
 window._bizPgCtrl   = () => _bizPgCtrl;
-
-// ── Window Globals ──────────────────────────────────────────
-window._loadStats = _loadStats;
-window._renderBizReqCard = _renderBizReqCard;

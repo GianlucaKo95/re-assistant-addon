@@ -8,7 +8,7 @@ const $ = window.$ || (id => document.getElementById(id));
 
 async function checkAndShowOnboarding() {
   try {
-    const status = await fetch('/api/onboarding/status', { credentials:'include' }).then(r=>r.json());
+    const status = await fetch('api/onboarding/status', { credentials:'include' }).then(r=>r.json());
     if (!status.complete && !status.steps.hasRequirements) {
       showOnboardingWizard(status);
     }
@@ -270,7 +270,7 @@ function renderDone() {
 }
 
 async function finishOnboarding(targetView) {
-  await fetch('/api/onboarding/complete', { method:'POST', credentials:'include' });
+  await fetch('api/onboarding/complete', { method:'POST', credentials:'include' });
   document.getElementById('onboarding-overlay')?.remove();
   if (targetView) switchView(targetView);
   else {
@@ -284,7 +284,7 @@ async function finishOnboarding(targetView) {
 }
 
 async function skipOnboarding() {
-  await fetch('/api/onboarding/complete', { method:'POST', credentials:'include' });
+  await fetch('api/onboarding/complete', { method:'POST', credentials:'include' });
   document.getElementById('onboarding-overlay')?.remove();
 }
 
@@ -320,13 +320,3 @@ window.onboardingSaveReqs     = onboardingSaveReqs;
 window.onboardingSkipReqs     = onboardingSkipReqs;
 window.finishOnboarding       = finishOnboarding;
 window.skipOnboarding         = skipOnboarding;
-
-// ── Window Globals ──────────────────────────────────────────
-window.showOnboardingWizard = showOnboardingWizard;
-window.renderOnboardingStep = renderOnboardingStep;
-window.renderWelcome = renderWelcome;
-window.renderCreateSystem = renderCreateSystem;
-window.renderAddReqs = renderAddReqs;
-window.renderInviteHint = renderInviteHint;
-window.renderDone = renderDone;
-window.onboardingHeader = onboardingHeader;

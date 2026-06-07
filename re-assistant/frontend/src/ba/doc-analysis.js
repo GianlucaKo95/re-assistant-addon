@@ -192,6 +192,3 @@ window.loadBaDocAnalysis = loadBaDocAnalysis;
 window.runDocAnalysis    = runDocAnalysis;
 window.saveSingleDocReq  = saveSingleDocReq;
 window.saveAllDocReqs    = saveAllDocReqs;
-
-// ── Window Globals ──────────────────────────────────────────
-window.renderDocAnalysis = renderDocAnalysis;

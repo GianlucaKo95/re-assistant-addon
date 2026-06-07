@@ -92,10 +92,3 @@ async function analyzeJiraImport(){
 window.loadPMPrio=loadPMPrio;
 window.runPrio=runPrio;
 window.renderPrio=renderPrio;
-
-// ── Window Globals ──────────────────────────────────────────
-window.loadPMJira = loadPMJira;
-window.connectJira = connectJira;
-window.jiraExport = jiraExport;
-window.jiraImport = jiraImport;
-window.analyzeJiraImport = analyzeJiraImport;

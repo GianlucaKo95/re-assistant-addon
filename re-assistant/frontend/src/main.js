@@ -1,4 +1,3 @@
-import './csp-compat.js'; // CSP-Kompatibilität für HA Ingress
 /**
  * main.js — RE-Assistent v3.2
  */
@@ -69,5 +68,3 @@ import './features/pagination.js';
 import './features/password-reset.js';
 import './features/dna.js';
 import './features/token-dashboard.js';
-
-import './init-handlers.js';

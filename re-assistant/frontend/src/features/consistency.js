@@ -229,8 +229,3 @@ window.initReqAutocomplete   = initReqAutocomplete;
 window.hideACSuggestions     = hideACSuggestions;
 window.applyACSuggestion     = applyACSuggestion;
 window.applyACDescription    = applyACDescription;
-
-// ── Window Globals ──────────────────────────────────────────
-window.showConsistencyModal = showConsistencyModal;
-window.fetchACSuggestions = fetchACSuggestions;
-window.showACSuggestions = showACSuggestions;

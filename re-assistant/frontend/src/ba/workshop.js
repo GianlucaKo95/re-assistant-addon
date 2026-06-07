@@ -113,9 +113,3 @@ window.exportWs         = exportWs;
 window.extractWsReqs    = extractWsReqs;
 window.doExtractWsReqs  = doExtractWsReqs;
 window.renderWsList     = renderWsList;
-
-// ── Window Globals ──────────────────────────────────────────
-window.openNewWs = openNewWs;
-window.updateWsStructured = updateWsStructured;
-window.renderWsTranscript = renderWsTranscript;
-window.renderWsStructured = renderWsStructured;

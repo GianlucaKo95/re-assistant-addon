@@ -35,7 +35,7 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
   const feat   = feature || _currentFeature || 'other';
   const sysId  = _currentSystemId || S.activeSystemId || null;
   try {
-    const res = await fetch('/api/ai/chat', {
+    const res = await fetch('api/ai/chat', {
       method: 'POST', credentials: 'include',
       headers: {
         'Content-Type':  'application/json',
@@ -117,5 +117,3 @@ window.getCtx        = getCtx;
 window.callAPI       = callAPI;
 window.setAPIContext = setAPIContext;
 window.toggleChatMic = toggleChatMic;
-
-// ── Window Globals ──────────────────────────────────────────

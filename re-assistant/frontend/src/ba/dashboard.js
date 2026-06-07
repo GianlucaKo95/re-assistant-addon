@@ -127,5 +127,3 @@ async function loadBaDashboard() {
 }
 
 window.loadBaDashboard = loadBaDashboard;
-
-// ── Window Globals ──────────────────────────────────────────

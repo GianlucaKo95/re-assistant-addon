@@ -98,5 +98,3 @@ window.renderCommentThread=renderCommentThread;
 window.toggleCommentInput=toggleCommentInput;
 window.submitComment=submitComment;
 window.devAnalyzeSource=devAnalyzeSource;
-
-// ── Window Globals ──────────────────────────────────────────

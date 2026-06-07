@@ -81,7 +81,7 @@ async function loadArchiveItems() {
 
 async function restoreRequirement(id) {
   try {
-    const res = await fetch(`/api/requirements/${id}/restore`, {
+    const res = await fetch(`api/requirements/${id}/restore`, {
       method: 'POST', credentials: 'include',
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -97,7 +97,7 @@ async function restoreRequirement(id) {
 async function permanentlyDelete(id) {
   if (!confirm('Anforderung dauerhaft und unwiderruflich löschen?\n\nDiese Aktion kann nicht rückgängig gemacht werden.')) return;
   try {
-    const res = await fetch(`/api/requirements/${id}`, {
+    const res = await fetch(`api/requirements/${id}`, {
       method: 'DELETE', credentials: 'include',
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -115,7 +115,7 @@ if (_origDeleteReq) {
   window.api.deleteRequirement = async function(id, hardDelete = false) {
     if (hardDelete) return _origDeleteReq(id);
     // Soft-Delete: archivieren
-    const res = await fetch(`/api/requirements/${id}?archive=true`, {
+    const res = await fetch(`api/requirements/${id}?archive=true`, {
       method: 'DELETE', credentials: 'include',
     });
     return res.json();
@@ -171,7 +171,7 @@ window.delPaneReq = async function(id) {
 // ── Archiv-Statistiken für Admin-Dashboard ────────────────────
 async function getArchiveStats() {
   try {
-    const res = await fetch('/api/requirements/archived', { credentials:'include' });
+    const res = await fetch('api/requirements/archived', { credentials:'include' });
     const data = await res.json();
     return { count: data.length, oldest: data[data.length-1]?.archivedAt };
   } catch(e) { return { count: 0 }; }
@@ -182,5 +182,3 @@ window.loadArchiveItems      = loadArchiveItems;
 window.restoreRequirement    = restoreRequirement;
 window.permanentlyDelete     = permanentlyDelete;
 window.getArchiveStats       = getArchiveStats;
-
-// ── Window Globals ──────────────────────────────────────────

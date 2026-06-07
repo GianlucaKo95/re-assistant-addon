@@ -137,5 +137,3 @@ window.retryConnection    = retryConnection;
 window.showApiKeyWarning  = showApiKeyWarning;
 window.showCriticalError  = showCriticalError;
 window.checkApiKeyOnStart = checkApiKeyOnStart;
-
-// ── Window Globals ──────────────────────────────────────────

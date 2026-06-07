@@ -77,5 +77,3 @@ window.doSaveDiagram     = doSaveDiagram;
 window.delDiagram        = delDiagram;
 window.exportDiagramSvg  = exportDiagramSvg;
 window.renderDiagList    = renderDiagList;
-
-// ── Window Globals ──────────────────────────────────────────

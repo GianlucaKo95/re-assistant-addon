@@ -214,14 +214,3 @@ registerServiceWorker();
 window.registerServiceWorker = registerServiceWorker;
 window.applyUpdate           = applyUpdate;
 window.syncPendingQueue      = syncPendingQueue;
-
-// ── Window Globals ──────────────────────────────────────────
-window.onOffline = onOffline;
-window.onOnline = onOnline;
-window.showOfflineBanner = showOfflineBanner;
-window.hideOfflineBanner = hideOfflineBanner;
-window.showUpdateBanner = showUpdateBanner;
-window.handleSWMessage = handleSWMessage;
-window.enqueuePendingWrite = enqueuePendingWrite;
-window.loadPendingQueue = loadPendingQueue;
-window.updateQueueBadge = updateQueueBadge;

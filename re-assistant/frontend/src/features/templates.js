@@ -287,15 +287,3 @@ window.openAiTemplateDialog=openAiTemplateDialog;
 window.openNewTemplateModal=openNewTemplateModal;
 window.saveCustomTemplate=saveCustomTemplate;
 window.deleteCustomTemplate=deleteCustomTemplate;
-
-// ── Window Globals ──────────────────────────────────────────
-window.loadCustomTemplates = loadCustomTemplates;
-window.saveCustomTemplates = saveCustomTemplates;
-window.switchIntTab = switchIntTab;
-window.loadPMIntegrations = loadPMIntegrations;
-window.initJiraPane = initJiraPane;
-window.initAdoPane = initAdoPane;
-window.connectAdo = connectAdo;
-window.adoExport = adoExport;
-window.adoImport = adoImport;
-window.analyzeAdoImport = analyzeAdoImport;

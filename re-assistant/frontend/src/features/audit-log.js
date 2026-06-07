@@ -184,7 +184,3 @@ window.loadAuditLogView = loadAuditLogView;
 window.exportAuditLog = exportAuditLog;
 window.initAuditHooks = initAuditHooks;
 window.updateAuditBadge = updateAuditBadge;
-
-// ── Window Globals ──────────────────────────────────────────
-window.saveAuditLog = saveAuditLog;
-window.getActionLabel = getActionLabel;

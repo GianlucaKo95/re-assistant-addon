@@ -95,5 +95,3 @@ async function sendBizChat() {
 
 window.loadBizChat  = loadBizChat;
 window.sendBizChat  = sendBizChat;
-
-// ── Window Globals ──────────────────────────────────────────

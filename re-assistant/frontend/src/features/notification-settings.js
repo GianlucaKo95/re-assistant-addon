@@ -13,7 +13,7 @@ async function loadNotificationSettings() {
 
   let settings = {};
   try {
-    const res = await fetch('/api/notifications/settings', { credentials:'include' });
+    const res = await fetch('api/notifications/settings', { credentials:'include' });
     settings   = await res.json();
   } catch(e) {}
 
@@ -128,7 +128,7 @@ async function saveNotificationSettings() {
     settings['event_'+key] = $('ns-event-'+key)?.checked ? '1' : '0';
   }
 
-  await fetch('/api/notifications/settings', {
+  await fetch('api/notifications/settings', {
     method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(settings),
@@ -140,7 +140,7 @@ async function testNotifications() {
   const btn = $('btn-test-notif');
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Sende …';
   try {
-    const res = await fetch('/api/notifications/test', { method:'POST', credentials:'include' });
+    const res = await fetch('api/notifications/test', { method:'POST', credentials:'include' });
     const data = await res.json();
     btn.disabled = false; btn.innerHTML = '📤 Test senden';
     if (data.ok) toast('✅ Test-Benachrichtigung gesendet');
@@ -154,5 +154,3 @@ async function testNotifications() {
 window.loadNotificationSettings = loadNotificationSettings;
 window.saveNotificationSettings = saveNotificationSettings;
 window.testNotifications        = testNotifications;
-
-// ── Window Globals ──────────────────────────────────────────
