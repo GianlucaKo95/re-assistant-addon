@@ -1,4 +1,5 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * pm/integrations.js
  * Jira und Azure DevOps — Export, Import, KI-Analyse.
@@ -56,7 +57,7 @@ async function analyzeJiraImport(){
   $('jira-results-pane').querySelector('div').appendChild(a);
 }
 
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
 /**
  * pm/integrations.js
  * Jira und Azure DevOps — Export, Import, KI-Analyse.

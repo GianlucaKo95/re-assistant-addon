@@ -1,4 +1,4 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
 /**
  * core/helpers.js
  * DOM-Utilities, Toast, Modal, Markdown-Renderer, Zeit-Helfer.
@@ -221,22 +221,3 @@ window.renderReqList = renderReqList;
 window.openReqModal = openReqModal;
 window.saveReqModal = saveReqModal;
 window.deleteReqModal = deleteReqModal;
-
-// ── Globals für ES-Module Kompatibilität ────────────────────
-window.$ = $;
-window.esc = esc;
-window.toast = toast;
-window.openModal = openModal;
-window.closeModal = closeModal;
-window.renderMD = renderMD;
-window.timeSince = timeSince;
-window.statusLabel = statusLabel;
-window.priLabel = priLabel;
-window.roleLabel = roleLabel;
-window.setVal = setVal;
-window.now = now;
-window.pushMsg = pushMsg;
-window.addTyping = addTyping;
-window.autoResize = autoResize;
-window.renderReqList = renderReqList;
-window.openReqModal = openReqModal;

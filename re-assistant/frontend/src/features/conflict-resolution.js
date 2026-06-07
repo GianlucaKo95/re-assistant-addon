@@ -1,4 +1,4 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
 /**
  * features/conflict-resolution.js
  * A: Optimistic Locking — Konflikt-Erkennung und -Auflösung.

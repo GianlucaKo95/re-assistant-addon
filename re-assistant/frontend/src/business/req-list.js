@@ -1,4 +1,5 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * business/req-list.js
  * Anforderungs-Übersicht mit serverseitiger Pagination, Filter und Sortierung.

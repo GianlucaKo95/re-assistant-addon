@@ -1,4 +1,5 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * pm/prioritization.js
  * PM Prioritization — WSJF, RICE, MoSCoW mit KI-Begründungen.

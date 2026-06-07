@@ -1,4 +1,4 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
 /**
  * features/rag.js
  * RAG (Retrieval-Augmented Generation) — Frontend

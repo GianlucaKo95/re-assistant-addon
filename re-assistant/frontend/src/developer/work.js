@@ -1,4 +1,5 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * developer/work.js
  * Developer Work — Eigene Aufgaben, Source-Block, Kommentare, Status.

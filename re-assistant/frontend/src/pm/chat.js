@@ -1,4 +1,5 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * pm/chat.js
  * PM Chat — KI-gestützte Systemanalyse für Projektmanager.

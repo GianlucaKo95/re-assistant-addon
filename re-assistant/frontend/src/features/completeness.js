@@ -1,4 +1,5 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/completeness.js
  * O: Vollständigkeitsprüfung — KI erkennt fehlende Anforderungen gegen Branchen-Standards.

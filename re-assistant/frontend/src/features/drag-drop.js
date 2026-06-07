@@ -1,4 +1,4 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
 /**
  * features/drag-drop.js
  * 5: Drag & Drop Priorisierung — Backlog Stories und Req-Liste manuell sortieren.

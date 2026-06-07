@@ -1,4 +1,5 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * ba/diagrams.js
  * BPMN und Systemkontextdiagramme generieren, speichern, exportieren.

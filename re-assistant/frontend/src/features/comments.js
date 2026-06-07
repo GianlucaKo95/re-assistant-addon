@@ -1,4 +1,5 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/comments.js
  * 🟡 FIX 5: Kommentare für alle Rollen — nicht nur Entwickler.

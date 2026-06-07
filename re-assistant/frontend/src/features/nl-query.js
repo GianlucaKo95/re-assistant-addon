@@ -1,4 +1,5 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/nl-query.js
  * M: Natürlichsprachliche Abfragen — KI als Query-Engine über Requirements.

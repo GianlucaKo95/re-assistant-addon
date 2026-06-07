@@ -1,4 +1,5 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/realtime.js
  * E: WebSocket-Client — Live-Kollaboration, Cursor, Online-User, Req-Updates.

@@ -1,4 +1,4 @@
-'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
+'use strict';
 /**
  * features/export.js
  * 🟡 FIX 8: Erweiterter Export — Word (DOCX) und PDF über Backend-Generierung.
