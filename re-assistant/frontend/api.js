@@ -1,146 +1,196 @@
-'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
- * admin/systems.js
- * Systemverwaltung — Erstellen, Bearbeiten, Löschen, Dokumenten-Upload.
+ * api.js — Web-API-Client für das HA Add-on
+ * Kommuniziert per fetch() mit dem Express-Backend auf /api/
  */
 
-async function loadAdminSystems() {
-  S.systems = await window.api.getSystems();
-  renderSystems();
-  $('btn-new-system').onclick = () => openSysModal(null);
-}
+const API = {
+  // ── AUTH ──────────────────────────────────────────────────
+  async login(data)     { return post('/api/auth/login', data); },
+  async logout()        { return post('/api/auth/logout'); },
+  async changePassword(d){ return post('/api/auth/change-password', d); },
+  async getMe()         { return get('/api/auth/me'); },
+  async getAppVersion() { const d = await get('/api/version'); return d.version; },
 
-function renderSystems() {
-  const w = $('systems-list');
-  if (!S.systems.length) {
-    w.innerHTML = '<div class="empty-state"><h3>Keine Systeme</h3><p>Legen Sie das erste System an.</p></div>';
-    return;
-  }
-  w.innerHTML = S.systems.map(sys => `
-    <div class="system-card">
-      <div class="system-card-head">
-        <div>
-          <div class="req-title">${esc(sys.name)}</div>
-          <div class="view-sub">${esc(sys.description || '')}</div>
-        </div>
-        <div style="display:flex;gap:6px">
-          <button class="btn-secondary" style="font-size:11px;padding:4px 10px"
-            onclick="openSysModal('${sys.id}')">Bearbeiten</button>
-          <button class="btn-danger" style="font-size:11px;padding:4px 10px"
-            onclick="delSys('${sys.id}')">Löschen</button>
-        </div>
-      </div>
-      <div class="system-card-body">
-        <div style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
-          ${(sys.docs||[]).length} Dokumente
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">
-          ${(sys.docs||[]).map(d =>
-            `<span class="doc-chip">${esc(d.name)}
-              <span class="rm" onclick="remDoc('${sys.id}','${d.id}')">✕</span>
-            </span>`
-          ).join('')}
-        </div>
-        <div style="display:flex;gap:7px;flex-wrap:wrap">
-          <button class="btn-secondary" style="font-size:11px;padding:5px 10px"
-            onclick="addFiles('${sys.id}')">+ Dateien</button>
-          <button class="btn-secondary" style="font-size:11px;padding:5px 10px"
-            onclick="showDocStats('${sys.id}')">📊 Stats</button>
-          <button class="btn-secondary" style="font-size:11px;padding:5px 10px"
-            onclick="showRAGStatus('${sys.id}')">🧠 Index</button>
-        </div>
-      </div>
-    </div>`).join('');
-}
+  // ── USERS ─────────────────────────────────────────────────
+  async getUsers()       { return get('/api/users'); },
+  async saveUser(u)      { return post('/api/users', u); },
+  async deleteUser(id)   { return del(`/api/users/${id}`); },
 
-function openSysModal(id) {
-  const s = id ? S.systems.find(x => x.id === id) : { id:null, name:'', description:'' };
-  openModal(id ? 'System bearbeiten' : 'Neues System', `
-    <div class="frow"><label>Name</label>
-      <input type="text" id="sm-name" value="${esc(s.name)}" placeholder="z.B. Kundenverwaltung"/></div>
-    <div class="frow"><label>Beschreibung</label>
-      <textarea id="sm-desc" rows="3">${esc(s.description || '')}</textarea></div>
-    <div style="display:flex;gap:8px;margin-top:6px">
-      <button class="btn-primary" onclick="saveSys('${id||''}')">Speichern</button>
-      <button class="btn-secondary" onclick="closeModal()">Abbrechen</button>
-    </div>`);
-}
+  // ── SYSTEMS ───────────────────────────────────────────────
+  async getSystems()     { return get('/api/systems'); },
+  async saveSystem(s)    { return post('/api/systems', s); },
+  async deleteSystem(id) { return del(`/api/systems/${id}`); },
 
-async function saveSys(id) {
-  const name = $('sm-name').value.trim();
-  if (!name) { toast('⚠ Name erforderlich'); return; }
-  await window.api.saveSystem({ id: id || null, name, description: $('sm-desc').value.trim() });
-  S.systems = await window.api.getSystems();
-  renderSystems();
-  closeModal();
-  toast('✅ System gespeichert');
-}
-
-async function delSys(id) {
-  if (!confirm('System und alle zugehörigen Anforderungen löschen?')) return;
-  await window.api.deleteSystem(id);
-  S.systems = await window.api.getSystems();
-  renderSystems();
-  toast('✅ System gelöscht');
-}
-
-async function addFiles(systemId) {
-  // Browser-Dateiauswahl
-  const files = await window.api.pickFiles('.txt,.md,.js,.ts,.py,.java,.cs,.go,.json,.csv,.yaml,.yml,.html,.css,.xml');
-  if (!files.length) return;
-  const btn = document.querySelector(`[onclick="addFiles('${systemId}')"]`);
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span>'; }
-  const res = await window.api.uploadDocs(systemId, files);
-  S.systems = await window.api.getSystems();
-  renderSystems();
-  toast(`✅ ${res.added?.length || 0} Datei(en) hochgeladen`);
-  // Neue Dokumente automatisch indexieren
-  if (typeof indexSystemDocs === 'function') {
-    indexSystemDocs(systemId).then(r => {
-      if (r.indexed > 0) toast(`🧠 ${r.indexed} Dokument(e) für semantische Suche indexiert`);
+  async uploadDocs(systemId, files) {
+    const fd = new FormData();
+    for (const f of files) fd.append('files', f);
+    const res = await fetch(getBase() + `/api/systems/${systemId}/docs`, {
+      method: 'POST', body: fd, credentials: 'include'
     });
-  }
+    return res.json();
+  },
+  async removeDoc({ systemId, docId }) {
+    return del(`/api/systems/${systemId}/docs/${docId}`);
+  },
+
+  // ── REQUIREMENTS ──────────────────────────────────────────
+  async getRequirements(params = {}) {
+    const q = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([,v]) => v))
+    );
+    return get('/api/requirements' + (q.toString() ? '?' + q : ''));
+  },
+  async saveRequirement(r)     { return post('/api/requirements', r); },
+  async deleteRequirement(id)  { return del(`/api/requirements/${id}`); },
+  async addComment({ reqId, comment }) {
+    return post(`/api/requirements/${reqId}/comments`, comment);
+  },
+  async assignRequirement({ reqId, userId, subcategory }) {
+    return post(`/api/requirements/${reqId}/assign`, { userId, subcategory });
+  },
+
+  // ── BACKLOGS ──────────────────────────────────────────────
+  async getBacklogs(systemId)  { return get('/api/backlogs' + (systemId ? `?systemId=${systemId}` : '')); },
+  async saveBacklog(b)         { return post('/api/backlogs', b); },
+  async deleteBacklog(id)      { return del(`/api/backlogs/${id}`); },
+
+  // ── WORKSHOPS ─────────────────────────────────────────────
+  async getWorkshops(systemId) { return get('/api/workshops' + (systemId ? `?systemId=${systemId}` : '')); },
+  async saveWorkshop(w)        { return post('/api/workshops', w); },
+
+  // ── DIAGRAMS ──────────────────────────────────────────────
+  async getDiagrams(systemId)  { return get('/api/diagrams' + (systemId ? `?systemId=${systemId}` : '')); },
+  async saveDiagram(d)         { return post('/api/diagrams', d); },
+  async deleteDiagram(id)      { return del(`/api/diagrams/${id}`); },
+
+  // ── ANTHROPIC (über Backend-Proxy) ───────────────────────
+  async anthropicRequest({ body }) {
+    const res = await fetch('/api/ai/chat', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    return { ok: res.ok, status: res.status, data };
+  },
+
+  // ── JIRA (über Backend-Proxy) ─────────────────────────────
+  async jiraGetProjects({ url, email, token }) {
+    return post('/api/jira/projects', { url, email, token, path: '/rest/api/3/project?maxResults=50', method: 'GET' });
+  },
+  async jiraGetIssues({ url, email, token, projectKey }) {
+    return post('/api/jira/issues', { url, email, token, path: `/rest/api/3/search?jql=${encodeURIComponent(`project=${projectKey} ORDER BY created DESC`)}&maxResults=100&fields=summary,description,issuetype,priority,status`, method: 'GET' });
+  },
+  async jiraCreateIssues({ url, email, token, projectKey, issues }) {
+    return post('/api/jira/create', { url, email, token, path: '/rest/api/3/issue/bulk', method: 'POST',
+      body: { issueUpdates: issues.map(i => ({ fields: {
+        project: { key: projectKey },
+        summary: i.title,
+        description: { type:'doc', version:1, content:[{ type:'paragraph', content:[{ type:'text', text: i.description||'' }] }] },
+        issuetype: { name: i.type || 'Story' },
+        priority: { name: i.priority==='high' ? 'High' : i.priority==='low' ? 'Low' : 'Medium' }
+      }})) }
+    });
+  },
+
+  // ── EXPORT (Browser-Download) ─────────────────────────────
+  async exportMarkdown({ requirements, stories, projectName, extra }) {
+    let md = `# ${projectName||'Export'}\n**Datum:** ${new Date().toLocaleDateString('de-DE')}\n\n`;
+    if (extra) md += extra + '\n\n';
+    if (requirements?.length) {
+      md += `## Requirements (${requirements.length})\n\n`;
+      for (const r of requirements) {
+        md += `### ${r.id}: ${r.title}\n**Priorität:** ${r.priority} | **Status:** ${r.status}\n\n${r.description||''}\n`;
+        if (r.rationale) md += `\n> 💡 ${r.rationale}\n`;
+        if (r.qualityScore) md += `\n**QS-Score:** ${r.qualityScore}/10\n`;
+        md += '\n---\n\n';
+      }
+    }
+    dlText(md, `${projectName||'export'}.md`, 'text/markdown');
+    return true;
+  },
+  async exportCSV({ requirements }) {
+    const e = v => `"${String(v||'').replace(/"/g,'""')}"`;
+    let csv = 'ID,System,Kategorie,Titel,Beschreibung,Priorität,Status,Zugewiesen,QS-Score,Tags\n';
+    for (const r of requirements)
+      csv += [r.id,r.systemId,r.category,r.title,r.description,r.priority,r.status,r.assignedTo||'',r.qualityScore||'',(r.tags||[]).join(';')].map(e).join(',') + '\n';
+    dlText('\uFEFF' + csv, 'requirements.csv', 'text/csv');
+    return true;
+  },
+  async exportJSON(data) {
+    dlText(JSON.stringify(data, null, 2), `re-export-${Date.now()}.json`, 'application/json');
+    return true;
+  },
+  async exportDiagramSvg({ filename, svg }) {
+    dlText(svg, filename || 'diagram.svg', 'image/svg+xml');
+    return true;
+  },
+
+  // ── LICENSE ───────────────────────────────────────────────
+  async getLicenseStatus()     { return get('/api/license/status'); },
+  async activateLicense(key)   { return post('/api/license/activate', { key }); },
+  async removeLicense()        { return del('/api/license'); },
+
+  // ── EINSTELLUNGEN (localStorage) ─────────────────────────
+  async loadSettings() {
+    try { return JSON.parse(localStorage.getItem('re-settings') || 'null') || defaultSettings(); }
+    catch(e) { return defaultSettings(); }
+  },
+  async saveSettings(s) {
+    localStorage.setItem('re-settings', JSON.stringify(s));
+    return true;
+  },
+
+  openExternal(url) { window.open(url, '_blank', 'noopener'); },
+
+  // Dateiauswahl im Browser
+  pickFiles(accept = '*') {
+    return new Promise(resolve => {
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.multiple = true; inp.accept = accept;
+      inp.onchange = () => resolve(Array.from(inp.files));
+      inp.click();
+    });
+  },
+};
+
+function defaultSettings() {
+  return { model:'claude-sonnet-4-20250514', language:'de', detail:'standard', voiceURI:'', persona:'professional', jiraUrl:'', jiraEmail:'', jiraToken:'' };
 }
 
-async function remDoc(sysId, docId) {
-  await window.api.removeDoc({ systemId: sysId, docId });
-  S.systems = await window.api.getSystems();
-  renderSystems();
-  toast('✅ Dokument entfernt');
+// ── Ingress-Pfad ermitteln ────────────────────────────────────
+function getBase() {
+  // HA Ingress: Seite wird unter /api/hassio_ingress/TOKEN/ serviert
+  // Wir ermitteln den Pfad-Prefix damit API-Calls korrekt geroutet werden
+  const path = window.location.pathname;
+  // Wenn wir unter einem Ingress-Pfad laufen, diesen als Basis nehmen
+  const ingressMatch = path.match(/^(\/api\/hassio_ingress\/[^/]+)/);
+  return ingressMatch ? ingressMatch[1] : '';
 }
 
-function showDocStats(sysId) {
-  const sys = S.systems.find(s => s.id === sysId);
-  if (!sys) return;
-  const docs = sys.docs || [];
-  const totalKB = (docs.reduce((sum, d) => sum + (d.size || 0), 0) / 1024).toFixed(1);
-  const byExt = {};
-  docs.forEach(d => { const ext = d.name.split('.').pop()?.toLowerCase() || 'sonstig'; byExt[ext] = (byExt[ext] || 0) + 1; });
-  openModal(`📊 ${sys.name} — Dokument-Stats`, `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-      <div class="stat-card"><span class="stat-n">${docs.length}</span><span class="stat-l">Dokumente</span></div>
-      <div class="stat-card"><span class="stat-n">${totalKB}</span><span class="stat-l">KB gesamt</span></div>
-    </div>
-    <div style="font-size:12px;font-weight:600;color:var(--t2);margin-bottom:8px">Nach Dateityp:</div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px">
-      ${Object.entries(byExt).sort((a,b)=>b[1]-a[1]).map(([ext,cnt]) =>
-        `<span class="sbadge s-assigned">.${esc(ext)}: ${cnt}</span>`
-      ).join('')}
-    </div>
-    <div style="margin-top:14px;max-height:200px;overflow-y:auto">
-      ${docs.map(d => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--b1);font-size:12px">
-        <span style="color:var(--t2)">${esc(d.name)}</span>
-        <span style="color:var(--t3)">${((d.size||0)/1024).toFixed(1)} KB</span>
-      </div>`).join('')}
-    </div>
-    <button class="btn-secondary" style="margin-top:14px" onclick="closeModal()">Schließen</button>`);
+async function get(url) {
+  const res = await fetch(getBase() + url, { credentials: 'include' });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+async function post(url, data) {
+  const res = await fetch(getBase() + url, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: data !== undefined ? JSON.stringify(data) : undefined
+  });
+  return res.json();
+}
+async function del(url) {
+  const res = await fetch(getBase() + url, { method: 'DELETE', credentials: 'include' });
+  return res.json();
+}
+function dlText(content, filename, type) {
+  const blob = new Blob([content], { type });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  URL.revokeObjectURL(a.href);
 }
 
-window.loadAdminSystems = loadAdminSystems;
-window.openSysModal     = openSysModal;
-window.saveSys          = saveSys;
-window.delSys           = delSys;
-window.addFiles         = addFiles;
-window.remDoc           = remDoc;
-window.showDocStats     = showDocStats;
+window.api = API;
+export default API;
