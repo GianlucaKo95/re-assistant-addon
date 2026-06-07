@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/token-dashboard.js
  * Token-Verbrauch Dashboard (Option A) + Feature-Budget-Verwaltung (Option B).

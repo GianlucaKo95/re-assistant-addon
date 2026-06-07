@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * core/api-client.js
  * Wrapper für den Anthropic-API-Proxy im Backend.

@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * core/helpers.js
  * DOM-Utilities, Toast, Modal, Markdown-Renderer, Zeit-Helfer.

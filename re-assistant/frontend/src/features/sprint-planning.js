@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/sprint-planning.js
  * G: KI-Sprint-Planning — Kapazität, Story Points, Sprint-Vorschläge.

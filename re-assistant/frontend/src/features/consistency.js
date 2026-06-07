@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/consistency.js
  * Nr. 4: Konsistenzprüfung — inhaltliche Widersprüche zwischen Requirements.

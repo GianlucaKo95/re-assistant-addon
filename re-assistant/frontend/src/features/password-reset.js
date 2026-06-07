@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/password-reset.js
  * Token-basierter Passwort-Reset — ohne Admin-Eingriff.

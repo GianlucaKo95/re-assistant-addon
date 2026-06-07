@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/source-analysis.js
  * P1: Automatische Source-Code-Analyse beim Zuweisen einer Anforderung.

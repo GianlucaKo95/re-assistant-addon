@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/pagination.js
  * Serverseitige Pagination für die Req-Liste.

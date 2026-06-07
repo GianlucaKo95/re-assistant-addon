@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/mentions.js
  * Nr. 2: @Mentions — @username in Kommentaren erstellt Aufgaben und Benachrichtigungen.

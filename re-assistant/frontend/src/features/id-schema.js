@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/id-schema.js
  * 4: Konfigurierbares ID-Schema pro System.

@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * business/chat.js
  * Business Chat — KI-gestütztes Prozess- und Anforderungs-Gespräch.

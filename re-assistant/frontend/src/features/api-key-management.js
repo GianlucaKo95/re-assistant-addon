@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/api-key-management.js
  * Admin kann zwischen globalem und per-User API-Key Modus wechseln.

@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/dependencies.js
  * Abhängigkeiten zwischen Anforderungen — Liste, Matrix, KI-Analyse.

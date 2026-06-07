@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/audit-log.js
  * Nr. 8: Unveränderlicher Audit-Log

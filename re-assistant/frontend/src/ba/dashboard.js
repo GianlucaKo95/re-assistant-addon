@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * ba/dashboard.js
  * 🟡 FIX 7: Business Analyst Dashboard — Übersichtsseite mit KPIs und Schnellzugriff.

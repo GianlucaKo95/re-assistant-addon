@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/notifications.js
  * Benachrichtigungssystem — Badge, Panel, History.

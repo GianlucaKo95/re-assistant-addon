@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/decomposition.js
  * K: Anforderungs-Dekomposition — Epics automatisch in atomare User Stories zerlegen.

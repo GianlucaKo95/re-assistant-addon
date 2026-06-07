@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * admin/systems.js
  * Systemverwaltung — Erstellen, Bearbeiten, Löschen, Dokumenten-Upload.

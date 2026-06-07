@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * developer/voice.js
  * Developer Voice — Sprach-Bot mit TTS/STT.

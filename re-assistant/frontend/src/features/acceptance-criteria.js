@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/acceptance-criteria.js
  * Nr. 6: Akzeptanzkriterien-Generator

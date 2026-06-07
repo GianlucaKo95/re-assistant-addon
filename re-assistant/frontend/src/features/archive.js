@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/archive.js
  * 8: Soft-Delete mit Archiv-View.

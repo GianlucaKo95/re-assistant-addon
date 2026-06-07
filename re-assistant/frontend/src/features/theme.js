@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/theme.js
  * Dark/Light-Mode Toggle — gespeichert in localStorage, sofort angewendet.

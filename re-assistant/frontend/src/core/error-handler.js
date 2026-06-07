@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * core/error-handler.js
  * 🔴 FIX 2: Zentrales Fehlerhandling, Verbindungsstatus, API-Key-Prüfung.

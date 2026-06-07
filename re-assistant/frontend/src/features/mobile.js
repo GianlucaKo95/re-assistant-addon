@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/mobile.js
  * Mobile-Hilfsfunktionen — Swipe, Touch-Events, Keyboard-Shortcuts.

@@ -1,4 +1,4 @@
-'use strict';
+'use strict';\nconst $ = window.$ || (id => document.getElementById(id));
 /**
  * features/service-worker.js
  * Service Worker Registration, Offline-Banner, Cache-from-SW Handling,
