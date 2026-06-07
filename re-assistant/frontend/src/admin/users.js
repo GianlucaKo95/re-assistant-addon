@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * admin/users.js
  * Benutzerverwaltung — Tabelle, Erstellen, Bearbeiten, Löschen.
@@ -36,9 +35,9 @@ function renderUsersTable() {
           <td>
             <div style="display:flex;gap:5px">
               <button class="btn-secondary" style="font-size:11px;padding:4px 10px"
-                onclick="openUserModal('${u.id}')">Bearbeiten</button>
+                data-action="edit" data-id="${u.id}">Bearbeiten</button>
               <button class="btn-danger" style="font-size:11px;padding:4px 10px"
-                onclick="deleteUser('${u.id}')">Löschen</button>
+                data-action="delete" data-id="${u.id}">Löschen</button>
             </div>
           </td>
         </tr>`).join('')}
@@ -73,8 +72,8 @@ function openUserModal(uid) {
     <div class="frow"><label>${uid ? 'Neues Passwort (leer = unverändert)' : 'Passwort'}</label>
       <input type="password" id="um-pass" placeholder="${uid ? 'leer lassen …' : 'Passwort …'}"/></div>
     <div style="display:flex;gap:8px;margin-top:6px">
-      <button class="btn-primary" onclick="saveUserModal('${uid||''}')">Speichern</button>
-      <button class="btn-secondary" onclick="closeModal()">Abbrechen</button>
+      <button class="btn-primary" id="btn-save-user-modal">Speichern</button>
+      <button class="btn-secondary" id="btn-cancel-user-modal">Abbrechen</button>
     </div>`);
 }
 
@@ -109,6 +108,3 @@ window.loadAdminUsers  = loadAdminUsers;
 window.openUserModal   = openUserModal;
 window.saveUserModal   = saveUserModal;
 window.deleteUser      = deleteUser;
-
-// ── Window Globals ──────────────────────────────────────────
-window.renderUsersTable = renderUsersTable;

@@ -1,3 +1,4 @@
+import './csp-compat.js'; // CSP-Kompatibilität für HA Ingress
 /**
  * main.js — RE-Assistent v3.2
  */
