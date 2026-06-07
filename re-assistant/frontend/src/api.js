@@ -24,7 +24,7 @@ const API = {
   async uploadDocs(systemId, files) {
     const fd = new FormData();
     for (const f of files) fd.append('files', f);
-    const res = await fetch(`/api/systems/${systemId}/docs`, {
+    const res = await fetch(`api/systems/${systemId}/docs`, {
       method: 'POST', body: fd, credentials: 'include'
     });
     return res.json();
@@ -65,7 +65,7 @@ const API = {
 
   // ── ANTHROPIC (über Backend-Proxy) ───────────────────────
   async anthropicRequest({ body }) {
-    const res = await fetch('/api/ai/chat', {
+    const res = await fetch('api/ai/chat', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -159,12 +159,12 @@ function defaultSettings() {
 }
 
 async function get(url) {
-  const res = await fetch(url, { credentials: 'include' });
+  const res = await fetch(url.startsWith('/') ? url.slice(1) : url, { credentials: 'include' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
 async function post(url, data) {
-  const res = await fetch(url, {
+  const res = await fetch(url.startsWith('/') ? url.slice(1) : url, {
     method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: data !== undefined ? JSON.stringify(data) : undefined
@@ -172,7 +172,7 @@ async function post(url, data) {
   return res.json();
 }
 async function del(url) {
-  const res = await fetch(url, { method: 'DELETE', credentials: 'include' });
+  const res = await fetch(url.startsWith('/') ? url.slice(1) : url, { method: 'DELETE', credentials: 'include' });
   return res.json();
 }
 function dlText(content, filename, type) {
