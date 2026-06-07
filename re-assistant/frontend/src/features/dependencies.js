@@ -161,3 +161,10 @@ window.openAddDepModal=openAddDepModal;
 window.openAddDepModalPrefilled=openAddDepModalPrefilled;
 window.saveNewDep=saveNewDep;
 window.removeDep=removeDep;
+
+// ── Window Globals ──────────────────────────────────────────
+window.renderDepView = renderDepView;
+window.loadDeps = loadDeps;
+window.saveDeps = saveDeps;
+window.renderDepList = renderDepList;
+window.renderDepMatrix = renderDepMatrix;

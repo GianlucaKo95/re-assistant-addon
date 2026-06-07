@@ -282,3 +282,6 @@ window.saveInlineAdd         = saveInlineAdd;
 window.exportPaneReqs        = exportPaneReqs;
 
 // Drag-drop init added inline
+
+// ── Window Globals ──────────────────────────────────────────
+window.updatePaneCatFilter = updatePaneCatFilter;

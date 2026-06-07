@@ -235,3 +235,5 @@ window.PaginationController  = PaginationController;
 window.fetchReqsPage         = fetchReqsPage;
 window.createPaginationToolbar = createPaginationToolbar;
 window.PAGE_SIZE             = PAGE_SIZE;
+
+// ── Window Globals ──────────────────────────────────────────

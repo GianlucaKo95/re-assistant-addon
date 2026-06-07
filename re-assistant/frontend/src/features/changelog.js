@@ -197,3 +197,6 @@ window.loadChangelog       = loadChangelog;
 window.generateChangelog   = generateChangelog;
 window.exportChangelogMD   = exportChangelogMD;
 window.exportChangelogHTML = exportChangelogHTML;
+
+// ── Window Globals ──────────────────────────────────────────
+window.renderChangelog = renderChangelog;

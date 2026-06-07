@@ -144,3 +144,6 @@ window.delSys           = delSys;
 window.addFiles         = addFiles;
 window.remDoc           = remDoc;
 window.showDocStats     = showDocStats;
+
+// ── Window Globals ──────────────────────────────────────────
+window.renderSystems = renderSystems;

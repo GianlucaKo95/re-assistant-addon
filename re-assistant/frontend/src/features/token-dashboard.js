@@ -349,3 +349,10 @@ window.FEATURE_LABELS        = FEATURE_LABELS;
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof S !== 'undefined' && S.user) refreshFeatureStatus();
 });
+
+// ── Window Globals ──────────────────────────────────────────
+window.renderTokenDashboard = renderTokenDashboard;
+window.renderDayChart = renderDayChart;
+window.renderBudgetManagement = renderBudgetManagement;
+window.renderBudgetRow = renderBudgetRow;
+window.updateDisabledFeatureUI = updateDisabledFeatureUI;

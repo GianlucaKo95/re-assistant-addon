@@ -155,3 +155,6 @@ window.loadBaQS           = loadBaQS;
 window.runQS              = runQS;
 window.acceptQSSuggestion = acceptQSSuggestion;
 window.acceptImprovedReq  = acceptImprovedReq;
+
+// ── Window Globals ──────────────────────────────────────────
+window.renderQSResults = renderQSResults;

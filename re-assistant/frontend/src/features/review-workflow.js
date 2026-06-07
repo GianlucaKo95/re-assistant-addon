@@ -235,3 +235,9 @@ window.transitionReview       = transitionReview;
 window.openReviewDetail       = openReviewDetail;
 window.submitSystemForReview  = submitSystemForReview;
 window.REVIEW_STATES          = REVIEW_STATES;
+
+// ── Window Globals ──────────────────────────────────────────
+window.canTransition = canTransition;
+window.renderReviewCard = renderReviewCard;
+window._doTransition = _doTransition;
+window.injectReviewStyles = injectReviewStyles;

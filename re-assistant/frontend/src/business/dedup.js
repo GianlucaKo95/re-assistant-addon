@@ -137,3 +137,8 @@ window.runGlobalDedup  = runGlobalDedup;
 window.hideDedup       = hideDedup;
 window.applyDedup      = applyDedup;
 window.applyGlobalDedup = applyGlobalDedup;
+
+// ── Window Globals ──────────────────────────────────────────
+window._runDedup = _runDedup;
+window.showDedupBanner = showDedupBanner;
+window.showDedupModal = showDedupModal;

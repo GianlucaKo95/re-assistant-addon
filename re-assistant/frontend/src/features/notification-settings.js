@@ -154,3 +154,5 @@ async function testNotifications() {
 window.loadNotificationSettings = loadNotificationSettings;
 window.saveNotificationSettings = saveNotificationSettings;
 window.testNotifications        = testNotifications;
+
+// ── Window Globals ──────────────────────────────────────────

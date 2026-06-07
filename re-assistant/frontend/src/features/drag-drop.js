@@ -219,3 +219,12 @@ window.enableBacklogDragDrop    = enableBacklogDragDrop;
 window.enableReqListDragDrop    = enableReqListDragDrop;
 window.applyStoredReqOrder      = applyStoredReqOrder;
 window.enableSprintDragDrop     = enableSprintDragDrop;
+
+// ── Window Globals ──────────────────────────────────────────
+window.makeDraggable = makeDraggable;
+window.onDragStart = onDragStart;
+window.onDragEnd = onDragEnd;
+window.onDragOver = onDragOver;
+window.onDragLeave = onDragLeave;
+window.onDrop = onDrop;
+window.injectDragStyles = injectDragStyles;

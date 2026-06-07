@@ -206,3 +206,6 @@ window.runCompletenessCheck     = runCompletenessCheck;
 window.toggleCompCat            = toggleCompCat;
 window.addSuggestedReq          = addSuggestedReq;
 window.COMPLETENESS_TEMPLATES   = COMPLETENESS_TEMPLATES;
+
+// ── Window Globals ──────────────────────────────────────────
+window.renderCompletenessResult = renderCompletenessResult;

@@ -163,3 +163,6 @@ async function switchView(id) {
 window.buildNav    = buildNav;
 window.switchView  = switchView;
 window.ICONS       = ICONS;
+
+// ── Window Globals ──────────────────────────────────────────
+window.icoSvg = icoSvg;

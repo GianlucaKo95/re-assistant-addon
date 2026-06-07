@@ -221,3 +221,5 @@ window.renderReqList = renderReqList;
 window.openReqModal = openReqModal;
 window.saveReqModal = saveReqModal;
 window.deleteReqModal = deleteReqModal;
+
+// ── Window Globals ──────────────────────────────────────────

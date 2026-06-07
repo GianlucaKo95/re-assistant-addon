@@ -242,3 +242,8 @@ window.markTaskDone            = markTaskDone;
 window.navigateToReq           = navigateToReq;
 window.updateTasksBadge        = updateTasksBadge;
 window.getMyTasks              = getMyTasks;
+
+// ── Window Globals ──────────────────────────────────────────
+window.showMentionDropdown = showMentionDropdown;
+window.hideMentionDropdown = hideMentionDropdown;
+window.saveTasks = saveTasks;

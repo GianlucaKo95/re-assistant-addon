@@ -21,3 +21,5 @@ async function pmSelSys(id){S.pmActiveSystemId=id;await loadPMDash();}
 
 window.loadPMDash=loadPMDash;
 window.pmSelSys=pmSelSys;
+
+// ── Window Globals ──────────────────────────────────────────

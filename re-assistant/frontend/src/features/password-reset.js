@@ -224,3 +224,5 @@ window.openResetWithToken     = openResetWithToken;
 window.submitNewPassword      = submitNewPassword;
 window.adminGenerateResetLink = adminGenerateResetLink;
 window.checkResetTokenInURL   = checkResetTokenInURL;
+
+// ── Window Globals ──────────────────────────────────────────

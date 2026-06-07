@@ -256,3 +256,11 @@ window.decomposeSelected  = decomposeSelected;
 window.decomposeAll       = decomposeAll;
 window.saveDecomp         = saveDecomp;
 window.saveDecompAll      = saveDecompAll;
+
+// ── Window Globals ──────────────────────────────────────────
+window.renderDecompList = renderDecompList;
+window.calcDecompScore = calcDecompScore;
+window.decompReasons = decompReasons;
+window.runDecomposition = runDecomposition;
+window.renderDecompResults = renderDecompResults;
+window._persistDecomp = _persistDecomp;

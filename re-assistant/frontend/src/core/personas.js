@@ -290,3 +290,5 @@ window.renderPersonaSelector = renderPersonaSelector;
 window.renderPersonaDetail  = renderPersonaDetail;
 window.selectPersona        = selectPersona;
 window.updatePersonaBadge   = updatePersonaBadge;
+
+// ── Window Globals ──────────────────────────────────────────

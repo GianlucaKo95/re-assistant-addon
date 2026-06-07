@@ -320,3 +320,13 @@ window.onboardingSaveReqs     = onboardingSaveReqs;
 window.onboardingSkipReqs     = onboardingSkipReqs;
 window.finishOnboarding       = finishOnboarding;
 window.skipOnboarding         = skipOnboarding;
+
+// ── Window Globals ──────────────────────────────────────────
+window.showOnboardingWizard = showOnboardingWizard;
+window.renderOnboardingStep = renderOnboardingStep;
+window.renderWelcome = renderWelcome;
+window.renderCreateSystem = renderCreateSystem;
+window.renderAddReqs = renderAddReqs;
+window.renderInviteHint = renderInviteHint;
+window.renderDone = renderDone;
+window.onboardingHeader = onboardingHeader;

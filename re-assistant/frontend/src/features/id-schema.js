@@ -126,3 +126,5 @@ function getSystemIDBadge(sys) {
 window.getNextReqId      = getNextReqId;
 window.addIDSchemaToSystemModal = addIDSchemaToSystemModal;
 window.getSystemIDBadge  = getSystemIDBadge;
+
+// ── Window Globals ──────────────────────────────────────────

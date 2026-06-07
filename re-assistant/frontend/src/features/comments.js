@@ -159,3 +159,5 @@ window.handleCommentKey       = handleCommentKey;
 window.submitCommentGeneral   = submitCommentGeneral;
 window.showReqHistory         = showReqHistory;
 window.restoreVersion         = restoreVersion;
+
+// ── Window Globals ──────────────────────────────────────────

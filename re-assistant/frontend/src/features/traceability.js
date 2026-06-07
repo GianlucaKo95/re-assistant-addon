@@ -225,3 +225,5 @@ window.renderTraceabilityMatrix  = renderTraceabilityMatrix;
 window.buildTraceabilityWithAI   = buildTraceabilityWithAI;
 window.batchGenerateAC           = batchGenerateAC;
 window.exportTraceabilityMatrix  = exportTraceabilityMatrix;
+
+// ── Window Globals ──────────────────────────────────────────

@@ -182,3 +182,6 @@ window.loadNLQuery       = loadNLQuery;
 window.executeNLQuery    = executeNLQuery;
 window.exportNLQResults  = exportNLQResults;
 window.clearNLQHistory   = clearNLQHistory;
+
+// ── Window Globals ──────────────────────────────────────────
+window.renderNLQResult = renderNLQResult;

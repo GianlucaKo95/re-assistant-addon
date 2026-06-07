@@ -468,3 +468,10 @@ window.dnaDragStart         = dnaDragStart;
 window.dnaDragMove          = dnaDragMove;
 window.dnaDragEnd           = dnaDragEnd;
 window.resetDNAView         = resetDNAView;
+
+// ── Window Globals ──────────────────────────────────────────
+window.loadDNADashboard = loadDNADashboard;
+window.renderNetworkGraph = renderNetworkGraph;
+window.forceLayout = forceLayout;
+window.applyDNATransform = applyDNATransform;
+window.initDNAGraphInteraction = initDNAGraphInteraction;

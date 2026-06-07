@@ -417,3 +417,6 @@ window.adminSaveUserKey     = adminSaveUserKey;
 window.adminTestKey         = adminTestKey;
 window.testApiKey          = testApiKey;
 window.toggleKeyVisibility = toggleKeyVisibility;
+
+// ── Window Globals ──────────────────────────────────────────
+window.updateApiKeyBanner = updateApiKeyBanner;

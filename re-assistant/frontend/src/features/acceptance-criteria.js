@@ -228,3 +228,6 @@ window.saveAllAC          = saveAllAC;
 window.toggleExistingAC   = toggleExistingAC;
 window.deleteExistingAC   = deleteExistingAC;
 window.renderACProgress   = renderACProgress;
+
+// ── Window Globals ──────────────────────────────────────────
+window._appendAC = _appendAC;

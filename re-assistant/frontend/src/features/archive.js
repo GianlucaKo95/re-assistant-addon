@@ -182,3 +182,5 @@ window.loadArchiveItems      = loadArchiveItems;
 window.restoreRequirement    = restoreRequirement;
 window.permanentlyDelete     = permanentlyDelete;
 window.getArchiveStats       = getArchiveStats;
+
+// ── Window Globals ──────────────────────────────────────────

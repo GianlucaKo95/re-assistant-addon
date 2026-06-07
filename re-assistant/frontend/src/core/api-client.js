@@ -117,3 +117,5 @@ window.getCtx        = getCtx;
 window.callAPI       = callAPI;
 window.setAPIContext = setAPIContext;
 window.toggleChatMic = toggleChatMic;
+
+// ── Window Globals ──────────────────────────────────────────

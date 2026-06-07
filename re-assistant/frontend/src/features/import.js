@@ -345,3 +345,12 @@ window.pickJiraFile        = pickJiraFile;
 window.openPasteDialog     = openPasteDialog;
 window.parsePasteImport    = parsePasteImport;
 window.showImportPreview   = showImportPreview;
+
+// ── Window Globals ──────────────────────────────────────────
+window.parseCSV = parseCSV;
+window.parseCSVLine = parseCSVLine;
+window.parseJSON = parseJSON;
+window.parseExcel = parseExcel;
+window.parseMarkdown = parseMarkdown;
+window.normalizePriority = normalizePriority;
+window.normalizeStatus = normalizeStatus;

@@ -193,3 +193,8 @@ window.exportAsJSON     = exportAsJSON;
 window.exportAsHTML     = exportAsHTML;
 window.exportAsPDF      = exportAsPDF;
 window.exportAsDocx     = exportAsDocx;
+
+// ── Window Globals ──────────────────────────────────────────
+window.buildHTMLReport = buildHTMLReport;
+window.buildWordHTML = buildWordHTML;
+window.dlText = dlText;

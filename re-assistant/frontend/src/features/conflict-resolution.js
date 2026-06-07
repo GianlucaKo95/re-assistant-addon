@@ -154,3 +154,5 @@ Priorität: ${clientVersion.priority}` }], langNote(), 600);
 
 window.resolveConflict = resolveConflict;
 window.mergeWithAI     = mergeWithAI;
+
+// ── Window Globals ──────────────────────────────────────────

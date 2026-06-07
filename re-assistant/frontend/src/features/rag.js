@@ -189,3 +189,6 @@ window.indexSystemDocs   = indexSystemDocs;
 window.showRAGStatus     = showRAGStatus;
 window.runIndexing       = runIndexing;
 window.chunkDocument     = chunkDocument;
+
+// ── Window Globals ──────────────────────────────────────────
+window.log_rag = log_rag;

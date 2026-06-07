@@ -199,3 +199,8 @@ window.connectAdo=connectAdo;
 window.adoExport=adoExport;
 window.adoImport=adoImport;
 window.analyzeAdoImport=analyzeAdoImport;
+
+// ── Window Globals ──────────────────────────────────────────
+window.loadPMJira = loadPMJira;
+window.initJiraPane = initJiraPane;
+window.initAdoPane = initAdoPane;

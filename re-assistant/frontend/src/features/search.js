@@ -214,3 +214,8 @@ window.toggleSearchPanel = toggleSearchPanel;
 window.onSearchInput     = onSearchInput;
 window.onSearchKey       = onSearchKey;
 window.runSearch         = runSearch;
+
+// ── Window Globals ──────────────────────────────────────────
+window.createSearchPanel = createSearchPanel;
+window.matchScore = matchScore;
+window.highlight = highlight;

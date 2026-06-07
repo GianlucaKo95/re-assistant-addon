@@ -61,3 +61,5 @@ window.loadPMAssign=loadPMAssign;
 window.assignReq=assignReq;
 window.updSubOpts=updSubOpts;
 window.analyzeSource=analyzeSource;
+
+// ── Window Globals ──────────────────────────────────────────

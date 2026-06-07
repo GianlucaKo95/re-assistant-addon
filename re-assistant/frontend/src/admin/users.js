@@ -109,3 +109,6 @@ window.loadAdminUsers  = loadAdminUsers;
 window.openUserModal   = openUserModal;
 window.saveUserModal   = saveUserModal;
 window.deleteUser      = deleteUser;
+
+// ── Window Globals ──────────────────────────────────────────
+window.renderUsersTable = renderUsersTable;

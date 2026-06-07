@@ -233,3 +233,16 @@ window.initRealtime     = initRealtime;
 window.sendWS           = send;
 window.getOnlineUsers   = () => _online;
 window.showLiveToast    = showLiveToast;
+
+// ── Window Globals ──────────────────────────────────────────
+window.connectWebSocket = connectWebSocket;
+window.scheduleReconnect = scheduleReconnect;
+window.handleServerMessage = handleServerMessage;
+window.handleRemoteReqUpdate = handleRemoteReqUpdate;
+window.handleRemoteReqCreated = handleRemoteReqCreated;
+window.handleRemoteReqDeleted = handleRemoteReqDeleted;
+window.renderRemoteTyping = renderRemoteTyping;
+window.clearRemoteTyping = clearRemoteTyping;
+window.renderPresenceBar = renderPresenceBar;
+window.renderReqEditingIndicators = renderReqEditingIndicators;
+window.updateConnectionBadge = updateConnectionBadge;

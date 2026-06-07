@@ -341,3 +341,8 @@ window.setSprintStatus       = setSprintStatus;
 window.deleteSprintPlan      = deleteSprintPlan;
 window.exportSprintPlan      = exportSprintPlan;
 window.toggleSprintDetail    = toggleSprintDetail;
+
+// ── Window Globals ──────────────────────────────────────────
+window.loadSavedSprints = loadSavedSprints;
+window.renderSprintList = renderSprintList;
+window.renderSprintDetail = renderSprintDetail;
