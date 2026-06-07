@@ -68,3 +68,5 @@ import './features/pagination.js';
 import './features/password-reset.js';
 import './features/dna.js';
 import './features/token-dashboard.js';
+
+import './init-handlers.js';
