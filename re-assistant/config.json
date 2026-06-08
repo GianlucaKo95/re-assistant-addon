@@ -1,6 +1,6 @@
 {
   "name": "RE-Assistent",
-  "version": "4.2.18",
+  "version": "4.2.11",
   "slug": "re_assistant",
   "description": "KI-gestütztes Requirements Engineering — PostgreSQL, WebSockets, Enterprise-ready.",
   "url": "https://github.com/GianlucaKo95/re-assistant-addon",
@@ -37,5 +37,8 @@
     "ADMIN_PASSWORD": "{{admin_password}}",
     "LANGUAGE": "{{language}}",
     "LOG_LEVEL": "{{log_level}}"
+  },
+  "ports": {
+    "3000/tcp": 3000
   }
 }
