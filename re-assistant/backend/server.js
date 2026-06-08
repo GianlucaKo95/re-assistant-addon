@@ -1042,7 +1042,7 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
         openAiMessages.push({ role: msg.role, content });
       }
       apiUrl = 'https://api.x.ai/v1/chat/completions';
-      apiHeaders = { 'Content-Type': 'application/json', 'Authorization': \`Bearer \${apiCfg.key}\` };
+      apiHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key };
       apiBody = { model: grokModel, messages: openAiMessages, max_tokens: cleanBody.max_tokens || 1000 };
     } else {
       // Anthropic (Standard)
@@ -1074,7 +1074,7 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
       };
     }
 
-    if (!response.ok) log('error', \`AI API (\${apiCfg.provider}): \${response.status}\`);
+    if (!response.ok) log('error', 'AI API (' + apiCfg.provider + '): ' + response.status);
 
     // Token-Verbrauch tracken (async, blockiert nicht)
     if (response.ok && data.usage) {
