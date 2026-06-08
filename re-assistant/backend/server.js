@@ -39,7 +39,7 @@ const sessionMiddleware = session({
   store:  new PgSession({ pool, tableName: 'session', createTableIfMissing: false }),
   secret: process.env.SESSION_SECRET || 're-assistant-secret-changeme-in-production',
   resave: false, saveUninitialized: false,
-  cookie: { secure: false, httpOnly: true, sameSite: 'lax', maxAge: 24*60*60*1000 },
+  cookie: { secure: false, httpOnly: true, sameSite: 'lax' },
 });
 app.use(sessionMiddleware);
 app.use(express.static(path.join(__dirname, '../frontend/dist')));
