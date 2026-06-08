@@ -5,7 +5,7 @@
  * - API-Calls: Network-First → frische Daten wenn online, Cache als Fallback
  */
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v3';
 const SHELL_CACHE   = `re-shell-${CACHE_VERSION}`;
 const API_CACHE     = `re-api-${CACHE_VERSION}`;
 
@@ -50,18 +50,22 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(networkFirst(request));
     return;
   }
-  e.respondWith(cacheFirst(request));
+  // App-Shell: Network-First damit immer der aktuelle Code geladen wird
+  // Cache nur als Fallback wenn offline
+  e.respondWith(networkFirst(request));
 });
 
 // ── Cache-First (App-Shell) ───────────────────────────────────
 async function cacheFirst(request) {
+  // chrome-extension URLs überspringen
+  if (request.url.startsWith('chrome-extension://')) return fetch(request);
   const cached = await caches.match(request);
   if (cached) return cached;
   try {
     const response = await fetch(request);
     if (response.ok) {
       const cache = await caches.open(SHELL_CACHE);
-      cache.put(request, response.clone());
+      await cache.put(request, response.clone());
     }
     return response;
   } catch(err) {
@@ -75,6 +79,10 @@ async function cacheFirst(request) {
 
 // ── Network-First (API) ───────────────────────────────────────
 async function networkFirst(request) {
+  // chrome-extension URLs überspringen
+  if (request.url.startsWith('chrome-extension://')) {
+    try { return await fetch(request); } catch(e) { return new Response('', {status: 200}); }
+  }
   try {
     const controller = new AbortController();
     const timeout    = setTimeout(() => controller.abort(), 8000);
