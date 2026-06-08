@@ -56,14 +56,36 @@ async function requireAdmin(req, res, next) {
 }
 
 // ── API-Key Resolver ──────────────────────────────────────────
-async function resolveApiKey(userId) {
+async function resolveApiConfig(userId) {
   const mode = (await queryOne("SELECT value FROM app_settings WHERE key='api_key_mode'"))?.value || 'global';
+
+  // Per-User Modus: Nutzer-eigenen Key + Provider prüfen
   if (mode === 'per_user' && userId) {
-    const user = await queryOne('SELECT api_key FROM users WHERE id=$1', [userId]);
-    if (user?.api_key) return user.api_key;
+    const user = await queryOne('SELECT api_key, ai_provider FROM users WHERE id=$1', [userId]);
+    if (user?.api_key) {
+      return { key: user.api_key, provider: user.ai_provider || 'anthropic' };
+    }
   }
-  return process.env.ANTHROPIC_API_KEY ||
-    (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value || null;
+
+  // Global: Env-Variable (immer Anthropic) oder DB-Einstellung
+  if (process.env.ANTHROPIC_API_KEY) {
+    return { key: process.env.ANTHROPIC_API_KEY, provider: 'anthropic' };
+  }
+
+  const globalKey      = (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value;
+  const globalProvider = (await queryOne("SELECT value FROM app_settings WHERE key='global_ai_provider'"))?.value || 'anthropic';
+  const globalGrokKey  = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value;
+
+  if (globalProvider === 'grok' && globalGrokKey) {
+    return { key: globalGrokKey, provider: 'grok' };
+  }
+  return { key: globalKey || null, provider: 'anthropic' };
+}
+
+// Rückwärtskompatibel
+async function resolveApiKey(userId) {
+  const cfg = await resolveApiConfig(userId);
+  return cfg.key;
 }
 
 // ── AUTH ──────────────────────────────────────────────────────
@@ -717,17 +739,39 @@ app.post('/api/apikey/mode', requireAuth, requireAdmin, async (req, res) => {
   res.json({ ok:true, mode });
 });
 app.post('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
-  const { apiKey } = req.body;
-  if (!apiKey?.startsWith('sk-')) return res.status(400).json({ error: 'Ungültiger API-Key' });
-  await query("INSERT INTO app_settings (key,value) VALUES ('global_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [apiKey]);
+  const { apiKey, provider, grokApiKey } = req.body;
+  // Provider speichern
+  const prov = provider || 'anthropic';
+  await query("INSERT INTO app_settings (key,value) VALUES ('global_ai_provider',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [prov]);
+  // Anthropic Key
+  if (apiKey) {
+    await query("INSERT INTO app_settings (key,value) VALUES ('global_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [apiKey]);
+  }
+  // Grok Key
+  if (grokApiKey) {
+    await query("INSERT INTO app_settings (key,value) VALUES ('global_grok_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [grokApiKey]);
+  }
   res.json({ ok:true });
+});
+app.get('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
+  const provider    = (await queryOne("SELECT value FROM app_settings WHERE key='global_ai_provider'"))?.value || 'anthropic';
+  const hasAnthKey  = !!(process.env.ANTHROPIC_API_KEY || (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value);
+  const hasGrokKey  = !!(await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value;
+  res.json({ provider, hasAnthKey, hasGrokKey });
 });
 app.post('/api/apikey/user', requireAuth, async (req, res) => {
   const mode = (await queryOne("SELECT value FROM app_settings WHERE key='api_key_mode'"))?.value||'global';
   if (mode !== 'per_user') return res.status(403).json({ error: 'Per-User Keys nicht aktiv' });
-  const { apiKey } = req.body;
-  if (!apiKey?.startsWith('sk-')) return res.status(400).json({ error: 'Ungültiger API-Key' });
-  await query('UPDATE users SET api_key=$1 WHERE id=$2', [apiKey, req.session.userId]);
+  const { apiKey, provider } = req.body;
+  const prov = provider || 'anthropic';
+  // Key-Validierung je nach Provider
+  if (prov === 'anthropic' && apiKey && !apiKey.startsWith('sk-ant')) {
+    return res.status(400).json({ error: 'Ungültiger Anthropic API-Key' });
+  }
+  if (prov === 'grok' && apiKey && !apiKey.startsWith('xai-')) {
+    return res.status(400).json({ error: 'Ungültiger Grok API-Key (muss mit xai- beginnen)' });
+  }
+  await query('UPDATE users SET api_key=$1, ai_provider=$2 WHERE id=$3', [apiKey, prov, req.session.userId]);
   res.json({ ok:true });
 });
 app.delete('/api/apikey/user', requireAuth, async (req, res) => {
@@ -745,10 +789,19 @@ app.delete('/api/apikey/user/:userId', requireAuth, requireAdmin, async (req, re
   res.json({ ok:true });
 });
 app.get('/api/apikey/user/status', requireAuth, async (req, res) => {
-  const mode = (await queryOne("SELECT value FROM app_settings WHERE key='api_key_mode'"))?.value||'global';
-  const user = await queryOne('SELECT api_key FROM users WHERE id=$1', [req.session.userId]);
-  const globalKey = process.env.ANTHROPIC_API_KEY || (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value;
-  res.json({ mode, hasUserKey: !!user?.api_key, hasGlobalKey: !!globalKey });
+  const mode         = (await queryOne("SELECT value FROM app_settings WHERE key='api_key_mode'"))?.value||'global';
+  const user         = await queryOne('SELECT api_key, ai_provider FROM users WHERE id=$1', [req.session.userId]);
+  const globalKey    = process.env.ANTHROPIC_API_KEY || (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value;
+  const globalGrok   = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value;
+  const globalProv   = (await queryOne("SELECT value FROM app_settings WHERE key='global_ai_provider'"))?.value || 'anthropic';
+  res.json({
+    mode,
+    hasUserKey:     !!user?.api_key,
+    userProvider:   user?.ai_provider || 'anthropic',
+    hasGlobalKey:   !!globalKey,
+    hasGrokKey:     !!globalGrok,
+    globalProvider: globalProv,
+  });
 });
 app.get('/api/apikey/users/status', requireAuth, requireAdmin, async (req, res) => {
   const users = await queryAll('SELECT id,name,email,role,api_key FROM users');
@@ -967,19 +1020,61 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
       });
     }
 
-    const apiKey = await resolveApiKey(req.session.userId);
-    if (!apiKey) return res.status(500).json({ error: 'Kein API-Key konfiguriert.' });
-
     // _feature und _systemId aus Body entfernen
     const { _feature, _systemId, ...cleanBody } = req.body;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01' },
-      body: JSON.stringify(cleanBody)
+    const apiCfg = await resolveApiConfig(req.session.userId);
+    if (!apiCfg.key) return res.status(500).json({ error: 'Kein API-Key konfiguriert.' });
+
+    let apiUrl, apiHeaders, apiBody;
+
+    if (apiCfg.provider === 'grok') {
+      // Grok xAI — OpenAI-kompatible API
+      // Modell aus Body nehmen oder Standard-Grok-Modell
+      const grokModel = cleanBody.model?.startsWith('claude') ? 'grok-3-mini' : (cleanBody.model || 'grok-3-mini');
+      // Anthropic-Messages-Format → OpenAI-Format konvertieren
+      const openAiMessages = [];
+      if (cleanBody.system) openAiMessages.push({ role: 'system', content: cleanBody.system });
+      for (const msg of (cleanBody.messages || [])) {
+        const content = Array.isArray(msg.content)
+          ? msg.content.map(c => c.type === 'text' ? c.text : '').join('')
+          : msg.content;
+        openAiMessages.push({ role: msg.role, content });
+      }
+      apiUrl = 'https://api.x.ai/v1/chat/completions';
+      apiHeaders = { 'Content-Type': 'application/json', 'Authorization': \`Bearer \${apiCfg.key}\` };
+      apiBody = { model: grokModel, messages: openAiMessages, max_tokens: cleanBody.max_tokens || 1000 };
+    } else {
+      // Anthropic (Standard)
+      apiUrl = 'https://api.anthropic.com/v1/messages';
+      apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
+      apiBody = cleanBody;
+    }
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: apiHeaders,
+      body: JSON.stringify(apiBody)
     });
-    const data = await response.json();
-    if (!response.ok) log('error', `Anthropic: ${response.status}`);
+    let data = await response.json();
+
+    // Grok-Response ins Anthropic-Format konvertieren
+    if (apiCfg.provider === 'grok' && response.ok) {
+      const choice = data.choices?.[0];
+      data = {
+        id: data.id,
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: choice?.message?.content || '' }],
+        model: data.model,
+        usage: {
+          input_tokens:  data.usage?.prompt_tokens     || 0,
+          output_tokens: data.usage?.completion_tokens || 0,
+        }
+      };
+    }
+
+    if (!response.ok) log('error', \`AI API (\${apiCfg.provider}): \${response.status}\`);
 
     // Token-Verbrauch tracken (async, blockiert nicht)
     if (response.ok && data.usage) {
