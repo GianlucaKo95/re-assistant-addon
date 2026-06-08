@@ -1,6 +1,6 @@
 {
   "name": "RE-Assistent",
-  "version": "0.0.23",
+  "version": "4.2.12",
   "slug": "re_assistant",
   "description": "KI-gestütztes Requirements Engineering — PostgreSQL, WebSockets, Enterprise-ready.",
   "url": "https://github.com/GianlucaKo95/re-assistant-addon",
@@ -11,10 +11,6 @@
   "startup": "application",
   "boot": "auto",
   "init": false,
-  "ingress": true,
-  "ingress_port": 3000,
-  "panel_icon": "mdi:clipboard-text-outline",
-  "panel_title": "RE-Assistent",
   "homeassistant_api": false,
   "hassio_api": false,
   "options": {
