@@ -1,66 +1,73 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+/* Fonts: Inter via system stack, JetBrains Mono via monospace fallback */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --font:'DM Sans',system-ui,sans-serif;--mono:'DM Mono',monospace;
-  --bg:#07070f;--s1:rgba(255,255,255,.025);--s2:rgba(255,255,255,.05);--s3:rgba(255,255,255,.09);
-  --b1:rgba(255,255,255,.07);--b2:rgba(255,255,255,.14);
-  --t1:#eeeef8;--t2:#8888a8;--t3:#3e3e58;
-  --aa:#a855f7;--ab:#0ea5e9;--ag:linear-gradient(135deg,#a855f7,#0ea5e9);
-  --red:#f87171;--redbg:rgba(248,113,113,.12);
-  --amb:#fbbf24;--ambbg:rgba(251,191,36,.12);
-  --grn:#34d399;--grnbg:rgba(52,211,153,.12);
-  --blue:#38bdf8;--bluebg:rgba(56,189,248,.12);
-  --admin:#f472b6;--adminbg:rgba(244,114,182,.12);
-  --biz:#fb923c;--bizbg:rgba(251,146,60,.12);
-  --ba:#22d3ee;--babg:rgba(34,211,238,.12);
-  --pm:#a78bfa;--pmbg:rgba(167,139,250,.12);
-  --dev:#34d399;--devbg:rgba(52,211,153,.12);
-  --r:8px;--rl:14px;--rxl:20px;
+
+:root {
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+
+  /* Dark mode — tiefes Schieferblau statt reines Schwarz */
+  --bg:  #0d1117;
+  --s1:  #161b22;
+  --s2:  #21262d;
+  --s3:  #30363d;
+  --b1:  #30363d;
+  --b2:  #484f58;
+  --t1:  #e6edf3;
+  --t2:  #8b949e;
+  --t3:  #484f58;
+
+  /* Akzent: klares Indigo statt lila Gradient */
+  --aa:  #4f8ef7;
+  --ab:  #58a6ff;
+  --ag:  linear-gradient(135deg, #4f8ef7, #a371f7);
+
+  --red:    #f85149; --redbg:   rgba(248,81,73,.12);
+  --amb:    #e3b341; --ambbg:   rgba(227,179,65,.12);
+  --grn:    #3fb950; --grnbg:   rgba(63,185,80,.12);
+  --blue:   #58a6ff; --bluebg:  rgba(88,166,255,.12);
+  --admin:  #f778ba; --adminbg: rgba(247,120,186,.12);
+  --biz:    #ff9a57; --bizbg:   rgba(255,154,87,.12);
+  --ba:     #39d3f2; --babg:    rgba(57,211,242,.12);
+  --pm:     #a371f7; --pmbg:    rgba(163,113,247,.12);
+  --dev:    #3fb950; --devbg:   rgba(63,185,80,.12);
+
+  --r:  6px;
+  --rl: 10px;
+  --rxl: 14px;
 }
 
 /* ── Light-Mode ──────────────────────────────────────────────── */
-[data-theme="light"]{
-  --bg:#f1f3f8;
-  --s1:rgba(0,0,0,.03);
-  --s2:rgba(0,0,0,.06);
-  --s3:rgba(0,0,0,.09);
-  --b1:rgba(0,0,0,.09);
-  --b2:rgba(0,0,0,.16);
-  --t1:#111827;
-  --t2:#4b5563;
-  --t3:#9ca3af;
-  --aa:#7c3aed;
-  --ab:#0284c7;
-  --ag:linear-gradient(135deg,#7c3aed,#0284c7);
-  --red:#dc2626;--redbg:rgba(220,38,38,.1);
-  --amb:#d97706;--ambbg:rgba(217,119,6,.1);
-  --grn:#059669;--grnbg:rgba(5,150,105,.1);
-  --blue:#0284c7;--bluebg:rgba(2,132,199,.1);
-  --admin:#db2777;--adminbg:rgba(219,39,119,.1);
-  --biz:#ea580c;--bizbg:rgba(234,88,12,.1);
-  --ba:#0e7490;--babg:rgba(14,116,144,.1);
-  --pm:#6d28d9;--pmbg:rgba(109,40,217,.1);
-  --dev:#047857;--devbg:rgba(4,120,87,.1);
+[data-theme="light"] {
+  --bg:  #ffffff;
+  --s1:  #f6f8fa;
+  --s2:  #eaeef2;
+  --s3:  #d0d7de;
+  --b1:  #d0d7de;
+  --b2:  #afb8c1;
+  --t1:  #1f2328;
+  --t2:  #636c76;
+  --t3:  #afb8c1;
+  --aa:  #0969da;
+  --ab:  #0969da;
+  --ag:  linear-gradient(135deg, #0969da, #8250df);
+  --red:    #cf222e; --redbg:   rgba(207,34,46,.08);
+  --amb:    #9a6700; --ambbg:   rgba(154,103,0,.08);
+  --grn:    #1a7f37; --grnbg:   rgba(26,127,55,.08);
+  --blue:   #0969da; --bluebg:  rgba(9,105,218,.08);
+  --admin:  #bf3989; --adminbg: rgba(191,57,137,.08);
+  --biz:    #bc4c00; --bizbg:   rgba(188,76,0,.08);
+  --ba:     #1b7c83; --babg:    rgba(27,124,131,.08);
+  --pm:     #6639ba; --pmbg:    rgba(102,57,186,.08);
+  --dev:    #1a7f37; --devbg:   rgba(26,127,55,.08);
 }
-[data-theme="light"] #login-screen{background:#f1f3f8}
-[data-theme="light"] .diff-block{background:#f8f9fc;border-color:rgba(0,0,0,.1)}
-[data-theme="light"] .diff-add{color:#166534;background:rgba(22,101,52,.08)}
-[data-theme="light"] .diff-rem{color:#991b1b;background:rgba(153,27,27,.08)}
-[data-theme="light"] .diff-comment{color:#6b7280}
-[data-theme="light"] #nav-sidebar{background:#e8eaf2;border-right:1px solid rgba(0,0,0,.1)}
-[data-theme="light"] #notif-panel{background:#ffffff;border:1px solid rgba(0,0,0,.12)}
-[data-theme="light"] .msg.a .msg-bubble{background:#ffffff;border:1px solid rgba(0,0,0,.08)}
-[data-theme="light"] #modal-box{background:#ffffff}
-[data-theme="light"] .sg-body{background:#f8f9fc}
-[data-theme="light"] .data-table th{background:#e8eaf2}
-[data-theme="light"] #global-search-panel{background:#ffffff;border:1px solid rgba(0,0,0,.12)}
+
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);font-family:var(--font);font-size:14px;line-height:1.6}
-body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 50% at 75% -5%,rgba(168,85,247,.055),transparent),radial-gradient(ellipse 50% 40% at 5% 100%,rgba(14,165,233,.04),transparent);pointer-events:none;z-index:0}
+/* body gradient entfernt — cleaner */
 
 /* LOGIN */
 #login-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:100;background:var(--bg)}
-#login-glow{position:absolute;width:500px;height:500px;background:radial-gradient(circle,rgba(168,85,247,.1),transparent 65%);border-radius:50%;pointer-events:none}
-#login-box{position:relative;z-index:1;width:400px;background:rgba(12,12,22,.96);border:1px solid var(--b2);border-radius:var(--rxl);padding:40px 36px;backdrop-filter:blur(20px);box-shadow:0 40px 80px rgba(0,0,0,.5)}
+#login-glow{display:none}
+#login-box{position:relative;z-index:1;width:380px;background:var(--s1);border:1px solid var(--b1);border-radius:var(--rxl);padding:40px 36px;box-shadow:0 8px 32px rgba(0,0,0,.4)}
 #login-logo{width:56px;height:56px;margin:0 auto 18px;display:flex;align-items:center;justify-content:center}
 #login-logo svg{width:56px;height:56px;filter:drop-shadow(0 0 16px rgba(168,85,247,.5))}
 #login-title{font-size:22px;font-weight:600;text-align:center;letter-spacing:-.5px}
@@ -76,8 +83,8 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 
 /* APP */
 #app-screen{position:fixed;inset:0;display:flex;flex-direction:column;z-index:1}
-#titlebar{height:44px;background:rgba(7,7,15,.98);border-bottom:1px solid var(--b1);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;-webkit-app-region:drag}
-.wdot{width:12px;height:12px;border-radius:50%;flex-shrink:0}.wdot.r{background:#ff5f57}.wdot.y{background:#ffbd2e}.wdot.g{background:#28ca42}
+#titlebar{height:48px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;align-items:center;padding:0 20px;gap:10px;flex-shrink:0}
+.wdot{display:none}
 #tb-title{font-size:13px;font-weight:600;color:var(--t2);letter-spacing:.04em;margin-left:8px}
 #tb-right{margin-left:auto;display:flex;align-items:center;gap:10px;-webkit-app-region:no-drag}
 #user-pill{display:flex;align-items:center;gap:7px;padding:4px 10px 4px 5px;background:var(--s2);border:1px solid var(--b1);border-radius:99px}
@@ -527,3 +534,30 @@ input::placeholder,textarea::placeholder{color:var(--t3)}
   padding:16px;cursor:pointer;transition:all .15s;color:var(--t1);font-family:var(--font);
   text-align:center;width:100%}
 .import-method-btn:hover{background:var(--s2);border-color:rgba(168,85,247,.3);transform:translateY(-1px)}
+
+/* ── Dropdown Options — explizite Farben für HA CSP-Kontext ─── */
+select option {
+  background: #1e2f42;
+  color: #e2e8f0;
+}
+select option:hover,
+select option:focus,
+select option:checked {
+  background: #2563eb;
+  color: #ffffff;
+}
+select[multiple] option:checked {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+/* ── Dropdown Options ───────────────────────────────────────── */
+select option {
+  background-color: #1a2535 !important;
+  color: #e2e8f0 !important;
+}
+select option:checked,
+select option:hover {
+  background-color: #2563eb !important;
+  color: #ffffff !important;
+}
