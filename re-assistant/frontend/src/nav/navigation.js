@@ -42,7 +42,6 @@ const NAV = {
     { id:'admin-users',    icon:ICONS.users,   label:'Benutzer'    },
     { id:'admin-systems',  icon:ICONS.layers,  label:'Systeme'     },
     { id:'admin-license',  icon:ICONS.lock,    label:'Lizenz'      },
-    { id:'voice',          icon:ICONS.mic,     label:'Sprach-Bot'  },
   ],
   business: [
     { id:'import',          icon:ICONS.backlog,  label:'Importieren'     },
@@ -50,7 +49,6 @@ const NAV = {
     { id:'business-reqs', icon:ICONS.list,  label:'Anforderungen'    },
     { id:'templates',     icon:ICONS.tmpl,  label:'Vorlagen'         },
     { id:'archive', icon:ICONS.list, label:'Archiv' },
-    { id:'voice',         icon:ICONS.mic,   label:'Sprach-Bot'       },
   ],
   businessanalyst: [
     { id:'ba-dashboard',   icon:ICONS.dash,     label:'Dashboard'         },
@@ -63,7 +61,6 @@ const NAV = {
     { id:'consistency',       icon:ICONS.check,    label:'Konsistenz'        },
     { id:'review-workflow',   icon:ICONS.check,    label:'Review'            },
     { id:'business-chat',     icon:ICONS.chat,     label:'Chat & Prozesse'   },
-    { id:'voice',           icon:ICONS.mic,      label:'Sprach-Bot'        },
   ],
   projectmanager: [
     { id:'pm-dashboard',    icon:ICONS.dash,    label:'Dashboard'       },
@@ -79,12 +76,10 @@ const NAV = {
     { id:'qs-trends',         icon:ICONS.prio,    label:'QS-Trends'       },
     { id:'sprint-planning',   icon:ICONS.backlog,  label:'Sprint-Planung'  },
     { id:'archive',            icon:ICONS.list,     label:'Archiv'          },
-    { id:'voice',             icon:ICONS.mic,      label:'Sprach-Bot'      },
   ],
   developer: [
     { id:'dev-work',   icon:ICONS.code, label:'Meine Aufgaben' },
     { id:'my-tasks',   icon:ICONS.list, label:'Aufgaben'        },
-    { id:'voice',    icon:ICONS.mic,  label:'Sprach-Bot'     },
   ],
 };
 
@@ -109,7 +104,6 @@ const VIEW_LOADERS = {
   'review-workflow':    () => loadReviewDashboard(),
   'import':             () => loadImportView(),
   'traceability':       () => loadTraceability(),
-  'req-network':        () => loadReqNetwork(),
   'audit-log':          () => { loadAuditLogView(); updateAuditBadge(); },
   'source-analysis':    () => loadSourceAnalysisView(),
   'decomposition':      () => loadDecomposition(),

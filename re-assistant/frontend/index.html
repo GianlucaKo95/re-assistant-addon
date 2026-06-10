@@ -4,6 +4,8 @@
 <meta charset="UTF-8"/>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.anthropic.com https://*.atlassian.net ws://localhost:3001 wss://localhost:3001; font-src https://fonts.googleapis.com https://fonts.gstatic.com;"/>
 <title>RE-Assistent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="/src/styles.css"/>
 </head>
 <body>
@@ -28,6 +30,7 @@
 <!-- ═══ APP ══════════════════════════════════════════════════════════ -->
 <div id="app-screen" style="display:none">
   <div id="titlebar">
+    <div class="wdot r"></div><div class="wdot y"></div><div class="wdot g"></div>
     <div id="tb-title">RE·Assistent</div>
     <div id="tb-right">
       <div id="user-pill"><div id="user-avatar"></div><span id="user-name-label"></span><span id="user-role-badge"></span></div>
@@ -82,14 +85,6 @@
       <!-- ADMIN: License -->
       <div class="view" id="view-admin-license"></div>
 
-      <!-- ADMIN: API-Keys -->
-      <div class="view" id="view-admin-apikey">
-        <div class="view-header">
-          <div><h2>API-Key Verwaltung</h2><p class="view-sub">Globaler Anbieter und per-User Keys konfigurieren</p></div>
-        </div>
-        <div id="apikey-admin-wrap" class="scroll-body" style="flex:1;padding:16px 20px;overflow-y:auto"></div>
-      </div>
-
       <!-- BUSINESS: Chat + Live Reqs -->
       <div class="view" id="view-business-chat">
         <div id="bc-layout">
@@ -105,7 +100,7 @@
               </div>
               <div class="input-bar">
                 <textarea id="bc-input" class="chat-textarea" placeholder="Prozess beschreiben oder Frage stellen …" rows="1"></textarea>
-                <button class="mic-btn mic-off" id="bc-mic" title="Spracheingabe" style="margin-left:4px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
+                <button class="mic-btn mic-off" id="bc-mic" title="Spracheingabe"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
                 <button class="send-btn" id="bc-send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
               </div>
             </div>
@@ -246,7 +241,7 @@
               </div>
               <div class="input-bar">
                 <textarea id="pmc-input" class="chat-textarea" placeholder="Fragen zum System …" rows="1"></textarea>
-                <button class="mic-btn mic-off" id="pmc-mic" title="Spracheingabe" style="margin-left:4px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
+                <button class="mic-btn mic-off" id="pmc-mic" title="Spracheingabe"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
                 <button class="send-btn" id="pmc-send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
               </div>
             </div>
@@ -505,40 +500,36 @@
       </div>
 
       <!-- AUDIT LOG -->
-      <div class="view" id="view-audit-log" style="display:flex;flex-direction:column">
-        <div class="view-header" style="flex-shrink:0">
-          <div>
-            <h2>Audit-Log</h2>
-            <p class="view-sub">Wer hat wann was an den Anforderungen geändert</p>
-          </div>
+      <div class="view" id="view-audit-log">
+        <div class="view-header">
+          <div><h2>Audit-Log</h2><p class="view-sub">Wer hat wann was geändert — vollständige Aktivitätshistorie</p></div>
           <div style="display:flex;gap:8px;align-items:center">
             <span style="font-size:12px;color:var(--t3)">Heute: <strong id="audit-today-count">0</strong> Einträge</span>
-            <button class="btn-secondary" style="font-size:12px" onclick="exportAuditLog()">↓ CSV</button>
+            <button class="btn-secondary" onclick="exportAuditLog()">↓ CSV Export</button>
           </div>
         </div>
-        <div class="filter-bar" style="flex-shrink:0;flex-wrap:wrap;gap:8px">
-          <select id="audit-sys-filter" class="filter-select" style="min-width:150px">
-            <option value="">Alle Systeme</option>
-          </select>
-          <select id="audit-filter-action" class="filter-select">
+        <div id="audit-filters" class="filter-bar">
+          <select id="audit-filter-action" onchange="loadAuditLogView()" class="filter-select">
             <option value="">Alle Aktionen</option>
             <option value="create">Erstellt</option>
             <option value="update">Geändert</option>
             <option value="delete">Gelöscht</option>
             <option value="status_change">Status</option>
+            <option value="review">Review</option>
             <option value="comment">Kommentar</option>
-            <option value="login">Login</option>
+            <option value="export">Export</option>
           </select>
-          <select id="audit-filter-entity" class="filter-select">
+          <select id="audit-filter-entity" onchange="loadAuditLogView()" class="filter-select">
             <option value="">Alle Typen</option>
             <option value="requirement">Anforderungen</option>
-            <option value="user">Login-Events</option>
+            <option value="system">Systeme</option>
+            <option value="workshop">Workshops</option>
+            <option value="backlog">Backlogs</option>
           </select>
-          <input type="text" id="audit-filter-user" placeholder="Benutzer …" style="min-width:130px"/>
-          <input type="date" id="audit-filter-date"/>
+          <input type="text" id="audit-filter-user" placeholder="Benutzer …" oninput="loadAuditLogView()" style="min-width:140px"/>
+          <input type="date" id="audit-filter-date" onchange="loadAuditLogView()"/>
         </div>
         <div id="audit-log-wrap" style="flex:1;overflow-y:auto"></div>
-        <div id="audit-pagination" style="flex-shrink:0"></div>
       </div>
 
       <!-- MEINE AUFGABEN (Mentions) -->
@@ -614,31 +605,6 @@
         </div>
         <div id="archive-list" class="scroll-body" style="flex:1;padding:16px 20px;overflow-y:auto">
           <div class="empty-state"><div class="es-icon">📦</div><h3>Archiv ist leer</h3></div>
-        </div>
-      </div>
-
-
-      <!-- ANFORDERUNGS-NETZWERK -->
-      <div class="view" id="view-req-network" style="display:flex;flex-direction:column;overflow:hidden">
-        <div class="view-header" style="flex-shrink:0">
-          <div><h2>Anforderungs-Netzwerk</h2><p class="view-sub">Obsidian-Style Visualisierung — geclustert nach System und Thema</p></div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <select id="network-sys-sel" class="filter-select" style="min-width:160px">
-              <option value="">Alle Systeme</option>
-            </select>
-            <select id="network-cluster-sel" class="filter-select">
-              <option value="system">Nach System</option>
-              <option value="category">Nach Kategorie</option>
-              <option value="priority">Nach Priorität</option>
-              <option value="status">Nach Status</option>
-            </select>
-            <input type="text" id="network-search" placeholder="Suchen …" style="min-width:140px"/>
-            <button class="btn-secondary" style="font-size:11px" id="btn-network-reset">↺ Neu anordnen</button>
-            <button class="btn-secondary" style="font-size:11px" id="btn-network-fullscreen">⛶ Vollbild</button>
-          </div>
-        </div>
-        <div id="req-network-wrap" style="flex:1;overflow:hidden;position:relative">
-          <div id="req-network-canvas" style="width:100%;height:100%"></div>
         </div>
       </div>
 

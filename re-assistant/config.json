@@ -1,6 +1,6 @@
 {
   "name": "RE-Assistent",
-  "version": "0.0.2",
+  "version": "0.0.1",
   "slug": "re_assistant",
   "description": "KI-gestütztes Requirements Engineering — PostgreSQL, WebSockets, Enterprise-ready.",
   "url": "https://github.com/GianlucaKo95/re-assistant-addon",
