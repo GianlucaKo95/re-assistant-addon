@@ -1277,3 +1277,13 @@ select option:hover {
 #trace-graph-wrap g:hover rect {
   filter: brightness(1.15);
 }
+
+/* Views mit flex-column Layout */
+#view-traceability.active,
+#view-req-network.active,
+#view-audit-log.active,
+#view-admin-apikey.active,
+#view-token-dashboard.active {
+  flex-direction: column;
+  overflow: hidden;
+}
