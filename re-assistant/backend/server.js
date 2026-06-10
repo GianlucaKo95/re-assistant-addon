@@ -429,6 +429,66 @@ app.post('/api/requirements', requireAuth, async (req, res) => {
       // DNA in Queue einreihen (hoch-priorisiert bei neuen, normal bei Updates)
       dna.enqueueDNA(clean.id, existing ? 5 : 3).catch(() => {});
     }
+    // Konflikt-Check asynchron im Hintergrund
+    if (clean.id) {
+      setImmediate(async () => {
+        try {
+          const savedReq = await queryOne('SELECT * FROM requirements WHERE id=$1', [clean.id]);
+          if (!savedReq || !savedReq.system_id) return;
+          const sys = await queryOne('SELECT parent_id FROM systems WHERE id=$1', [savedReq.system_id]);
+          const crossSystem = !!sys?.parent_id;
+          const apiCfg = await resolveApiConfig(req.session.userId);
+          if (!apiCfg.key) return;
+
+          // Vergleichs-Anforderungen
+          const relIds = [savedReq.system_id];
+          if (crossSystem && sys?.parent_id) {
+            relIds.push(sys.parent_id);
+            const siblings = (await query('SELECT id FROM systems WHERE parent_id=$1 AND id!=$2', [sys.parent_id, savedReq.system_id])).rows;
+            relIds.push(...siblings.map(s => s.id));
+          }
+          const rows = (await query('SELECT id,title,description,system_id FROM requirements WHERE system_id = ANY($1::text[]) AND id!=$2 LIMIT 25', [relIds, savedReq.id])).rows;
+          if (!rows.length) return;
+
+          const prompt = `Analysiere Konflikte. Antworte NUR mit JSON:
+{"conflicts":[{"reqId":"ID","type":"contradiction|overlap|ambiguity","severity":"high|medium|low","description":"kurz","suggestion":"Vorschlag"}]}
+Falls keine: {"conflicts":[]}
+
+Neue: [${savedReq.id}] ${savedReq.title}: ${(savedReq.description||'').substring(0,120)}
+Bestehende:\n${rows.slice(0,15).map(r=>`- [${r.id}] ${r.title}: ${(r.description||'').substring(0,70)}`).join('\n')}`;
+
+          let apiUrl, apiHeaders, apiBody;
+          if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
+            const model = apiCfg.provider === 'groq' ? 'llama-3.3-70b-versatile' : 'grok-3-mini';
+            apiUrl = apiCfg.provider === 'groq' ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://api.x.ai/v1/chat/completions';
+            apiHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key };
+            apiBody = { model, messages: [{ role: 'user', content: prompt }], max_tokens: 600 };
+          } else {
+            apiUrl = 'https://api.anthropic.com/v1/messages';
+            apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
+            apiBody = { model: 'claude-haiku-4-5-20251001', max_tokens: 600, messages: [{ role: 'user', content: prompt }] };
+          }
+
+          const response = await fetch(apiUrl, { method: 'POST', headers: apiHeaders, body: JSON.stringify(apiBody) });
+          const data = await response.json();
+          const text = apiCfg.provider === 'anthropic'
+            ? data.content?.[0]?.text || '{}'
+            : data.choices?.[0]?.message?.content || '{}';
+
+          const result = JSON.parse(text.replace(/```json|```/g,'').trim());
+          for (const c of (result.conflicts||[])) {
+            const ex = await queryOne('SELECT id FROM req_conflicts WHERE req_id_a=$1 AND req_id_b=$2 AND status!='resolved'', [savedReq.id, c.reqId]);
+            if (!ex) {
+              const cr = rows.find(r=>r.id===c.reqId);
+              await query('INSERT INTO req_conflicts (req_id_a,req_id_b,system_id_a,system_id_b,conflict_type,description,severity,ai_suggestion) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+                [savedReq.id, c.reqId, savedReq.system_id, cr?.system_id||savedReq.system_id, c.type, c.description, c.severity||'medium', c.suggestion||'']);
+              log('info', 'Konflikt: ' + savedReq.id + ' <-> ' + c.reqId);
+            }
+          }
+        } catch(e) { log('warning', 'Konflikt-Check: ' + e.message); }
+      });
+    }
+
     res.json({ ok: true, updatedAt: saved?.updated_at?.getTime?.() });
   } catch(e) { log('error', 'Req-Save: ' + e.message); res.status(500).json({ error: e.message }); }
 });

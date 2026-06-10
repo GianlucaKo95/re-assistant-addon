@@ -40,7 +40,14 @@ const API = {
     );
     return get('api/requirements' + (q.toString() ? '?' + q : ''));
   },
-  async saveRequirement(r)     { return post('api/requirements', r); },
+  async saveRequirement(r) {
+    const result = await post('api/requirements', r);
+    // Konflikt-Check asynchron nach dem Speichern
+    if (r.id && r.systemId) {
+      setTimeout(() => checkConflictsAfterSave(r.id, r.systemId), 500);
+    }
+    return result;
+  },
   async deleteRequirement(id)  { return del(`api/requirements/${id}`); },
   async addComment({ reqId, comment }) {
     return post(`api/requirements/${reqId}/comments`, comment);

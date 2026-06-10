@@ -71,3 +71,4 @@ import './features/dna.js';
 import './features/token-dashboard.js';
 
 import './features/req-network.js';
+import './features/conflict-detection.js';
