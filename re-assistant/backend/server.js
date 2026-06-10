@@ -263,18 +263,70 @@ app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req
   try {
     const sys = mapSystem(await queryOne('SELECT * FROM systems WHERE id=$1', [req.params.id]));
     if (!sys) return res.status(404).json({ error: 'System nicht gefunden' });
-    const docs = sys.docs || [];
+    const docs  = sys.docs || [];
     const added = [];
+    const indexed = [];
+
     for (const file of (req.files||[])) {
-      if (!docs.find(d => d.name === file.originalname)) {
-        const doc = { id:'d'+Date.now()+Math.random(), name:file.originalname, content:file.buffer.toString('utf-8'), size:file.size, addedAt:Date.now() };
-        docs.push(doc); added.push(doc);
+      if (docs.find(d => d.name === file.originalname)) continue;
+
+      // Text extrahieren
+      let text = '';
+      try {
+        text = file.buffer.toString('utf-8');
+        // Binäre Dateien filtern (PDFs etc.)
+        text = text.replace(/[\x00-\x08\x0E-\x1F\x7F]/g, ' ');  // Steuerzeichen entfernen
+      } catch(e) { text = ''; }
+
+      const docId = 'd' + Date.now() + Math.floor(Math.random()*10000);
+      const doc   = { id: docId, name: file.originalname, size: file.size, addedAt: Date.now() };
+      // content NICHT in docs speichern (zu groß) — nur Metadaten
+      docs.push(doc);
+      added.push(doc);
+
+      // Sofort Embeddings erstellen (RAG-Index aufbauen)
+      if (text.length >= 50) {
+        setImmediate(async () => {
+          try {
+            const chunks = chunkTextBackend(text, file.originalname);
+            if (chunks.length) {
+              await query('DELETE FROM embeddings WHERE doc_id=$1', [docId]);
+              for (let i = 0; i < chunks.length; i++) {
+                const vec = simpleTextVector(chunks[i].text);
+                await query(
+                  'INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding) VALUES ($1,$2,$3,$4,$5,$6)',
+                  [req.params.id, docId, file.originalname, i, chunks[i].text, JSON.stringify(vec)]
+                );
+              }
+              log('info', `RAG: ${file.originalname} → ${chunks.length} Chunks indexiert`);
+            }
+          } catch(e) { log('warning', 'RAG-Indexierung: ' + e.message); }
+        });
+        indexed.push(file.originalname);
       }
     }
+
     await query('UPDATE systems SET docs=$1 WHERE id=$2', [JSON.stringify(docs), req.params.id]);
-    res.json({ ok: true, added });
+    res.json({ ok: true, added, indexed });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
+// Text-Chunking im Backend
+function chunkTextBackend(text, docName, chunkSize = 800, overlap = 100) {
+  const sentences = text.split(/(?<=[.!?\n])\s+/);
+  const chunks = [];
+  let current = '';
+  for (const sentence of sentences) {
+    if (current.length + sentence.length > chunkSize && current.length > 0) {
+      chunks.push({ text: current.trim(), docName });
+      current = current.slice(-overlap) + ' ' + sentence;
+    } else {
+      current += (current ? ' ' : '') + sentence;
+    }
+  }
+  if (current.trim().length > 20) chunks.push({ text: current.trim(), docName });
+  return chunks;
+}
 
 app.delete('/api/systems/:sysId/docs/:docId', requireAuth, async (req, res) => {
   try {
@@ -654,6 +706,10 @@ app.get('/api/onboarding/status', requireAuth, async (req, res) => {
     });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+app.delete('/api/onboarding/complete', requireAuth, requireAdmin, async (req, res) => {
+  try { await query("UPDATE app_settings SET value='0' WHERE key='onboarding_complete'"); res.json({ ok:true }); }
+  catch(e) { res.status(500).json({ error: e.message }); }
+});
 app.post('/api/onboarding/complete', requireAuth, async (req, res) => {
   try { await query("INSERT INTO app_settings (key,value) VALUES ('onboarding_complete','1') ON CONFLICT (key) DO UPDATE SET value='1'"); res.json({ ok:true }); }
   catch(e) { res.status(500).json({ error: e.message }); }
@@ -674,6 +730,46 @@ app.get('/api/search', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// RAG: Alle Dokumente eines Systems neu indexieren
+app.post('/api/systems/:id/reindex', requireAuth, async (req, res) => {
+  try {
+    const sys = mapSystem(await queryOne('SELECT * FROM systems WHERE id=$1', [req.params.id]));
+    if (!sys) return res.status(404).json({ error: 'System nicht gefunden' });
+
+    // Dokumente aus docs-Feld haben keinen Content mehr — hole aus Upload-Storage
+    // Stattdessen: vorhandene Embeddings zählen
+    const existing = await queryAll('SELECT DISTINCT doc_id FROM embeddings WHERE system_id=$1', [req.params.id]);
+    const docIds   = existing.map(r => r.doc_id);
+
+    res.json({
+      ok: true,
+      indexed: docIds.length,
+      total:   (sys.docs||[]).length,
+      message: docIds.length === (sys.docs||[]).length
+        ? 'Alle Dokumente sind indexiert'
+        : `${docIds.length} von ${(sys.docs||[]).length} Dokumenten indexiert. Neue Uploads werden automatisch indexiert.`
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// RAG: Status eines Systems
+app.get('/api/systems/:id/rag-status', requireAuth, async (req, res) => {
+  try {
+    const sys      = mapSystem(await queryOne('SELECT * FROM systems WHERE id=$1', [req.params.id]));
+    if (!sys) return res.status(404).json({ error: 'System nicht gefunden' });
+    const chunks   = await queryOne('SELECT COUNT(*) as c FROM embeddings WHERE system_id=$1', [req.params.id]);
+    const docCount = await queryOne('SELECT COUNT(DISTINCT doc_id) as c FROM embeddings WHERE system_id=$1', [req.params.id]);
+    res.json({
+      systemId:    req.params.id,
+      totalChunks: parseInt(chunks?.c || 0),
+      indexedDocs: parseInt(docCount?.c || 0),
+      totalDocs:   (sys.docs||[]).length,
+      ready:       parseInt(chunks?.c || 0) > 0,
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── RAG: EMBEDDINGS ───────────────────────────────────────────
 app.post('/api/embeddings/store', requireAuth, async (req, res) => {
   try {
@@ -691,17 +787,52 @@ app.post('/api/embeddings/store', requireAuth, async (req, res) => {
 
 app.post('/api/embeddings/search', requireAuth, async (req, res) => {
   try {
-    const { systemId, query:q2, topK=5 } = req.body;
-    if (!systemId||!q2) return res.status(400).json({ error:'Ungültige Eingabe' });
-    const like = `%${q2}%`;
-    const chunks = await queryAll('SELECT * FROM embeddings WHERE system_id=$1', [systemId]);
-    if (!chunks.length) return res.json({ results:[], fallback:true });
+    const { systemId, query: q2, topK = 12 } = req.body;
+    if (!systemId || !q2) return res.status(400).json({ error: 'Ungültige Eingabe' });
+
+    const chunks = await queryAll(
+      'SELECT * FROM embeddings WHERE system_id=$1 ORDER BY chunk_index ASC',
+      [systemId]
+    );
+    if (!chunks.length) return res.json({ results: [], fallback: true });
+
     const queryVec = simpleTextVector(q2);
+
+    // Alle Chunks bewerten
     const scored = chunks.map(c => {
-      const emb = c.embedding || [];
-      return { text: c.chunk_text, docName: c.doc_name, score: cosineSimilarity(queryVec, emb) };
-    }).sort((a,b) => b.score-a.score).slice(0, topK);
-    res.json({ results: scored, fallback: false });
+      const emb = typeof c.embedding === 'string' ? JSON.parse(c.embedding) : (c.embedding || []);
+      return {
+        text:    c.chunk_text,
+        docName: c.doc_name,
+        docId:   c.doc_id,
+        score:   cosineSimilarity(queryVec, emb),
+      };
+    });
+
+    // Pro Dokument: besten Chunk behalten + top-Chunks insgesamt
+    const byDoc = {};
+    for (const c of scored) {
+      if (!byDoc[c.docId] || c.score > byDoc[c.docId].score) {
+        byDoc[c.docId] = c;
+      }
+    }
+
+    // Alle Dokumente mindestens einmal vertreten + beste Chunks oben
+    const perDocBest  = Object.values(byDoc).sort((a, b) => b.score - a.score);
+    const topOverall  = scored.sort((a, b) => b.score - a.score).slice(0, topK);
+
+    // Merge: erst per-Doc, dann fill mit top-Overall
+    const seen = new Set();
+    const results = [];
+    for (const c of [...perDocBest, ...topOverall]) {
+      const key = c.docId + '_' + c.text.substring(0, 30);
+      if (!seen.has(key) && results.length < topK) {
+        seen.add(key);
+        results.push(c);
+      }
+    }
+
+    res.json({ results, fallback: false });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

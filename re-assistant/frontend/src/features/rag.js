@@ -82,23 +82,76 @@ async function semanticSearch(systemId, query, topK = 5) {
 async function buildRAGContext(systemId, userQuery) {
   if (!systemId) return '';
 
-  // Parallel: semantische Suche + normale Dokumente
-  const results = await semanticSearch(systemId, userQuery, 5);
+  const q = (userQuery || '').toLowerCase();
 
-  if (!results.length) {
-    // Fallback: normale Dokument-Chunks
-    const sys = S.systems.find(s => s.id === systemId);
-    return getCtx(sys, 20000);
+  // Erkenne "Überblick"-Fragen — hier alle Dokumente nutzen
+  const isOverviewQuery = /überblick|übersicht|zusammenfassung|alles|komplett|gesamt|alle funk|was kann|was macht|erklär|beschreib|zeig mir|worum geht/i.test(q);
+
+  if (isOverviewQuery) {
+    // Alle Chunks laden — breiter Überblick
+    return await buildFullContext(systemId, 12000);
   }
 
-  const ragContext = results
-    .filter(r => r.score > 0.1)  // Relevanz-Schwelle
-    .map(r => `[${r.docName}]\n${r.text}`)
-    .join('\n\n---\n\n');
+  // Normale semantische Suche mit mehr Chunks
+  const results = await semanticSearch(systemId, userQuery, 12);
 
-  return ragContext
-    ? `Relevante Dokumentation:\n\n${ragContext}`
-    : '';
+  if (!results.length) {
+    return await buildFullContext(systemId, 8000);
+  }
+
+  // Nur relevante Chunks (niedrigere Schwelle)
+  const relevant = results.filter(r => r.score > 0.05);
+
+  if (!relevant.length) {
+    return await buildFullContext(systemId, 8000);
+  }
+
+  // Chunks nach Dokument gruppieren — jedes Dokument gleichmäßig vertreten
+  const byDoc = {};
+  for (const r of relevant) {
+    if (!byDoc[r.docName]) byDoc[r.docName] = [];
+    byDoc[r.docName].push(r.text);
+  }
+
+  const contextParts = Object.entries(byDoc).map(([docName, texts]) =>
+    `[${docName}]\n${texts.slice(0, 3).join(' ... ')}`
+  );
+
+  return `Relevante Dokumentation:\n\n${contextParts.join('\n\n---\n\n')}`;
+}
+
+// Vollständiger Kontext aller Dokumente (für Überblick-Fragen)
+async function buildFullContext(systemId, maxChars = 10000) {
+  try {
+    const res  = await fetch('api/embeddings/search', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ systemId, query: 'system funktionen überblick', topK: 50 })
+    });
+    const data = await res.json();
+    const chunks = data.results || [];
+
+    if (!chunks.length) return '';
+
+    // Alle Dokumente einmal vertreten
+    const byDoc = {};
+    for (const c of chunks) {
+      if (!byDoc[c.docName]) byDoc[c.docName] = c.text;
+    }
+
+    let context = Object.entries(byDoc)
+      .map(([name, text]) => `[${name}]\n${text}`)
+      .join('\n\n---\n\n');
+
+    // Auf maxChars kürzen
+    if (context.length > maxChars) {
+      context = context.substring(0, maxChars) + '\n... (weiterer Kontext verfügbar)';
+    }
+
+    return context ? `Systemdokumentation (Überblick):\n\n${context}` : '';
+  } catch(e) {
+    return '';
+  }
 }
 
 // ── RAG-Status für ein System anzeigen ───────────────────────
@@ -107,14 +160,13 @@ async function showRAGStatus(systemId) {
   if (!sys) return;
 
   try {
-    const res = await fetch('api/embeddings/search', {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ systemId, query: 'test', topK: 1 })
-    });
-    const data = await res.json();
-    const hasEmbeddings = !data.fallback && data.results?.length > 0;
+    // Neue Status-Route nutzen
+    const statusRes = await fetch(`api/systems/${systemId}/rag-status`, { credentials: 'include' });
+    const status    = statusRes.ok ? await statusRes.json() : {};
+    const hasEmbeddings = status.ready || false;
     const docCount      = sys.docs?.length || 0;
+    const indexedDocs   = status.indexedDocs || 0;
+    const totalChunks   = status.totalChunks || 0;
 
     openModal(`📚 Wissens-Index: ${sys.name}`, `
       <div style="margin-bottom:16px">
@@ -125,7 +177,7 @@ async function showRAGStatus(systemId) {
               ${hasEmbeddings ? 'Semantische Suche aktiv' : 'Nur Textsuche (keine Embeddings)'}
             </div>
             <div style="font-size:11px;color:var(--t3);margin-top:2px">
-              ${docCount} Dokument(e) · ${hasEmbeddings ? 'Voll indiziert' : 'Noch nicht indiziert'}
+              ${docCount} Dokument(e) · ${indexedDocs} indexiert · ${totalChunks} Chunks
             </div>
           </div>
         </div>
@@ -184,6 +236,7 @@ function log_rag(msg) {
 // ── Patch: Chat-Funktionen mit RAG-Kontext anreichern ─────────
 // Wird aufgerufen wenn ein System Dokumente hat und Embeddings vorhanden sind
 window.buildRAGContext   = buildRAGContext;
+window.buildFullContext  = buildFullContext;
 window.semanticSearch    = semanticSearch;
 window.indexDocument     = indexDocument;
 window.indexSystemDocs   = indexSystemDocs;

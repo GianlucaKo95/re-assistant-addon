@@ -91,10 +91,10 @@ async function sendBizChat() {
     : '';
   const system = [
     `Du bist ein erfahrener Requirements Engineer und Business-Analyst. ${langNote()}`,
-    sys ? `System: ${sys.name}\nBeschreibung: ${sys.description || ''}` : 'Kein System ausgewählt.',
-    ragCtx || (sys ? getCtx(sys, 15000) : ''),
+    sys ? `System: ${sys.name}\nBeschreibung: ${sys.description || ''}\nAnzahl Dokumente: ${(sys.docs||[]).length}` : 'Kein System ausgewählt.',
+    ragCtx ? `${ragCtx}\n\nWICHTIG: Beziehe dich auf ALLE oben genannten Dokumente und Quellen. Erwähne konkrete Funktionen aus den Dokumenten.` : (sys ? getCtx(sys, 15000) : ''),
     'Hilf dem Business-Nutzer dabei, Anforderungen zu definieren und Prozesse zu dokumentieren.',
-    'Wenn der Nutzer Prozesse oder Features beschreibt, extrahiere implizit mögliche Anforderungen.',
+    'Wenn der Nutzer nach einem Überblick fragt, nenne alle Hauptfunktionen aus der Dokumentation vollständig.',
   ].filter(Boolean).join('\n\n');
 
   const res = await callAPI(S.chatHistory.bc, system, 1800);

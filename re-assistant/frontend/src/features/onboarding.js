@@ -9,7 +9,13 @@ const $ = window.$ || (id => document.getElementById(id));
 async function checkAndShowOnboarding() {
   try {
     const status = await fetch('api/onboarding/status', { credentials:'include' }).then(r=>r.json());
-    if (!status.complete && !status.steps.hasRequirements) {
+    // Wizard zeigen wenn: nicht abgeschlossen UND noch kein System angelegt
+    // Oder: nicht abgeschlossen UND noch keine Anforderungen (frischer Start)
+    const shouldShow = !status.complete && (
+      !status.steps.hasSystem ||
+      (!status.steps.hasRequirements && !status.steps.hasSystem)
+    );
+    if (shouldShow) {
       showOnboardingWizard(status);
     }
   } catch(e) { /* Onboarding-Fehler ignorieren */ }
