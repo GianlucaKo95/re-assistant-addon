@@ -1258,3 +1258,22 @@ select option:hover {
   .req-card:hover { background: var(--s1); }
   .data-table tbody tr:hover { background: transparent; }
 }
+
+/* ── Traceability Graph ──────────────────────────────────────── */
+#view-traceability.trace-fullscreen {
+  position: fixed !important;
+  inset: 0;
+  z-index: 1000;
+  background: var(--bg);
+}
+
+#trace-graph-wrap svg {
+  display: block;
+}
+
+#trace-graph-wrap g rect {
+  transition: filter .15s;
+}
+#trace-graph-wrap g:hover rect {
+  filter: brightness(1.15);
+}

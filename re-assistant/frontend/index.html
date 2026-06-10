@@ -392,22 +392,63 @@
       </div>
 
       <!-- TRACEABILITY -->
-      <div class="view" id="view-traceability">
-        <div class="view-header">
-          <div><h2>Traceability-Matrix</h2><p class="view-sub">Anforderung → User Story → Akzeptanzkriterien → Source-Code</p></div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <select id="trace-sys-sel" class="filter-select" style="min-width:180px"><option value="">System wählen …</option></select>
-            <button class="btn-secondary" id="btn-build-trace">✦ KI Lücken finden</button>
-            <button class="btn-secondary" id="btn-export-trace">↓ CSV Export</button>
+      <!-- TRACEABILITY GRAPH -->
+      <div class="view" id="view-traceability" style="display:flex;flex-direction:column;overflow:hidden">
+        <div class="view-header" style="flex-shrink:0">
+          <div>
+            <h2>Traceability-Graph</h2>
+            <p class="view-sub">Anforderung → User Story → Testfall</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="trace-sys-sel" style="min-width:160px">
+              <option value="">System wählen …</option>
+            </select>
+            <select id="trace-filter-sel">
+              <option value="all">Alle</option>
+              <option value="incomplete">Ohne Stories</option>
+              <option value="complete">Mit Stories</option>
+            </select>
+            <button class="btn-secondary" style="font-size:12px" id="btn-trace-generate">✦ KI: Stories generieren</button>
+            <button class="btn-secondary" style="font-size:12px" id="btn-trace-export">↓ CSV Export</button>
+            <button class="btn-secondary" style="font-size:12px" id="btn-trace-fullscreen">⛶ Vollbild</button>
           </div>
         </div>
-        <div id="trace-matrix-wrap" style="flex:1;overflow:auto;display:flex;flex-direction:column">
-          <div class="empty-state"><div class="es-icon">🔗</div><h3>System auswählen</h3><p>Traceability-Matrix wird geladen.</p></div>
+
+        <!-- Stats -->
+        <div class="stats-row" style="flex-shrink:0;padding:10px 20px;gap:10px">
+          <div class="stat-card">
+            <span class="stat-n" id="trace-stat-reqs">0</span>
+            <span class="stat-l">Anforderungen</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-n" id="trace-stat-stories">0</span>
+            <span class="stat-l">User Stories</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-n" id="trace-stat-tests">0</span>
+            <span class="stat-l">Testfälle</span>
+          </div>
+          <div class="stat-card accent">
+            <span class="stat-n" id="trace-stat-cover">0%</span>
+            <span class="stat-l">Coverage</span>
+          </div>
+          <div class="stat-card" style="border-color:var(--ambbg)">
+            <span class="stat-n" id="trace-stat-gaps" style="color:var(--amb)">0</span>
+            <span class="stat-l">Lücken</span>
+          </div>
+        </div>
+
+        <!-- Graph -->
+        <div id="trace-graph-wrap" style="flex:1;overflow:hidden;position:relative">
+          <div class="empty-state">
+            <div class="es-icon">🕸</div>
+            <h3>System wählen</h3>
+            <p>Wähle ein System um den Traceability-Graphen anzuzeigen.</p>
+          </div>
         </div>
       </div>
 
-
-      <!-- SOURCE ANALYSIS -->
+<!-- SOURCE ANALYSIS -->
       <div class="view" id="view-source-analysis">
         <div class="view-header">
           <div><h2>Source-Code-Analyse</h2><p class="view-sub">KI analysiert welche Dateien und Funktionen geändert werden müssen</p></div>

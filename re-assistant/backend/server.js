@@ -477,7 +477,7 @@ Bestehende:\n${rows.slice(0,15).map(r=>`- [${r.id}] ${r.title}: ${(r.description
 
           const result = JSON.parse(text.replace(/```json|```/g,'').trim());
           for (const c of (result.conflicts||[])) {
-            const ex = await queryOne('SELECT id FROM req_conflicts WHERE req_id_a=$1 AND req_id_b=$2 AND status!='resolved'', [savedReq.id, c.reqId]);
+            const ex = await queryOne("SELECT id FROM req_conflicts WHERE req_id_a=$1 AND req_id_b=$2 AND status!='resolved'", [savedReq.id, c.reqId]);
             if (!ex) {
               const cr = rows.find(r=>r.id===c.reqId);
               await query('INSERT INTO req_conflicts (req_id_a,req_id_b,system_id_a,system_id_b,conflict_type,description,severity,ai_suggestion) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',

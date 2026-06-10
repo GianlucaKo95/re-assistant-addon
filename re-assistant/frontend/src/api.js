@@ -40,6 +40,26 @@ const API = {
     );
     return get('api/requirements' + (q.toString() ? '?' + q : ''));
   },
+  async getUserStories(params = {}) {
+    const q = new URLSearchParams(params).toString();
+    return get('api/user-stories' + (q ? '?' + q : ''));
+  },
+  async saveUserStory(s)      { return post('api/user-stories', s); },
+  async deleteUserStory(id)   { return del('api/user-stories/' + id); },
+  async generateUserStories(reqId, systemId) {
+    return post('api/user-stories/generate', { reqId, systemId });
+  },
+  async getTestCases(params = {}) {
+    const q = new URLSearchParams(params).toString();
+    return get('api/test-cases' + (q ? '?' + q : ''));
+  },
+  async saveTestCase(t)       { return post('api/test-cases', t); },
+  async deleteTestCase(id)    { return del('api/test-cases/' + id); },
+  async getConflicts(params = {}) {
+    const q = new URLSearchParams(params).toString();
+    return get('api/conflicts' + (q ? '?' + q : ''));
+  },
+
   async saveRequirement(r) {
     const result = await post('api/requirements', r);
     // Konflikt-Check asynchron nach dem Speichern
