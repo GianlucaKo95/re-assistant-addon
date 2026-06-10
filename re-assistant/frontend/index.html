@@ -4,8 +4,6 @@
 <meta charset="UTF-8"/>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.anthropic.com https://*.atlassian.net ws://localhost:3001 wss://localhost:3001; font-src https://fonts.googleapis.com https://fonts.gstatic.com;"/>
 <title>RE-Assistent</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="/src/styles.css"/>
 </head>
 <body>
@@ -30,7 +28,6 @@
 <!-- ═══ APP ══════════════════════════════════════════════════════════ -->
 <div id="app-screen" style="display:none">
   <div id="titlebar">
-    <div class="wdot r"></div><div class="wdot y"></div><div class="wdot g"></div>
     <div id="tb-title">RE·Assistent</div>
     <div id="tb-right">
       <div id="user-pill"><div id="user-avatar"></div><span id="user-name-label"></span><span id="user-role-badge"></span></div>
@@ -85,6 +82,14 @@
       <!-- ADMIN: License -->
       <div class="view" id="view-admin-license"></div>
 
+      <!-- ADMIN: API-Keys -->
+      <div class="view" id="view-admin-apikey">
+        <div class="view-header">
+          <div><h2>API-Key Verwaltung</h2><p class="view-sub">Globaler Anbieter und per-User Keys konfigurieren</p></div>
+        </div>
+        <div id="apikey-admin-wrap" class="scroll-body" style="flex:1;padding:16px 20px;overflow-y:auto"></div>
+      </div>
+
       <!-- BUSINESS: Chat + Live Reqs -->
       <div class="view" id="view-business-chat">
         <div id="bc-layout">
@@ -99,8 +104,8 @@
                 <button class="chip" data-p="Welche Verbesserungsmöglichkeiten siehst du?">Verbesserungen</button>
               </div>
               <div class="input-bar">
-                <button class="mic-btn mic-off" id="bc-mic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
                 <textarea id="bc-input" class="chat-textarea" placeholder="Prozess beschreiben oder Frage stellen …" rows="1"></textarea>
+                <button class="mic-btn mic-off" id="bc-mic" title="Spracheingabe" style="margin-left:4px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
                 <button class="send-btn" id="bc-send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
               </div>
             </div>
@@ -240,8 +245,8 @@
                 <button class="chip" data-p="Gibt es widersprüchliche Anforderungen?">Widersprüche</button>
               </div>
               <div class="input-bar">
-                <button class="mic-btn mic-off" id="pmc-mic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
                 <textarea id="pmc-input" class="chat-textarea" placeholder="Fragen zum System …" rows="1"></textarea>
+                <button class="mic-btn mic-off" id="pmc-mic" title="Spracheingabe" style="margin-left:4px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
                 <button class="send-btn" id="pmc-send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
               </div>
             </div>
