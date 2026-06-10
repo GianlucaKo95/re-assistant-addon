@@ -86,6 +86,8 @@ function renderSystemNode(node, depth) {
           <button class="btn-secondary" style="font-size:11px;padding:5px 10px"
             onclick="addFiles('${node.id}')">+ Dateien</button>
           <button class="btn-secondary" style="font-size:11px;padding:5px 10px"
+            onclick="addFolder('${node.id}')" title="Ordner hochladen">📁 Ordner</button>
+          <button class="btn-secondary" style="font-size:11px;padding:5px 10px"
             onclick="showDocStats('${node.id}')">📊 Stats</button>
           <button class="btn-secondary" style="font-size:11px;padding:5px 10px"
             onclick="showRAGStatus('${node.id}')">🧠 Index</button>
@@ -204,6 +206,23 @@ async function delSys(id) {
   toast('✅ System gelöscht');
 }
 
+async function addFolder(systemId) {
+  const files = await window.api.pickFolder();
+  if (!files.length) { toast('⚠ Keine unterstützten Dateien im Ordner gefunden'); return; }
+  toast(`📁 ${files.length} Datei(en) gefunden — lade hoch …`);
+  const btn = document.querySelector(`[onclick="addFolder('${systemId}')"]`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span>'; }
+  const res = await window.api.uploadDocs(systemId, files);
+  S.systems = await window.api.getSystems();
+  renderSystems();
+  toast(`✅ ${res.added?.length || 0} Datei(en) aus Ordner hochgeladen`);
+  if (typeof indexSystemDocs === 'function') {
+    indexSystemDocs(systemId).then(r => {
+      if (r.indexed > 0) toast(`🧠 ${r.indexed} Dokument(e) indexiert`);
+    });
+  }
+}
+
 async function addFiles(systemId) {
   const files = await window.api.pickFiles('.txt,.md,.pdf,.js,.ts,.tsx,.jsx,.py,.java,.cs,.cpp,.c,.h,.go,.rb,.php,.swift,.kt,.rs,.json,.csv,.yaml,.yml,.html,.css,.scss,.sql,.sh,.bash,.vue,.dart');
   if (!files.length) return;
@@ -260,5 +279,6 @@ window.openSysModal     = openSysModal;
 window.saveSys          = saveSys;
 window.delSys           = delSys;
 window.addFiles         = addFiles;
+window.addFolder        = addFolder;
 window.remDoc           = remDoc;
 window.showDocStats     = showDocStats;
