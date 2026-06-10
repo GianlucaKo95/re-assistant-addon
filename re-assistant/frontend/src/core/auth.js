@@ -117,8 +117,17 @@ async function initApp() {
 
 // ── Settings ──────────────────────────────────────────────────
 function applySettingsToForm() {
+  const provider = S.settings.provider || 'anthropic';
+  setVal('cfg-provider',   provider);
   setVal('cfg-apikey',     S.settings.apiKey    || '');
   setVal('cfg-model',      S.settings.model);
+  setVal('cfg-grok-apikey', S.settings.grokApiKey || '');
+  setVal('cfg-grok-model',  S.settings.grokModel  || 'grok-3-mini');
+  const isGrok = provider === 'grok';
+  const aw = document.getElementById('cfg-anthropic-wrap');
+  const gw = document.getElementById('cfg-grok-wrap');
+  if (aw) aw.style.display = isGrok ? 'none' : '';
+  if (gw) gw.style.display = isGrok ? '' : 'none';
   setVal('cfg-lang',       S.settings.language);
   setVal('cfg-detail',     S.settings.detail);
   setVal('cfg-persona',    S.settings.persona   || 'professional');
@@ -128,8 +137,12 @@ function applySettingsToForm() {
 }
 
 async function saveCfg() {
-  S.settings.apiKey    = $('cfg-apikey').value.trim();
-  S.settings.model     = $('cfg-model').value;
+  const provider = $('cfg-provider')?.value || 'anthropic';
+  S.settings.provider   = provider;
+  S.settings.apiKey     = $('cfg-apikey')?.value.trim() || '';
+  S.settings.model      = $('cfg-model')?.value || 'claude-sonnet-4-20250514';
+  S.settings.grokApiKey = $('cfg-grok-apikey')?.value.trim() || '';
+  S.settings.grokModel  = $('cfg-grok-model')?.value || 'grok-3-mini';
   S.settings.language  = $('cfg-lang').value;
   S.settings.detail    = $('cfg-detail').value;
   S.settings.persona   = $('cfg-persona').value;
@@ -201,6 +214,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const i = $('cfg-apikey');
     i.type = i.type === 'password' ? 'text' : 'password';
     $('cfg-toggle').textContent = i.type === 'password' ? 'Anzeigen' : 'Verbergen';
+  });
+  $('cfg-grok-toggle')?.addEventListener('click', () => {
+    const i = $('cfg-grok-apikey');
+    if (!i) return;
+    i.type = i.type === 'password' ? 'text' : 'password';
+    $('cfg-grok-toggle').textContent = i.type === 'password' ? 'Anzeigen' : 'Verbergen';
+  });
+  $('cfg-provider')?.addEventListener('change', function() {
+    const isGrok = this.value === 'grok';
+    const aw = document.getElementById('cfg-anthropic-wrap');
+    const gw = document.getElementById('cfg-grok-wrap');
+    if (aw) aw.style.display = isGrok ? 'none' : '';
+    if (gw) gw.style.display = isGrok ? '' : 'none';
   });
   $('btn-save-cfg')?.addEventListener('click', saveCfg);
   $('btn-docs')?.addEventListener('click', () => window.api.openExternal('https://docs.anthropic.com'));

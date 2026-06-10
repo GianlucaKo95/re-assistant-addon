@@ -629,10 +629,47 @@
       <div class="view" id="view-settings">
         <div class="view-header"><div><h2>Einstellungen</h2><p class="view-sub">API-Konfiguration, Jira und KI-Verhalten</p></div></div>
         <div id="settings-content">
-          <div class="sg"><div class="sg-head">Anthropic API</div><div class="sg-body">
-            <div class="frow"><label>API-Schlüssel</label><div class="input-addon"><input type="password" id="cfg-apikey" placeholder="sk-ant-api03-…"/><button class="addon-btn" id="cfg-toggle">Anzeigen</button></div><span class="fhint">Lokal gespeichert — nie in die Cloud übertragen.</span></div>
-            <div class="frow"><label>Modell</label><select id="cfg-model"><option value="claude-sonnet-4-20250514">Claude Sonnet 4 — empfohlen</option><option value="claude-opus-4-5">Claude Opus 4.5</option><option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option></select></div>
-            <button class="btn-primary" id="btn-save-cfg">Speichern</button><div id="cfg-msg"></div>
+          <div class="sg"><div class="sg-head">KI-Anbieter &amp; API</div><div class="sg-body">
+            <div class="frow"><label>Anbieter</label>
+              <select id="cfg-provider">
+                <option value="anthropic">🤖 Anthropic (Claude)</option>
+                <option value="grok">⚡ Grok (xAI) — kostenlos verfügbar</option>
+              </select>
+            </div>
+            <div id="cfg-anthropic-wrap">
+              <div class="frow"><label>Anthropic API-Schlüssel</label>
+                <div class="input-addon">
+                  <input type="password" id="cfg-apikey" placeholder="sk-ant-api03-…"/>
+                  <button class="addon-btn" id="cfg-toggle">Anzeigen</button>
+                </div>
+                <span class="fhint">Lokal gespeichert — nie in die Cloud übertragen.</span>
+              </div>
+              <div class="frow"><label>Modell</label>
+                <select id="cfg-model">
+                  <option value="claude-sonnet-4-20250514">Claude Sonnet 4 — empfohlen</option>
+                  <option value="claude-opus-4-5">Claude Opus 4.5</option>
+                  <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
+                </select>
+              </div>
+            </div>
+            <div id="cfg-grok-wrap" style="display:none">
+              <div class="frow"><label>Grok API-Schlüssel</label>
+                <div class="input-addon">
+                  <input type="password" id="cfg-grok-apikey" placeholder="xai-…"/>
+                  <button class="addon-btn" id="cfg-grok-toggle">Anzeigen</button>
+                </div>
+                <span class="fhint">Kostenlos unter <a href="https://console.x.ai" target="_blank" style="color:var(--aa)">console.x.ai</a></span>
+              </div>
+              <div class="frow"><label>Modell</label>
+                <select id="cfg-grok-model">
+                  <option value="grok-3-mini">Grok 3 Mini — empfohlen</option>
+                  <option value="grok-3">Grok 3</option>
+                  <option value="grok-2">Grok 2</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn-primary" id="btn-save-cfg">Speichern</button>
+            <div id="cfg-msg"></div>
           </div></div>
           <div class="sg"><div class="sg-head">Jira-Integration (global)</div><div class="sg-body">
             <div class="frow"><label>Jira URL</label><input type="text" id="cfg-jira-url" placeholder="https://company.atlassian.net"/></div>
