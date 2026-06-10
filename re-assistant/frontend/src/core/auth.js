@@ -134,22 +134,25 @@ function applySettingsToForm() {
   if (gw)  gw.style.display  = isGrok ? '' : 'none';
   if (grw) grw.style.display = isGroq ? '' : 'none';
 
-  // Für Nicht-Admins: API-Key Sektion nur lesend
-  const isAdmin = S.user?.role === 'admin';
-  const apiSection = document.getElementById('cfg-api-section');
-  if (apiSection) {
+  // Für Nicht-Admins: API-Key Felder deaktivieren (nach kurzer Verzögerung)
+  setTimeout(() => {
+    const isAdmin = S.user?.role === 'admin';
+    const apiSection = document.getElementById('cfg-api-section');
+    if (!apiSection) return;
     if (!isAdmin) {
-      // Status laden und anzeigen
-      fetch('api/apikey/user/status', { credentials:'include' }).then(r=>r.json()).then(status => {
-        const prov = status.globalProvider || 'anthropic';
-        const hasKey = prov === 'grok' ? status.hasGrokKey : status.hasGlobalKey;
-        apiSection.innerHTML = '<div style="padding:10px 12px;background:var(--s2);border-radius:var(--r);font-size:12px;color:var(--t2)">' +
-          (prov === 'grok' ? '⚡ Grok (xAI)' : '🤖 Anthropic') + ' — ' +
-          (hasKey ? '<span style="color:var(--grn)">✓ Globaler Key aktiv</span>' : '<span style="color:var(--red)">⚠ Kein Key konfiguriert</span>') +
-          '</div>';
-      }).catch(() => {});
+      // Alle Inputs + Buttons in der API-Sektion sperren
+      apiSection.querySelectorAll('input, button, select').forEach(el => {
+        el.disabled = true;
+        el.style.opacity = '0.5';
+        el.style.cursor = 'not-allowed';
+      });
+      // Info-Banner hinzufügen
+      const banner = document.createElement('div');
+      banner.style.cssText = 'padding:8px 10px;background:var(--s2);border-radius:var(--r);font-size:12px;color:var(--t2);margin-top:8px';
+      banner.textContent = 'ℹ Der API-Key wird vom Administrator verwaltet.';
+      apiSection.appendChild(banner);
     }
-  }
+  }, 100);
   setVal('cfg-lang',       S.settings.language);
   setVal('cfg-detail',     S.settings.detail);
   setVal('cfg-persona',    S.settings.persona   || 'professional');
