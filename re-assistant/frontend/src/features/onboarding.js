@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/onboarding.js
  * Onboarding-Wizard — erster Start, System anlegen, erste Anforderungen.
@@ -8,7 +7,7 @@ const $ = window.$ || (id => document.getElementById(id));
 
 async function checkAndShowOnboarding() {
   try {
-    const status = await fetch('api/onboarding/status', { credentials:'include' }).then(r=>r.json());
+    const status = await fetch('/api/onboarding/status', { credentials:'include' }).then(r=>r.json());
     if (!status.complete && !status.steps.hasRequirements) {
       showOnboardingWizard(status);
     }
@@ -41,8 +40,9 @@ function renderOnboardingStep(step) {
     1: renderWelcome,
     2: renderCreateSystem,
     3: renderAddReqs,
-    4: renderInviteHint,
-    5: renderDone,
+    4: renderImportStep,
+    5: renderInviteHint,
+    6: renderDone,
   };
   const fn = steps[step];
   if (fn) fn();
@@ -55,7 +55,7 @@ function renderWelcome() {
       <h1 style="font-size:22px;font-weight:700;margin-bottom:8px">Willkommen beim RE-Assistenten</h1>
       <p style="font-size:14px;color:var(--t2);line-height:1.7;margin-bottom:24px">
         Ihr KI-gestütztes Requirements Engineering Tool.<br>
-        Wir richten alles in 3 kurzen Schritten ein.
+        Wir richten alles in 4 kurzen Schritten ein.
       </p>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:28px">
         ${[
@@ -81,7 +81,7 @@ function renderWelcome() {
 function renderCreateSystem() {
   $('onboarding-content').innerHTML = `
     <div style="padding:36px">
-      ${onboardingHeader(1, 3, '📁', 'System anlegen', 'Ein System ist ein Projekt oder eine Softwarekomponente.')}
+      ${onboardingHeader(1, 4, '📁', 'System anlegen', 'Ein System ist ein Projekt oder eine Softwarekomponente.')}
       <div class="frow" style="margin-bottom:14px">
         <label>Name des Systems</label>
         <input type="text" id="ob-sys-name" placeholder="z.B. Kundenverwaltung, Mobile App, API-Gateway …"
@@ -120,7 +120,7 @@ function renderAddReqs() {
   const sysName = window._onboardingData.systemName || 'Ihr System';
   $('onboarding-content').innerHTML = `
     <div style="padding:36px">
-      ${onboardingHeader(2, 3, '✦', 'Erste Anforderungen', `KI hilft Ihnen beim Erfassen der Anforderungen für "${sysName}".`)}
+      ${onboardingHeader(2, 4, '✦', 'Erste Anforderungen', `KI hilft Ihnen beim Erfassen der Anforderungen für "${sysName}".`)}
 
       <div style="background:var(--s2);border-radius:12px;padding:14px;margin-bottom:14px;font-size:13px;color:var(--t2);line-height:1.6">
         💡 Beschreiben Sie kurz was das System können soll — die KI strukturiert es automatisch.
@@ -212,10 +212,311 @@ async function onboardingSaveReqs() {
 
 function onboardingSkipReqs() { nextOnboardingStep(); }
 
+// ── Schritt 4: Import (optional) ─────────────────────────────
+function renderImportStep() {
+  const sysName = window._onboardingData?.systemName || 'Ihr System';
+  const sysId   = window._onboardingData?.systemId;
+
+  $('onboarding-content').innerHTML = `
+    <div style="padding:36px">
+      ${onboardingHeader(3, 4, '📥', 'Anforderungen importieren',
+        'Bestehende Anforderungen aus Jira oder einer Datei importieren — optional.')}
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+
+        <!-- Jira -->
+        <div id="ob-import-jira" onclick="obSelectImportSource('jira')" style="
+          background:var(--s2);border:2px solid var(--b1);border-radius:12px;
+          padding:16px;cursor:pointer;transition:all .15s;text-align:center">
+          <div style="font-size:28px;margin-bottom:8px">🔗</div>
+          <div style="font-size:13px;font-weight:600">Aus Jira importieren</div>
+          <div style="font-size:11px;color:var(--t3);margin-top:4px">Issues als Anforderungen</div>
+        </div>
+
+        <!-- Datei -->
+        <div id="ob-import-file" onclick="obSelectImportSource('file')" style="
+          background:var(--s2);border:2px solid var(--b1);border-radius:12px;
+          padding:16px;cursor:pointer;transition:all .15s;text-align:center">
+          <div style="font-size:28px;margin-bottom:8px">📄</div>
+          <div style="font-size:13px;font-weight:600">Datei importieren</div>
+          <div style="font-size:11px;color:var(--t3);margin-top:4px">CSV, JSON, Excel, Markdown</div>
+        </div>
+      </div>
+
+      <!-- Jira-Formular -->
+      <div id="ob-jira-form" style="display:none;margin-bottom:12px">
+        <div class="frow">
+          <label>Jira URL</label>
+          <input type="text" id="ob-jira-url" placeholder="https://mein-projekt.atlassian.net"/>
+        </div>
+        <div class="frow">
+          <label>E-Mail</label>
+          <input type="email" id="ob-jira-email" placeholder="user@firma.de"/>
+        </div>
+        <div class="frow">
+          <label>API-Token</label>
+          <input type="password" id="ob-jira-token" placeholder="Token aus Atlassian Account Settings"/>
+        </div>
+        <button class="btn-primary" style="width:100%;font-size:12px" id="ob-jira-connect-btn"
+          onclick="obConnectJira('${sysId}')">🔗 Verbinden & importieren</button>
+        <div id="ob-jira-status" style="margin-top:8px;font-size:12px"></div>
+      </div>
+
+      <!-- Datei-Import -->
+      <div id="ob-file-form" style="display:none;margin-bottom:12px">
+        <button class="btn-secondary" style="width:100%" onclick="obPickImportFile('${sysId}')">
+          📂 Datei wählen (CSV, JSON, Excel, Markdown)
+        </button>
+        <div id="ob-file-status" style="margin-top:8px;font-size:12px"></div>
+      </div>
+
+      <div id="ob-import-preview" style="margin-bottom:12px"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button class="btn-secondary" onclick="prevOnboardingStep()">← Zurück</button>
+        <button class="btn-primary" onclick="nextOnboardingStep()">
+          Weiter → <span style="font-size:10px;opacity:.7">(überspringen)</span>
+        </button>
+      </div>
+    </div>`;
+}
+
+function obSelectImportSource(source) {
+  const jiraCard = document.getElementById('ob-import-jira');
+  const fileCard = document.getElementById('ob-import-file');
+  const jiraForm = document.getElementById('ob-jira-form');
+  const fileForm = document.getElementById('ob-file-form');
+
+  // Reset
+  [jiraCard, fileCard].forEach(el => {
+    if (el) el.style.borderColor = 'var(--b1)';
+  });
+
+  if (source === 'jira') {
+    if (jiraCard) jiraCard.style.borderColor = 'var(--aa)';
+    if (jiraForm) jiraForm.style.display = '';
+    if (fileForm) fileForm.style.display = 'none';
+  } else {
+    if (fileCard) fileCard.style.borderColor = 'var(--aa)';
+    if (fileForm) fileForm.style.display = '';
+    if (jiraForm) jiraForm.style.display = 'none';
+  }
+}
+
+async function obConnectJira(sysId) {
+  const url   = document.getElementById('ob-jira-url')?.value.trim();
+  const email = document.getElementById('ob-jira-email')?.value.trim();
+  const token = document.getElementById('ob-jira-token')?.value.trim();
+  const statusEl = document.getElementById('ob-jira-status');
+  const btn   = document.getElementById('ob-jira-connect-btn');
+
+  if (!url || !email || !token) { toast('⚠ Alle Felder ausfüllen'); return; }
+  if (!url.startsWith('http')) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--red)">❌ URL muss mit https:// beginnen</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Verbinde …';
+  if (statusEl) statusEl.innerHTML = '';
+
+  try {
+    const res = await window.api.jiraGetProjects({ url, email, token });
+    const projects = res.values || res.data?.values || [];
+
+    if (!projects.length) {
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--red)">❌ Keine Projekte gefunden oder Zugangsdaten falsch</span>';
+      btn.disabled = false; btn.innerHTML = '🔗 Verbinden & importieren';
+      return;
+    }
+
+    // Erstes Projekt automatisch importieren
+    const pk = projects[0].key;
+    if (statusEl) statusEl.innerHTML = `<span class="spin"></span> Lade Issues aus ${pk} …`;
+
+    const issuesRes = await window.api.jiraGetIssues({ url, email, token, projectKey: pk });
+    const issues = issuesRes.issues || [];
+
+    if (!issues.length) {
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--amb)">⚠ Keine Issues gefunden</span>';
+      btn.disabled = false; btn.innerHTML = '🔗 Verbinden & importieren';
+      return;
+    }
+
+    // In Anforderungen konvertieren + Prefix erkennen
+    const reqs = issues.map(i => ({
+      id:          i.key,
+      title:       i.fields?.summary || i.key,
+      description: i.fields?.description?.content?.[0]?.content?.[0]?.text || '',
+      priority:    normalizePriorityOb(i.fields?.priority?.name),
+      category:    i.fields?.issuetype?.name || 'Funktional',
+      status:      normalizeStatusOb(i.fields?.status?.name),
+      tags:        i.fields?.labels || [],
+    }));
+
+    // Prefix erkennen und System-ID-Schema setzen
+    const detectedPrefix = detectPrefix(issues.map(i => i.key));
+    if (detectedPrefix && sysId) {
+      await applyDetectedPrefix(sysId, detectedPrefix, issues.map(i=>i.key));
+    }
+
+    showObImportPreview(reqs, sysId, `Jira: ${pk} (${reqs.length} Issues)`, detectedPrefix);
+    btn.disabled = false; btn.innerHTML = '🔗 Verbinden & importieren';
+
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = `<span style="color:var(--red)">❌ ${esc(e.message)}</span>`;
+    btn.disabled = false; btn.innerHTML = '🔗 Verbinden & importieren';
+  }
+}
+
+async function obPickImportFile(sysId) {
+  const files = await window.api.pickFiles('.csv,.json,.xlsx,.xls,.txt,.md');
+  if (!files.length) return;
+  const file = files[0];
+  const ext  = file.name.split('.').pop().toLowerCase();
+  const statusEl = document.getElementById('ob-file-status');
+
+  if (statusEl) statusEl.innerHTML = '<span class="spin"></span> Lese Datei …';
+
+  try {
+    let reqs = [];
+    if (ext === 'csv' || ext === 'txt') reqs = await parseCSV(file);
+    else if (ext === 'json')            reqs = await parseJSON(file);
+    else if (ext === 'xlsx' || ext === 'xls') reqs = await parseExcel(file);
+    else if (ext === 'md')              reqs = await parseMarkdown(file);
+    else { toast('⚠ Nicht unterstütztes Format'); return; }
+
+    if (!reqs.length) { if (statusEl) statusEl.innerHTML = '<span style="color:var(--amb)">ℹ Keine Anforderungen erkannt</span>'; return; }
+
+    // Prefix erkennen
+    const ids = reqs.map(r => r.id).filter(Boolean);
+    const detectedPrefix = detectPrefix(ids);
+    if (detectedPrefix && sysId) {
+      await applyDetectedPrefix(sysId, detectedPrefix, ids);
+    }
+
+    if (statusEl) statusEl.innerHTML = '';
+    showObImportPreview(reqs, sysId, file.name, detectedPrefix);
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = `<span style="color:var(--red)">❌ ${esc(e.message)}</span>`;
+  }
+}
+
+// ── Prefix-Erkennung ──────────────────────────────────────────
+function detectPrefix(ids) {
+  if (!ids?.length) return null;
+  // Regex: Buchstaben/Zahlen/_ bis zum letzten - gefolgt von Zahl
+  const prefixCounts = {};
+  for (const id of ids) {
+    const m = String(id).match(/^([A-Z][A-Z0-9_-]*)-\d+$/i);
+    if (m) {
+      const p = m[1].toUpperCase();
+      prefixCounts[p] = (prefixCounts[p] || 0) + 1;
+    }
+  }
+  if (!Object.keys(prefixCounts).length) return null;
+  // Häufigsten Prefix zurückgeben
+  return Object.entries(prefixCounts).sort((a,b) => b[1]-a[1])[0][0];
+}
+
+function getMaxCounter(ids, prefix) {
+  let max = 0;
+  for (const id of ids) {
+    const m = String(id).match(new RegExp(`^${prefix}-(\d+)$`, 'i'));
+    if (m) max = Math.max(max, parseInt(m[1]));
+  }
+  return max;
+}
+
+async function applyDetectedPrefix(sysId, prefix, ids) {
+  const counter = getMaxCounter(ids, prefix);
+  // System mit erkanntem Prefix + Counter aktualisieren
+  const sys = S.systems?.find(s => s.id === sysId);
+  if (sys) {
+    sys.idPrefix  = prefix;
+    sys.idCounter = counter;
+    await window.api.saveSystem({ ...sys });
+  }
+}
+
+function showObImportPreview(reqs, sysId, filename, detectedPrefix) {
+  const wrap = document.getElementById('ob-import-preview');
+  if (!wrap) return;
+
+  wrap.innerHTML = `
+    <div style="background:var(--grnbg);border:1px solid rgba(63,185,80,.3);
+      border-radius:10px;padding:12px 14px;margin-bottom:10px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:4px">
+        ✅ ${reqs.length} Anforderungen erkannt
+      </div>
+      ${detectedPrefix ? `
+        <div style="font-size:12px;color:var(--t2)">
+          Erkannter Prefix: <code style="color:var(--aa)">${esc(detectedPrefix)}</code>
+          — neue Anforderungen werden als <code style="color:var(--aa)">${esc(detectedPrefix)}-XXX</code> angelegt
+        </div>` : ''}
+      <div style="font-size:11px;color:var(--t3);margin-top:4px">Aus: ${esc(filename)}</div>
+    </div>
+    <div style="max-height:160px;overflow-y:auto;border:1px solid var(--b1);
+      border-radius:8px;margin-bottom:12px">
+      ${reqs.slice(0,5).map(r => `
+        <div style="padding:7px 12px;border-bottom:1px solid var(--b1);font-size:12px">
+          ${r.id ? `<code style="font-size:10px;color:var(--t3);margin-right:6px">${esc(r.id)}</code>` : ''}
+          ${esc(r.title)}
+        </div>`).join('')}
+      ${reqs.length > 5 ? `<div style="padding:6px 12px;font-size:11px;color:var(--t3)">… und ${reqs.length-5} weitere</div>` : ''}
+    </div>
+    <button class="btn-primary" style="width:100%;font-size:12px" onclick="obExecuteImport(${JSON.stringify(reqs).replace(/</g,'\u003c').replace(/'/g,"\'")}, '${sysId}')">
+      ↑ ${reqs.length} Anforderungen importieren
+    </button>`;
+}
+
+async function obExecuteImport(reqs, sysId) {
+  const btn = document.querySelector('#ob-import-preview .btn-primary');
+  if (btn) { btn.disabled=true; btn.innerHTML='<span class="spin"></span> Importiere …'; }
+
+  try {
+    const res  = await fetch('api/requirements/import', {
+      method:'POST', credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ systemId: sysId, requirements: reqs, mode: 'merge' }),
+    });
+    const data = await res.json();
+    const wrap = document.getElementById('ob-import-preview');
+    if (wrap) wrap.innerHTML = `
+      <div style="background:var(--grnbg);border:1px solid rgba(63,185,80,.3);
+        border-radius:10px;padding:12px 14px;text-align:center">
+        <div style="font-size:24px;margin-bottom:6px">✅</div>
+        <div style="font-size:13px;font-weight:600">${data.added} Anforderungen importiert</div>
+        <div style="font-size:11px;color:var(--t2)">${data.updated} aktualisiert · ${data.skipped} übersprungen</div>
+      </div>`;
+
+    // Weiter-Button aktualisieren
+    const navBtn = document.querySelector('#onboarding-content .btn-primary:last-child');
+    if (navBtn) { navBtn.textContent = 'Weiter →'; navBtn.style.opacity = '1'; }
+
+  } catch(e) {
+    if (btn) { btn.disabled=false; btn.innerHTML='Erneut versuchen'; }
+    toast('❌ Import fehlgeschlagen: ' + e.message);
+  }
+}
+
+function normalizePriorityOb(p) {
+  const s = String(p||'').toLowerCase();
+  if (s.includes('high')||s.includes('hoch')||s==='1'||s==='critical') return 'high';
+  if (s.includes('low')||s.includes('niedrig')||s==='3') return 'low';
+  return 'medium';
+}
+function normalizeStatusOb(s) {
+  const l = String(s||'').toLowerCase();
+  if (l.includes('done')||l.includes('erledigt')||l.includes('closed')) return 'done';
+  if (l.includes('progress')||l.includes('bearbeitung')) return 'in-progress';
+  return 'open';
+}
+
 function renderInviteHint() {
   $('onboarding-content').innerHTML = `
     <div style="padding:36px">
-      ${onboardingHeader(3, 3, '👥', 'Team einladen', 'Laden Sie Kollegen mit verschiedenen Rollen ein.')}
+      ${onboardingHeader(4, 4, '👥', 'Team einladen', 'Laden Sie Kollegen mit verschiedenen Rollen ein.')}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px">
         ${[
           { role:'Business',         icon:'💼', desc:'Prozesse beschreiben, Anforderungen erfassen' },
@@ -270,7 +571,7 @@ function renderDone() {
 }
 
 async function finishOnboarding(targetView) {
-  await fetch('api/onboarding/complete', { method:'POST', credentials:'include' });
+  await fetch('/api/onboarding/complete', { method:'POST', credentials:'include' });
   document.getElementById('onboarding-overlay')?.remove();
   if (targetView) switchView(targetView);
   else {
@@ -284,7 +585,7 @@ async function finishOnboarding(targetView) {
 }
 
 async function skipOnboarding() {
-  await fetch('api/onboarding/complete', { method:'POST', credentials:'include' });
+  await fetch('/api/onboarding/complete', { method:'POST', credentials:'include' });
   document.getElementById('onboarding-overlay')?.remove();
 }
 

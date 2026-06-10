@@ -9,7 +9,7 @@
 async function getNextReqId(systemId) {
   if (!systemId) return 'REQ-' + Date.now();
   try {
-    const res  = await fetch(`api/systems/${systemId}/next-id`, { credentials:'include' });
+    const res  = await fetch(`/api/systems/${systemId}/next-id`, { credentials:'include' });
     const data = await res.json();
     if (data.id) {
       // Lokalen Counter in S.systems synchronisieren
@@ -122,6 +122,46 @@ function getSystemIDBadge(sys) {
   const counter = sys?.idCounter || 0;
   return `<span style="font-size:9px;font-family:var(--mono);background:var(--s3);padding:1px 6px;border-radius:4px;color:var(--t3)">${esc(prefix)}-${String(counter+1).padStart(3,'0')}</span>`;
 }
+
+
+// ── Prefix aus vorhandenen Anforderungen erkennen ────────────
+async function detectAndApplyPrefix(sysId) {
+  if (!sysId) return;
+  try {
+    const reqs = await window.api.getRequirements({ systemId: sysId });
+    if (!reqs.length) return;
+
+    const ids = reqs.map(r => r.id).filter(Boolean);
+    const prefixCounts = {};
+    for (const id of ids) {
+      const m = String(id).match(/^([A-Z][A-Z0-9_-]*)-(\d+)$/i);
+      if (m) {
+        const p = m[1].toUpperCase();
+        prefixCounts[p] = (prefixCounts[p] || 0) + 1;
+      }
+    }
+    if (!Object.keys(prefixCounts).length) return;
+
+    // Häufigsten Prefix + höchsten Counter
+    const prefix = Object.entries(prefixCounts).sort((a,b) => b[1]-a[1])[0][0];
+    let maxCounter = 0;
+    for (const id of ids) {
+      const m = String(id).match(new RegExp(`^${prefix}-(\\d+)$`, 'i'));
+      if (m) maxCounter = Math.max(maxCounter, parseInt(m[1]));
+    }
+
+    // System aktualisieren
+    const sys = S.systems?.find(s => s.id === sysId);
+    if (sys && (!sys.idPrefix || sys.idPrefix === 'REQ')) {
+      sys.idPrefix  = prefix;
+      sys.idCounter = maxCounter;
+      await window.api.saveSystem({ ...sys });
+      log('info', `Prefix erkannt: ${prefix}, Counter: ${maxCounter}`);
+    }
+  } catch(e) {}
+}
+
+window.detectAndApplyPrefix = detectAndApplyPrefix;
 
 window.getNextReqId      = getNextReqId;
 window.addIDSchemaToSystemModal = addIDSchemaToSystemModal;

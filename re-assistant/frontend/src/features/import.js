@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/import.js
  * B: Requirements-Import — CSV, Excel, JSON, JIRA-Export, Azure DevOps Export.
@@ -23,7 +22,7 @@ async function pickImportFile() {
   const sysId = $('import-sys-sel').value;
   if (!sysId) { toast('⚠ System auswählen'); return; }
 
-  const files = await window.api.pickFiles('.csv,.json,.xlsx,.xls,.txt,.md');
+  const files = await window.api.pickFiles('.csv,.json,.xml,.xlsx,.xls,.txt,.md');
   if (!files.length) return;
   const file = files[0];
   const ext  = file.name.split('.').pop().toLowerCase();
@@ -34,6 +33,7 @@ async function pickImportFile() {
     let reqs = [];
     if (ext === 'csv' || ext === 'txt')    reqs = await parseCSV(file);
     else if (ext === 'json')               reqs = await parseJSON(file);
+    else if (ext === 'xml')                reqs = await parseJiraXML(file);
     else if (ext === 'xlsx' || ext === 'xls') reqs = await parseExcel(file);
     else if (ext === 'md')                 reqs = await parseMarkdown(file);
     else { toast('⚠ Nicht unterstütztes Format'); return; }
@@ -120,6 +120,89 @@ async function parseJSON(file) {
   }));
 }
 
+
+// ── JIRA XML Parser ───────────────────────────────────────────
+// Unterstützt JIRA XML-Export (Suche → Export → XML)
+// Format: <rss><channel><item>...</item></channel></rss>
+async function parseJiraXML(file) {
+  const text   = await file.text();
+  const parser = new DOMParser();
+  const doc    = parser.parseFromString(text, 'application/xml');
+
+  const parseError = doc.querySelector('parsererror');
+  if (parseError) throw new Error('Ungültiges XML: ' + parseError.textContent.slice(0, 100));
+
+  const reqs = [];
+
+  // ── JIRA RSS-Format (/rss/channel/item) ──────────────────────
+  const items = doc.querySelectorAll('rss > channel > item, feed > entry, items > item');
+  if (items.length) {
+    items.forEach(item => {
+      const get  = tag  => item.querySelector(tag)?.textContent?.trim() || '';
+      const getA = (tag, attr) => item.querySelector(tag)?.getAttribute(attr)?.trim() || '';
+
+      const key   = get('key') || getA('key', 'id') || '';
+      const title = get('summary') || get('title') || key || 'Untitled';
+      const desc  = get('description') || get('body') || '';
+      const prio  = get('priority') || '';
+      const status = get('status') || get('statusName') || '';
+      const type  = get('type') || get('issuetype') || get('issueType') || 'Funktional';
+      const labels = Array.from(item.querySelectorAll('labels label, labels > *'))
+        .map(l => l.textContent.trim()).filter(Boolean);
+
+      reqs.push({
+        id:          key,
+        title,
+        description: stripHTML(desc),
+        priority:    normalizePriority(prio),
+        category:    normalizeIssueType(type),
+        status:      normalizeStatus(status),
+        tags:        labels,
+        rationale:   '',
+      });
+    });
+    return reqs;
+  }
+
+  // ── Generisches XML-Format (/requirements/requirement) ───────
+  const reqNodes = doc.querySelectorAll('requirement, Requirement, REQUIREMENT');
+  if (reqNodes.length) {
+    reqNodes.forEach(node => {
+      const get = tag => node.querySelector(tag)?.textContent?.trim()
+        || node.getAttribute(tag) || '';
+      reqs.push({
+        id:          get('id') || get('ID') || get('key'),
+        title:       get('title') || get('Title') || get('name') || get('summary'),
+        description: get('description') || get('Description') || get('text'),
+        priority:    normalizePriority(get('priority') || get('Priority')),
+        category:    normalizeIssueType(get('category') || get('type') || get('issueType')),
+        status:      normalizeStatus(get('status') || get('Status')),
+        tags:        [],
+        rationale:   get('rationale') || get('justification') || '',
+      });
+    });
+    return reqs;
+  }
+
+  throw new Error('Kein unterstütztes XML-Format erkannt (JIRA RSS oder generisches Requirements-XML erwartet)');
+}
+
+function stripHTML(html) {
+  if (!html) return '';
+  return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeIssueType(type) {
+  const t = String(type||'').toLowerCase();
+  if (t.includes('bug') || t.includes('fehler'))             return 'Fehler';
+  if (t.includes('story') || t.includes('user'))             return 'User Story';
+  if (t.includes('epic'))                                     return 'Epic';
+  if (t.includes('task') || t.includes('aufgabe'))            return 'Aufgabe';
+  if (t.includes('sub') || t.includes('unter'))               return 'Sub-Task';
+  if (t.includes('nonfunc') || t.includes('nicht-funk'))      return 'Nicht-Funktional';
+  return 'Funktional';
+}
+
 // ── Excel Parser (ohne externe Bibliothek) ────────────────────
 async function parseExcel(file) {
   // Fallback: Excel als CSV behandeln wenn keine SheetJS-Bibliothek
@@ -203,6 +286,13 @@ function showImportPreview(reqs, sysId, filename) {
       <div style="font-size:13px;font-weight:600;margin-bottom:6px">
         📂 ${esc(filename)} — ${reqs.length} Anforderungen erkannt
       </div>
+      ${(() => {
+        const ids = reqs.map(r=>r.id).filter(Boolean);
+        const prefixCounts = {};
+        ids.forEach(id => { const m = String(id).match(/^([A-Z][A-Z0-9_-]*)-\d+$/i); if(m) prefixCounts[m[1].toUpperCase()]=(prefixCounts[m[1].toUpperCase()]||0)+1; });
+        const top = Object.entries(prefixCounts).sort((a,b)=>b[1]-a[1])[0];
+        return top ? `<div style="font-size:11px;color:var(--aa)">✓ Erkannter Prefix: <code>${esc(top[0])}</code> — wird als ID-Schema übernommen</div>` : '';
+      })()}
       <div style="display:flex;gap:10px;font-size:12px;color:var(--t2)">
         <span style="color:var(--red)">● Hoch: ${priCounts.high}</span>
         <span style="color:var(--amb)">● Mittel: ${priCounts.medium}</span>
@@ -245,7 +335,7 @@ async function executeImport(reqs, sysId) {
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Importiere …'; }
 
   try {
-    const res = await fetch('api/requirements/import', {
+    const res = await fetch('/api/requirements/import', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ systemId: sysId, requirements: reqs, mode })
@@ -266,6 +356,13 @@ async function executeImport(reqs, sysId) {
       addNotif('📥', 'Import abgeschlossen', `${data.added} neue Anforderungen`, () => switchView('business-reqs'));
     if (typeof logAuditEvent === 'function')
       logAuditEvent('create', 'requirement', sysId, `Import: ${data.added} Anforderungen`, { count: data.added, mode });
+
+    // Prefix aus importierten IDs erkennen und System-Schema aktualisieren
+    if (typeof detectAndApplyPrefix === 'function') {
+      await detectAndApplyPrefix(sysId);
+      // Systeme neu laden damit idPrefix/idCounter aktuell sind
+      S.systems = await window.api.getSystems();
+    }
   } catch(e) {
     toast('❌ Import fehlgeschlagen: ' + e.message);
     if (btn) { btn.disabled = false; btn.innerHTML = `↑ Alle importieren`; }
@@ -278,24 +375,74 @@ function openJiraImportDialog() {
   if (!sysId) { toast('⚠ System auswählen'); return; }
   openModal('JIRA-Export importieren', `
     <p style="font-size:13px;color:var(--t2);margin-bottom:14px">
-      JIRA-Issues als JSON-Datei importieren (aus JIRA: Suche → Export → JSON).
+      JIRA-Issues aus einem Export importieren.
     </p>
-    <div class="frow"><label>JIRA JSON-Datei</label>
-      <button class="btn-secondary" onclick="pickJiraFile('${sysId}')">📂 Datei wählen …</button>
+
+    <!-- Format-Auswahl -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <div id="jira-fmt-json" onclick="jiraSelectFormat('json')" style="
+        background:var(--s2);border:2px solid var(--aa);border-radius:10px;
+        padding:12px;cursor:pointer;text-align:center">
+        <div style="font-size:22px;margin-bottom:4px">{ }</div>
+        <div style="font-size:12px;font-weight:600">JSON</div>
+        <div style="font-size:10px;color:var(--t3)">Export → JSON</div>
+      </div>
+      <div id="jira-fmt-xml" onclick="jiraSelectFormat('xml')" style="
+        background:var(--s2);border:2px solid var(--b1);border-radius:10px;
+        padding:12px;cursor:pointer;text-align:center">
+        <div style="font-size:22px;margin-bottom:4px">&lt;/&gt;</div>
+        <div style="font-size:12px;font-weight:600">XML</div>
+        <div style="font-size:10px;color:var(--t3)">Export → XML (RSS)</div>
+      </div>
     </div>
+
+    <!-- Anleitung je Format -->
+    <div id="jira-hint-json" style="font-size:11px;color:var(--t3);background:var(--s2);
+      padding:8px 10px;border-radius:6px;margin-bottom:12px;line-height:1.6">
+      📋 In JIRA: <strong>Issues suchen → Oben rechts „Export" → „Export Excel CSV (alle Felder)" oder „Export JSON"</strong>
+    </div>
+    <div id="jira-hint-xml" style="display:none;font-size:11px;color:var(--t3);background:var(--s2);
+      padding:8px 10px;border-radius:6px;margin-bottom:12px;line-height:1.6">
+      📋 In JIRA: <strong>Issues suchen → Oben rechts „Export" → „Export XML"</strong><br>
+      Auch kompatibel mit generischen XML-Exports anderer Tools.
+    </div>
+
+    <button class="btn-primary" style="width:100%" onclick="pickJiraFile('${sysId}')">
+      📂 Datei wählen …
+    </button>
     <div id="jira-import-status" style="margin-top:10px"></div>
-    <button class="btn-secondary" style="margin-top:14px" onclick="closeModal()">Abbrechen</button>`);
+    <button class="btn-secondary" style="margin-top:10px;width:100%" onclick="closeModal()">Abbrechen</button>`);
+
+  window._jiraImportFormat = 'json';
 }
 
 async function pickJiraFile(sysId) {
-  const files = await window.api.pickFiles('.json');
+  const fmt   = window._jiraImportFormat || 'json';
+  const files = await window.api.pickFiles(fmt === 'xml' ? '.xml' : '.json,.xml,.csv');
   if (!files.length) return;
-  $('jira-import-status').innerHTML = '<span class="spin"></span> Lese JIRA-Export …';
+  const statusEl = $('jira-import-status');
+  if (statusEl) statusEl.innerHTML = '<span class="spin"></span> Lese JIRA-Export …';
   try {
-    const reqs = await parseJSON(files[0]);
+    const ext  = files[0].name.split('.').pop().toLowerCase();
+    const reqs = ext === 'xml' ? await parseJiraXML(files[0]) : await parseJSON(files[0]);
+    if (!reqs.length) throw new Error('Keine Anforderungen im Export gefunden');
     closeModal();
     showImportPreview(reqs, sysId, files[0].name);
-  } catch(e) { $('jira-import-status').innerHTML = `<span style="color:var(--red)">❌ ${esc(e.message)}</span>`; }
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = `<span style="color:var(--red)">❌ ${esc(e.message)}</span>`;
+  }
+}
+
+function jiraSelectFormat(fmt) {
+  window._jiraImportFormat = fmt;
+  const jsonCard = document.getElementById('jira-fmt-json');
+  const xmlCard  = document.getElementById('jira-fmt-xml');
+  const jsonHint = document.getElementById('jira-hint-json');
+  const xmlHint  = document.getElementById('jira-hint-xml');
+  if (jsonCard) jsonCard.style.borderColor = fmt === 'json' ? 'var(--aa)' : 'var(--b1)';
+  if (xmlCard)  xmlCard.style.borderColor  = fmt === 'xml'  ? 'var(--aa)' : 'var(--b1)';
+  if (jsonHint) jsonHint.style.display = fmt === 'json' ? '' : 'none';
+  if (xmlHint)  xmlHint.style.display  = fmt === 'xml'  ? '' : 'none';
 }
 
 // ── Einfügen per Text ──────────────────────────────────────────

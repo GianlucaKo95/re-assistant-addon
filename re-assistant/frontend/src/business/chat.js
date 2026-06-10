@@ -1,21 +1,36 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * business/chat.js
  * Business Chat — KI-gestütztes Prozess- und Anforderungs-Gespräch.
  */
 
 async function loadBizChat() {
-  // System-Sidebar aufbauen
+  // System-Sidebar aufbauen — hierarchisch mit Subdomains
   const sl = $('bc-system-list');
   sl.innerHTML = '';
-  S.systems.forEach(sys => {
+
+  function renderSysBtn(sys, depth) {
     const btn = document.createElement('button');
     btn.className = 'sys-btn' + (S.activeSystemId === sys.id ? ' active' : '');
-    btn.innerHTML = `<span class="sys-dot"></span>${esc(sys.name)}`;
+    btn.style.paddingLeft = (12 + depth * 14) + 'px';
+    btn.innerHTML = `
+      ${depth > 0 ? `<span style="color:var(--t3);margin-right:4px;font-size:11px">└</span>` : ''}
+      <span class="sys-dot"></span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(sys.name)}</span>
+      ${depth > 0 ? `<span style="font-size:9px;color:var(--t3);flex-shrink:0;margin-left:4px">Sub</span>` : ''}`;
     btn.onclick = () => { S.activeSystemId = sys.id; loadBizChat(); };
     sl.appendChild(btn);
-  });
+    // Subdomains
+    S.systems.filter(s => s.parentId === sys.id)
+      .sort((a,b) => (a.sortOrder||0)-(b.sortOrder||0))
+      .forEach(child => renderSysBtn(child, depth + 1));
+  }
+
+  // Root-Systeme zuerst
+  S.systems.filter(s => !s.parentId)
+    .sort((a,b) => (a.sortOrder||0)-(b.sortOrder||0))
+    .forEach(sys => renderSysBtn(sys, 0));
+
   if (!S.activeSystemId && S.systems.length) S.activeSystemId = S.systems[0].id;
 
   // Input-Bindings

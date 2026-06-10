@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * pm/integrations.js
  * Jira und Azure DevOps — Export, Import, KI-Analyse.
@@ -17,17 +16,48 @@ async function loadPMJira(){
 async function connectJira(){
   const url=$('jira-url').value.trim(),email=$('jira-email').value.trim(),token=$('jira-token').value.trim();
   if(!url||!email||!token){toast('⚠ Alle Felder ausfüllen');return;}
+
+  // URL-Format prüfen
+  if(!url.startsWith('http')){
+    $('jira-status').innerHTML='<span style="color:var(--red)">❌ URL muss mit https:// beginnen</span>';
+    return;
+  }
+
   $('jira-status').innerHTML='<span class="spin"></span> Verbinde …';
-  const res=await window.api.jiraGetProjects({url,email,token});
-  const projects=res.values||res.data?.values||[];
-  if(!projects.length&&!res.ok){$('jira-status').innerHTML='<span style="color:var(--red)">❌ Verbindung fehlgeschlagen</span>';return;}
-  S.jiraProjects=projects;
-  S.settings.jiraUrl=url;S.settings.jiraEmail=email;S.settings.jiraToken=token;
-  await window.api.saveSettings(S.settings);
-  $('jira-status').innerHTML=`<span style="color:var(--grn)">✅ Verbunden — ${S.jiraProjects.length} Projekte</span>`;
-  $('jira-project-pane').style.display='';
-  $('jira-project-sel').innerHTML='<option value="">Projekt wählen …</option>'+S.jiraProjects.map(p=>`<option value="${esc(p.key)}">${esc(p.name)} (${esc(p.key)})</option>`).join('');
-  $('jira-results-pane').innerHTML=`<div style="padding:16px"><h3 style="font-size:15px;margin-bottom:8px">✅ Verbunden mit ${esc(url)}</h3></div>`;
+
+  try {
+    const res=await window.api.jiraGetProjects({url,email,token});
+
+    // HTTP-Fehler prüfen
+    if(res.status===401||res.errorMessages?.includes('401')){
+      $('jira-status').innerHTML='<span style="color:var(--red)">❌ Authentifizierung fehlgeschlagen — E-Mail oder API-Token falsch</span>';
+      return;
+    }
+    if(res.status===403){
+      $('jira-status').innerHTML='<span style="color:var(--red)">❌ Zugriff verweigert — fehlende Berechtigungen</span>';
+      return;
+    }
+    if(res.status===404||(!res.values&&!res.data?.values&&res.errorMessages)){
+      $('jira-status').innerHTML=`<span style="color:var(--red)">❌ Jira nicht erreichbar — URL prüfen (${esc(url)})</span>`;
+      return;
+    }
+
+    const projects=res.values||res.data?.values||[];
+    if(!projects.length){
+      $('jira-status').innerHTML='<span style="color:var(--amb)">⚠ Verbunden, aber keine Projekte gefunden — Berechtigungen prüfen</span>';
+      return;
+    }
+
+    S.jiraProjects=projects;
+    S.settings.jiraUrl=url;S.settings.jiraEmail=email;S.settings.jiraToken=token;
+    await window.api.saveSettings(S.settings);
+    $('jira-status').innerHTML=`<span style="color:var(--grn)">✅ Verbunden — ${S.jiraProjects.length} Projekte gefunden</span>`;
+    $('jira-project-pane').style.display='';
+    $('jira-project-sel').innerHTML='<option value="">Projekt wählen …</option>'+S.jiraProjects.map(p=>`<option value="${esc(p.key)}">${esc(p.name)} (${esc(p.key)})</option>`).join('');
+    $('jira-results-pane').innerHTML=`<div style="padding:16px"><h3 style="font-size:15px;margin-bottom:8px">✅ Verbunden mit ${esc(url)}</h3><p style="font-size:13px;color:var(--t2)">${projects.length} Projekte verfügbar</p></div>`;
+  } catch(e) {
+    $('jira-status').innerHTML=`<span style="color:var(--red)">❌ Verbindungsfehler: ${esc(e.message)}</span>`;
+  }
 }
 
 async function jiraExport(){

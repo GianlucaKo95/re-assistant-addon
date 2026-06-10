@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * core/api-client.js
  * Wrapper für den Anthropic-API-Proxy im Backend.
@@ -35,7 +34,7 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
   const feat   = feature || _currentFeature || 'other';
   const sysId  = _currentSystemId || S.activeSystemId || null;
   try {
-    const res = await fetch('api/ai/chat', {
+    const res = await fetch('/api/ai/chat', {
       method: 'POST', credentials: 'include',
       headers: {
         'Content-Type':  'application/json',

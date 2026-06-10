@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * nav/navigation.js
  * NAV-Konfiguration, buildNav(), switchView(), Icon-Bibliothek.
@@ -110,6 +109,7 @@ const VIEW_LOADERS = {
   'review-workflow':    () => loadReviewDashboard(),
   'import':             () => loadImportView(),
   'traceability':       () => loadTraceability(),
+  'req-network':        () => loadReqNetwork(),
   'audit-log':          () => { loadAuditLogView(); updateAuditBadge(); },
   'source-analysis':    () => loadSourceAnalysisView(),
   'decomposition':      () => loadDecomposition(),
