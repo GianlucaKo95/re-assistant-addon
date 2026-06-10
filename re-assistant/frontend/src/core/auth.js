@@ -128,6 +128,23 @@ function applySettingsToForm() {
   const gw = document.getElementById('cfg-grok-wrap');
   if (aw) aw.style.display = isGrok ? 'none' : '';
   if (gw) gw.style.display = isGrok ? '' : 'none';
+
+  // Für Nicht-Admins: API-Key Sektion nur lesend
+  const isAdmin = S.user?.role === 'admin';
+  const apiSection = document.getElementById('cfg-api-section');
+  if (apiSection) {
+    if (!isAdmin) {
+      // Status laden und anzeigen
+      fetch('api/apikey/user/status', { credentials:'include' }).then(r=>r.json()).then(status => {
+        const prov = status.globalProvider || 'anthropic';
+        const hasKey = prov === 'grok' ? status.hasGrokKey : status.hasGlobalKey;
+        apiSection.innerHTML = '<div style="padding:10px 12px;background:var(--s2);border-radius:var(--r);font-size:12px;color:var(--t2)">' +
+          (prov === 'grok' ? '⚡ Grok (xAI)' : '🤖 Anthropic') + ' — ' +
+          (hasKey ? '<span style="color:var(--grn)">✓ Globaler Key aktiv</span>' : '<span style="color:var(--red)">⚠ Kein Key konfiguriert</span>') +
+          '</div>';
+      }).catch(() => {});
+    }
+  }
   setVal('cfg-lang',       S.settings.language);
   setVal('cfg-detail',     S.settings.detail);
   setVal('cfg-persona',    S.settings.persona   || 'professional');
