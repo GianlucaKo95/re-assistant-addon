@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/dna.js
  * Anforderungs-DNA — Frontend
@@ -40,8 +39,8 @@ async function loadDNADashboard() {
   if (!sysId) return;
 
   const [queue, drift] = await Promise.all([
-    fetch('api/dna/queue', { credentials:'include' }).then(r=>r.json()).catch(()=>({pending:0,processing:0})),
-    fetch(`api/dna/drift?systemId=${sysId}&threshold=0.2`, { credentials:'include' }).then(r=>r.json()).catch(()=>[]),
+    fetch('/api/dna/queue', { credentials:'include' }).then(r=>r.json()).catch(()=>({pending:0,processing:0})),
+    fetch(`/api/dna/drift?systemId=${sysId}&threshold=0.2`, { credentials:'include' }).then(r=>r.json()).catch(()=>[]),
   ]);
 
   const statsWrap = $('dna-stats');
@@ -63,7 +62,7 @@ async function loadDriftReport() {
   wrap.innerHTML = '<div class="empty-state"><div class="spin"></div><p>Lade Drift-Analyse …</p></div>';
 
   try {
-    const drifts = await fetch(`api/dna/drift${sysId?`?systemId=${sysId}`:''}&threshold=0.2`,
+    const drifts = await fetch(`/api/dna/drift${sysId?`?systemId=${sysId}`:''}&threshold=0.2`,
       { credentials:'include' }).then(r=>r.json());
 
     if (!drifts.length) {
@@ -124,7 +123,7 @@ async function loadNetworkGraph() {
 
   try {
     const crossSystem = $('dna-cross-system')?.checked;
-    const data = await fetch(`api/dna/network/${sysId}?crossSystem=${crossSystem}&minSim=0.65`,
+    const data = await fetch(`/api/dna/network/${sysId}?crossSystem=${crossSystem}&minSim=0.65`,
       { credentials:'include' }).then(r=>r.json());
 
     if (!data.nodes.length) {
@@ -336,7 +335,7 @@ async function openGenealogyModal(reqId, title) {
     <button class="btn-secondary" style="margin-top:14px" onclick="closeModal()">Schließen</button>`);
 
   try {
-    const data = await fetch(`api/dna/genealogy/${reqId}`, { credentials:'include' }).then(r=>r.json());
+    const data = await fetch(`/api/dna/genealogy/${reqId}`, { credentials:'include' }).then(r=>r.json());
     const relLabels = { decomposes_to:'Zerlegt in', derives_from:'Abgeleitet von', implements:'Implementiert',
       tests:'Testet', conflicts_with:'Widerspricht', duplicates:'Duplikat von', refines:'Verfeinert', relates_to:'Verwandt mit' };
     const relColors = { conflicts_with:'var(--red)', duplicates:'var(--amb)', decomposes_to:'var(--grn)',
@@ -384,7 +383,7 @@ async function addGenealogyRelation(sourceId) {
   const targetId = $('gen-target-id')?.value.trim();
   const relType  = $('gen-rel-type')?.value;
   if (!targetId) return;
-  const res  = await fetch('api/dna/genealogy', {
+  const res  = await fetch('/api/dna/genealogy', {
     method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ sourceReqId: sourceId, targetReqId: targetId, relationType: relType }),
   });
@@ -396,7 +395,7 @@ async function addGenealogyRelation(sourceId) {
 async function recomputeDNA() {
   const sysId = $('dna-sys-sel')?.value;
   if (!sysId) { toast('⚠ System auswählen'); return; }
-  const res  = await fetch(`api/dna/recompute/${sysId}`, { method:'POST', credentials:'include' });
+  const res  = await fetch(`/api/dna/recompute/${sysId}`, { method:'POST', credentials:'include' });
   const data = await res.json();
   toast(`⚡ ${data.queued} Anforderungen in DNA-Queue eingereiht — Ergebnisse erscheinen in ~30 Sekunden`);
   if (typeof addNotif === 'function')
@@ -422,7 +421,7 @@ async function lookupGenealogy() {
   if (!id) return;
   const wrap = $('genealogy-direct-result');
   wrap.innerHTML = '<div class="spin"></div>';
-  const data = await fetch(`api/dna/genealogy/${id}`, { credentials:'include' }).then(r=>r.json());
+  const data = await fetch(`/api/dna/genealogy/${id}`, { credentials:'include' }).then(r=>r.json());
   const total = data.ancestors.length + data.descendants.length + data.similar.length;
   wrap.innerHTML = total
     ? `<p style="font-size:12px;color:var(--grn)">✅ ${total} Beziehungen gefunden</p>
@@ -433,7 +432,7 @@ async function lookupGenealogy() {
 // ── DNA-Badge auf Req-Card ────────────────────────────────────
 async function getDNABadge(reqId) {
   try {
-    const data = await fetch(`api/requirements/${reqId}/dna`, { credentials:'include' }).then(r=>r.json());
+    const data = await fetch(`/api/requirements/${reqId}/dna`, { credentials:'include' }).then(r=>r.json());
     if (!data.computed) return '';
     if (data.drift.score < 0.25) return '';
     const icons = { scope_change:'⚠', rewrite:'🔄', refinement:'✦' };

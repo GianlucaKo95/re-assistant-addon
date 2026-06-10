@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * pm/dashboard.js
  * PM Dashboard — Statistiken, System-Tabs, Anforderungs-Übersicht.

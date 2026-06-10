@@ -2,7 +2,8 @@
  * main.js — RE-Assistent v3.2
  */
 import './features/theme.js';  // Zuerst — verhindert Flash of Dark Content
-import './features/service-worker.js'; // SW früh registrieren
+import './features/service-worker.js';
+
 import './styles.css';
 import './api.js';
 import './core/state.js';

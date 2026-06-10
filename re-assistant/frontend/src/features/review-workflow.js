@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/review-workflow.js
  * Nr. 1: Review-Workflow — Business schreibt, BA reviewed, PM genehmigt.

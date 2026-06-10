@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/search.js
  * 🟡 FIX 6: Globale Volltextsuche über Requirements, Workshops, Backlogs.

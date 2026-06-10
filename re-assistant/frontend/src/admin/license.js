@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * admin/license.js
  * Lizenz-Verwaltung für On-Premise-Deployments.

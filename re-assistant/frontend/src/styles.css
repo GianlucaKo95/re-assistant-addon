@@ -60,28 +60,14 @@
   --pm:     #6639ba; --pmbg:    rgba(102,57,186,.08);
   --dev:    #1a7f37; --devbg:   rgba(26,127,55,.08);
 }
-[data-theme="light"] #login-screen{background:#f1f3f8}
-[data-theme="light"] .diff-block{background:#f8f9fc;border-color:rgba(0,0,0,.1)}
-[data-theme="light"] .diff-add{color:#166534;background:rgba(22,101,52,.08)}
-[data-theme="light"] .diff-rem{color:#991b1b;background:rgba(153,27,27,.08)}
-[data-theme="light"] .diff-comment{color:#6b7280}
-[data-theme="light"] #nav-sidebar{background:#e8eaf2;border-right:1px solid rgba(0,0,0,.1)}
-[data-theme="light"] #notif-panel{background:#ffffff;border:1px solid rgba(0,0,0,.12)}
-[data-theme="light"] .msg.a .msg-bubble{background:#ffffff;border:1px solid rgba(0,0,0,.08)}
-[data-theme="light"] #modal-box{background:#ffffff}
-[data-theme="light"] .sg-body{background:#f8f9fc}
-[data-theme="light"] .data-table th{background:#e8eaf2}
-[data-theme="light"] #global-search-panel{background:#ffffff;border:1px solid rgba(0,0,0,.12)}
-html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);font-family:var(--font);font-size:14px;line-height:1.6}
-body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 50% at 75% -5%,rgba(168,85,247,.055),transparent),radial-gradient(ellipse 50% 40% at 5% 100%,rgba(14,165,233,.04),transparent);pointer-events:none;z-index:0}
 
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);font-family:var(--font);font-size:clamp(13px,1.5vw,15px);line-height:1.6}
 /* body gradient entfernt — cleaner */
 
 /* LOGIN */
 #login-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:100;background:var(--bg)}
-#login-glow{position:absolute;width:500px;height:500px;background:radial-gradient(circle,rgba(168,85,247,.1),transparent 65%);border-radius:50%;pointer-events:none}
-#login-box{position:relative;z-index:1;width:400px;background:rgba(12,12,22,.96);border:1px solid var(--b2);border-radius:var(--rxl);padding:40px 36px;backdrop-filter:blur(20px);box-shadow:0 40px 80px rgba(0,0,0,.5)}
+#login-glow{display:none}
+#login-box{position:relative;z-index:1;width:min(420px,92vw);background:var(--s1);border:1px solid var(--b1);border-radius:var(--rxl);padding:clamp(24px,5vw,40px) clamp(20px,5vw,36px);box-shadow:0 8px 32px rgba(0,0,0,.4)}
 #login-logo{width:56px;height:56px;margin:0 auto 18px;display:flex;align-items:center;justify-content:center}
 #login-logo svg{width:56px;height:56px;filter:drop-shadow(0 0 16px rgba(168,85,247,.5))}
 #login-title{font-size:22px;font-weight:600;text-align:center;letter-spacing:-.5px}
@@ -548,3 +534,512 @@ input::placeholder,textarea::placeholder{color:var(--t3)}
   padding:16px;cursor:pointer;transition:all .15s;color:var(--t1);font-family:var(--font);
   text-align:center;width:100%}
 .import-method-btn:hover{background:var(--s2);border-color:rgba(168,85,247,.3);transform:translateY(-1px)}
+
+/* ── Dropdown Options — explizite Farben für HA CSP-Kontext ─── */
+select option {
+  background: #1e2f42;
+  color: #e2e8f0;
+}
+select option:hover,
+select option:focus,
+select option:checked {
+  background: #2563eb;
+  color: #ffffff;
+}
+select[multiple] option:checked {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+/* ── Dropdown Options ───────────────────────────────────────── */
+select option {
+  background-color: #1a2535 !important;
+  color: #e2e8f0 !important;
+}
+select option:checked,
+select option:hover {
+  background-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  /* Tablet: Sidebar nur Icons */
+  #leftnav { width: 48px !important; min-width: 48px !important; }
+  #leftnav .ln-tooltip { display: block !important; }
+  #ln-brand { padding: 10px 0 !important; display: flex; justify-content: center; }
+  #ln-items { align-items: center; }
+  .ln-btn span:not(.ln-tooltip) { display: none !important; }
+
+  /* Content-Area volle Breite */
+  #app-layout { flex-direction: row; }
+
+  /* Chat: Req-Pane ausblenden auf Tablet */
+  #bc-req-pane { display: none !important; }
+
+  /* Titlebar kompakter */
+  #titlebar { padding: 0 12px; gap: 6px; }
+  #tb-title { font-size: 13px; }
+}
+
+@media (max-width: 768px) {
+  /* Mobile: Sidebar verstecken */
+  #leftnav { display: none !important; }
+
+  /* Views volle Breite */
+  .view { padding: 12px !important; }
+  .view-header { flex-direction: column; gap: 10px; align-items: flex-start !important; }
+
+  /* Tabellen scrollen */
+  .data-table { font-size: 12px; }
+  #users-table-wrap, #systems-list { overflow-x: auto; }
+
+  /* Chat Input */
+  .chat-foot { padding: 8px !important; }
+  .chips { flex-wrap: wrap; gap: 4px; }
+  .chip { font-size: 11px !important; padding: 4px 10px !important; }
+
+  /* Stats Row */
+  .stats-row { flex-wrap: wrap; gap: 8px !important; }
+  .stat-card { min-width: 120px; }
+}
+
+@media (min-width: 1400px) {
+  /* Großer Monitor: etwas mehr Schrift */
+  html, body { font-size: 15px; }
+}
+
+/* ── KANBAN BOARD ───────────────────────────────────────────── */
+.kanban-board {
+  display: flex;
+  gap: 12px;
+  height: 100%;
+  min-width: max-content;
+  align-items: flex-start;
+}
+.kanban-col {
+  width: 240px;
+  min-width: 240px;
+  background: var(--s1);
+  border: 1px solid var(--b1);
+  border-radius: var(--rl);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 180px);
+}
+.kanban-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--b1);
+  flex-shrink: 0;
+}
+.kanban-cards {
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.kanban-card {
+  background: var(--s2);
+  border: 1px solid var(--b1);
+  border-radius: var(--r);
+  padding: 10px 10px 8px;
+  cursor: pointer;
+  transition: border-color .15s, transform .1s;
+}
+.kanban-card:hover {
+  border-color: var(--b2);
+  transform: translateY(-1px);
+}
+.kanban-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.kanban-card-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--t1);
+  line-height: 1.4;
+  margin-bottom: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.kanban-card-sys {
+  font-size: 10px;
+  color: var(--t3);
+  margin-bottom: 6px;
+}
+.kanban-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--b1);
+}
+.wf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+/* ── Responsive — Tablet & Mobile ───────────────────────────── */
+
+/* Tablet (768px - 1024px) */
+@media (max-width: 1024px) {
+  #login-box {
+    width: 90%;
+    max-width: 420px;
+  }
+
+  #leftnav {
+    width: 52px;
+  }
+
+  #leftnav .ln-tooltip {
+    display: none;
+  }
+
+  #app-layout {
+    grid-template-columns: 52px 1fr;
+  }
+
+  #titlebar {
+    padding: 0 12px;
+  }
+
+  #tb-title {
+    font-size: 13px;
+  }
+
+  #presence-bar {
+    display: none !important;
+  }
+
+  .view-header {
+    padding: 12px 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .view-header h2 {
+    font-size: 16px;
+  }
+
+  .stats-row {
+    gap: 8px;
+    padding: 8px 14px;
+  }
+
+  .filter-bar {
+    padding: 6px 14px;
+    flex-wrap: wrap;
+  }
+
+  .data-table {
+    font-size: 12px;
+  }
+
+  .data-table th, .data-table td {
+    padding: 8px 10px;
+  }
+}
+
+/* Mobile (< 768px) */
+@media (max-width: 768px) {
+  #login-screen {
+    padding: 20px;
+    align-items: flex-start;
+    padding-top: 15vh;
+  }
+
+  #login-box {
+    width: 100%;
+    max-width: 100%;
+    padding: 28px 20px;
+    border-radius: var(--rl);
+  }
+
+  #login-title {
+    font-size: 20px;
+  }
+
+  #app-layout {
+    grid-template-columns: 44px 1fr;
+  }
+
+  #leftnav {
+    width: 44px;
+  }
+
+  #ln-brand {
+    padding: 10px 0;
+  }
+
+  #tb-title {
+    display: none;
+  }
+
+  #user-pill span {
+    display: none;
+  }
+
+  .tb-icon-btn {
+    padding: 6px;
+  }
+
+  #titlebar {
+    padding: 0 8px;
+    gap: 4px;
+    height: 44px;
+  }
+
+  .view {
+    padding: 0;
+  }
+
+  .view-header {
+    padding: 10px 12px;
+  }
+
+  .view-header h2 {
+    font-size: 15px;
+  }
+
+  .view-sub {
+    display: none;
+  }
+
+  .filter-bar {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+
+  .filter-bar input,
+  .filter-bar select {
+    font-size: 12px;
+    padding: 6px 8px;
+  }
+
+  /* Chat responsiv */
+  #bc-layout {
+    grid-template-columns: 1fr;
+  }
+
+  #bc-sidebar {
+    display: none;
+  }
+
+  #bc-req-pane {
+    display: none;
+  }
+
+  #bc-mobile-req-toggle {
+    display: flex !important;
+  }
+
+  .chat-msgs {
+    padding: 10px;
+  }
+
+  .chat-foot {
+    padding: 8px 10px;
+  }
+
+  .chips {
+    gap: 4px;
+  }
+
+  .chip {
+    font-size: 11px;
+    padding: 5px 10px;
+  }
+
+  /* Tabellen scrollbar */
+  #users-table-wrap,
+  #systems-list,
+  .scroll-body {
+    overflow-x: auto;
+  }
+
+  .data-table {
+    min-width: 500px;
+    font-size: 12px;
+  }
+
+  /* Modal volle Breite */
+  #modal-box {
+    width: 95vw;
+    max-width: 95vw;
+    margin: 10px;
+    max-height: 90vh;
+  }
+
+  /* Stats Kacheln */
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
+    padding: 8px 10px;
+  }
+
+  .stat-card {
+    padding: 10px;
+  }
+
+  .stat-val {
+    font-size: 20px;
+  }
+
+  /* sg (Settings Groups) */
+  .sg {
+    margin-bottom: 12px;
+  }
+
+  .sg-body {
+    padding: 12px;
+  }
+
+  .frow {
+    gap: 6px;
+  }
+
+  /* Toolbar */
+  #diag-toolbar,
+  .view-footer {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+}
+
+/* Login-Box zentriert auch auf kleinen Screens */
+@media (max-height: 700px) {
+  #login-screen {
+    align-items: flex-start;
+    overflow-y: auto;
+    padding: 20px;
+  }
+
+  #login-box {
+    margin: 20px auto;
+  }
+}
+
+/* ── Anforderungs-Netzwerk ───────────────────────────────────── */
+#view-req-network.network-fullscreen {
+  position: fixed !important;
+  inset: 0;
+  z-index: 1000;
+  background: var(--bg);
+}
+
+#req-network-canvas svg {
+  display: block;
+}
+
+#req-network-canvas circle {
+  transition: r 0.15s, stroke-width 0.15s;
+}
+
+#req-network-canvas g:hover circle {
+  stroke-width: 2.5px;
+  filter: brightness(1.2);
+}
+
+/* ── Globale Suche ───────────────────────────────────────────── */
+#gsp-inner {
+  background: var(--s1);
+  border: 1px solid var(--b1);
+  border-radius: var(--rxl);
+  width: 560px;
+  max-width: 92vw;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  overflow: hidden;
+}
+
+#gsp-input::placeholder { color: var(--t3); }
+
+/* ── Light Mode Overrides ────────────────────────────────────── */
+[data-theme="light"] #login-screen {
+  background: linear-gradient(135deg, #f0f4ff 0%, #e8edf5 100%);
+}
+
+[data-theme="light"] #titlebar {
+  background: var(--s1);
+  border-bottom-color: var(--b1);
+}
+
+[data-theme="light"] #leftnav {
+  background: var(--s1);
+  border-right-color: var(--b1);
+}
+
+[data-theme="light"] .ln-btn:hover {
+  background: var(--s2);
+}
+
+[data-theme="light"] .view-header {
+  background: var(--bg);
+  border-bottom-color: var(--b1);
+}
+
+[data-theme="light"] .data-table thead th {
+  background: var(--s1);
+}
+
+[data-theme="light"] .data-table tbody tr:hover {
+  background: var(--s1);
+}
+
+[data-theme="light"] .sg {
+  background: var(--bg);
+  border-color: var(--b1);
+}
+
+[data-theme="light"] .sg-head {
+  background: var(--s1);
+  border-bottom-color: var(--b1);
+}
+
+[data-theme="light"] #modal-box {
+  background: var(--bg);
+  border-color: var(--b1);
+}
+
+[data-theme="light"] #modal-overlay {
+  background: rgba(0,0,0,.3);
+}
+
+[data-theme="light"] .chat-msgs {
+  background: var(--bg);
+}
+
+[data-theme="light"] .chat-msg.ai .msg-bubble {
+  background: var(--s1);
+  border-color: var(--b1);
+  color: var(--t1);
+}
+
+[data-theme="light"] .send-btn {
+  background: var(--aa);
+}
+
+[data-theme="light"] .input-bar {
+  background: var(--s1);
+  border-color: var(--b1);
+}
+
+[data-theme="light"] .filter-bar {
+  background: var(--s1);
+  border-bottom-color: var(--b1);
+}

@@ -21,7 +21,7 @@ async function fetchReqsPage({ systemId, page = 0, limit = PAGE_SIZE, sort = 'cr
   if (category) params.set('category', category);
   if (status)   params.set('status',   status);
 
-  const res  = await fetch(`api/requirements?${params}`, { credentials: 'include' });
+  const res  = await fetch(`/api/requirements?${params}`, { credentials: 'include' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   // Abwärtskompatibilität: falls Array → in Paginations-Format wrappen

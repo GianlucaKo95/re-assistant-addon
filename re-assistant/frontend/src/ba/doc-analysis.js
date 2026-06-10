@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * ba/doc-analysis.js
  * Dokumentenanalyse — KI extrahiert Requirements, Annahmen, Risiken.

@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * ba/quality.js
  * ISO 29148 Qualitätssicherung für Anforderungen.

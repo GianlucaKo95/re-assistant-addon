@@ -34,7 +34,7 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
   const feat   = feature || _currentFeature || 'other';
   const sysId  = _currentSystemId || S.activeSystemId || null;
   try {
-    const res = await fetch('/api/ai/chat', {
+    const res = await fetch('api/ai/chat', {
       method: 'POST', credentials: 'include',
       headers: {
         'Content-Type':  'application/json',
@@ -42,12 +42,15 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
         'X-RE-System':   sysId || '',
       },
       body: JSON.stringify({
-        model:      S.settings?.model || 'claude-sonnet-4-6',
+        model:      S.settings?.model || 'claude-sonnet-4-20250514',
         max_tokens: maxTokens,
         system:     system || undefined,
         messages,
         _feature:   feat,
         _systemId:  sysId,
+        // Provider + Key aus User-Settings mitschicken
+        _provider:   S.settings?.provider   || 'anthropic',
+        _grokApiKey: S.settings?.grokApiKey || undefined,
       }),
     });
 

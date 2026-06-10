@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/token-dashboard.js
  * Token-Verbrauch Dashboard (Option A) + Feature-Budget-Verwaltung (Option B).
@@ -37,7 +36,7 @@ async function loadTokenDashboard() {
 
   try {
     const months = parseInt($('token-months-sel')?.value || '3');
-    const data   = await fetch(`api/tokens/usage?months=${months}`, { credentials:'include' }).then(r=>r.json());
+    const data   = await fetch(`/api/tokens/usage?months=${months}`, { credentials:'include' }).then(r=>r.json());
     renderTokenDashboard(data, wrap);
   } catch(e) {
     wrap.innerHTML = `<div class="empty-state"><h3>Fehler</h3><p>${esc(e.message)}</p></div>`;
@@ -184,7 +183,7 @@ async function loadBudgetManagement() {
   wrap.innerHTML = '<div class="empty-state"><div class="spin"></div></div>';
 
   try {
-    const budgets = await fetch('api/tokens/budgets', { credentials:'include' }).then(r=>r.json());
+    const budgets = await fetch('/api/tokens/budgets', { credentials:'include' }).then(r=>r.json());
     renderBudgetManagement(budgets, wrap);
   } catch(e) {
     wrap.innerHTML = `<div style="color:var(--red);padding:16px">${esc(e.message)}</div>`;
@@ -259,7 +258,7 @@ function renderBudgetRow(b) {
 async function toggleFeature(feature, enabled) {
   const limitInput = $(`limit-${feature}`);
   const limitVal   = limitInput?.value ? parseFloat(limitInput.value) : null;
-  await fetch(`api/tokens/budgets/${feature}`, {
+  await fetch(`/api/tokens/budgets/${feature}`, {
     method:'POST', credentials:'include',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ enabled, monthlyLimitUsd: limitVal }),
@@ -273,7 +272,7 @@ async function saveBudget(feature) {
   const el      = $(`limit-${feature}`);
   const enabled = document.querySelector(`#brow-${feature} input[type=checkbox]`)?.checked;
   const limit   = el?.value ? parseFloat(el.value) : null;
-  await fetch(`api/tokens/budgets/${feature}`, {
+  await fetch(`/api/tokens/budgets/${feature}`, {
     method:'POST', credentials:'include',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ enabled: enabled !== false, monthlyLimitUsd: limit }),
@@ -286,7 +285,7 @@ let _featureStatus = {};
 
 async function refreshFeatureStatus() {
   try {
-    _featureStatus = await fetch('api/tokens/features', { credentials:'include' }).then(r=>r.json());
+    _featureStatus = await fetch('/api/tokens/features', { credentials:'include' }).then(r=>r.json());
     updateDisabledFeatureUI();
   } catch(e) {}
 }
@@ -321,7 +320,7 @@ function switchDashboardTab(tab) {
 // ── Export ────────────────────────────────────────────────────
 async function exportTokenUsage() {
   const months = parseInt($('token-months-sel')?.value || '3');
-  const data   = await fetch(`api/tokens/usage?months=${months}`, { credentials:'include' }).then(r=>r.json());
+  const data   = await fetch(`/api/tokens/usage?months=${months}`, { credentials:'include' }).then(r=>r.json());
   const e = v => `"${String(v||'').replace(/"/g,'""')}"`;
   let csv = 'Feature,Anfragen,Input-Tokens,Output-Tokens,Kosten (USD),Kosten (EUR)\n';
   for (const f of data.byFeature)

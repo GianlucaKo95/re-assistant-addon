@@ -115,6 +115,7 @@ function renderReqList(containerId, reqs, mode) {
             <span class="req-id">${esc(r.id)}</span>
             <span class="sbadge s-${r.status}">${statusLabel(r.status)}</span>
             <span class="sbadge p-${r.priority}">${priLabel(r.priority)}</span>
+            ${window.workflowBadge ? workflowBadge(r.workflowStatus || r.workflow_status, true) : ''}
             ${sys ? `<span class="rtag">${esc(sys.name)}</span>` : ''}
             ${r.subcategory ? `<span class="rtag">${esc(r.subcategory)}</span>` : ''}
             ${r.qualityScore ? `<span class="sbadge" style="background:${r.qualityScore>=7?'var(--grnbg)':r.qualityScore>=4?'var(--ambbg)':'var(--redbg)'};color:${r.qualityScore>=7?'var(--grn)':r.qualityScore>=4?'var(--amb)':'var(--red)'}">QS:${r.qualityScore}</span>` : ''}

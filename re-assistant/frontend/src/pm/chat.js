@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * pm/chat.js
  * PM Chat — KI-gestützte Systemanalyse für Projektmanager.
@@ -16,7 +15,7 @@ async function loadPMChat(){
   inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendPMChat();}autoResize(inp);};
   inp.oninput=()=>autoResize(inp);
   document.querySelectorAll('#pmc-chips .chip').forEach(c=>c.onclick=()=>{inp.value=c.dataset.p;sendPMChat();});
-  $('pmc-mic').onclick=()=>toggleChatMic('pmc-input','pmc-mic');
+  $('pmc-mic')?.addEventListener('click', () => toggleChatMic('pmc-input', 'pmc-mic'));
   if(!$('pm-chat-msgs').children.length){const sys=S.systems.find(s=>s.id===S.activeSystemId);pushMsg('pm-chat-msgs','a',sys?`PM-Modus: **${sys.name}**.`:'Kein System.');}
 }
 async function sendPMChat(){

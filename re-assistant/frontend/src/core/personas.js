@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * core/personas.js
  * C: Branchen-Personas — DSGVO, MDR (Medizinprodukte), Banking (MaRisk),

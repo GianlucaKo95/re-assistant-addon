@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * pm/backlog.js
  * PM Backlog Builder — Epics/Features/Stories, Jira-Export.
@@ -30,7 +29,13 @@ async function generateBacklog(){
     const bl=JSON.parse(res.text.replace(/```json|```/g,'').trim());
     const sys=S.systems.find(s=>s.id===sysId);
     S.currentBacklog={id:null,systemId:sysId,systemName:sys?.name||'',epics:bl.epics};
-    await window.api.saveBacklog(S.currentBacklog);renderBacklog(S.currentBacklog);toast('✅ Backlog erstellt');
+    await window.api.saveBacklog(S.currentBacklog);
+    renderBacklog(S.currentBacklog);
+    // Netzwerk auch neu rendern falls sichtbar
+    if (document.getElementById('backlog-network-wrap')?.style.display !== 'none') {
+      if (window.renderBacklogNetwork) renderBacklogNetwork(S.currentBacklog);
+    }
+    toast('✅ Backlog erstellt');
   }catch(e){toast('❌ Parsing-Fehler');}
 }
 function renderBacklog(bl){

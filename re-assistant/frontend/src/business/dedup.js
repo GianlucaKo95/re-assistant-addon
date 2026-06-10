@@ -1,5 +1,4 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
  * business/dedup.js
  * KI-gestützte Duplikat-Erkennung und -Bereinigung.

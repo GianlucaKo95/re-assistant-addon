@@ -5,32 +5,32 @@
 
 const API = {
   // ── AUTH ──────────────────────────────────────────────────
-  async login(data)     { return post('/api/auth/login', data); },
-  async logout()        { return post('/api/auth/logout'); },
-  async changePassword(d){ return post('/api/auth/change-password', d); },
-  async getMe()         { return get('/api/auth/me'); },
-  async getAppVersion() { const d = await get('/api/version'); return d.version; },
+  async login(data)     { return post('api/auth/login', data); },
+  async logout()        { return post('api/auth/logout'); },
+  async changePassword(d){ return post('api/auth/change-password', d); },
+  async getMe()         { return get('api/auth/me'); },
+  async getAppVersion() { const d = await get('api/version'); return d.version; },
 
   // ── USERS ─────────────────────────────────────────────────
-  async getUsers()       { return get('/api/users'); },
-  async saveUser(u)      { return post('/api/users', u); },
-  async deleteUser(id)   { return del(`/api/users/${id}`); },
+  async getUsers()       { return get('api/users'); },
+  async saveUser(u)      { return post('api/users', u); },
+  async deleteUser(id)   { return del(`api/users/${id}`); },
 
   // ── SYSTEMS ───────────────────────────────────────────────
-  async getSystems()     { return get('/api/systems'); },
-  async saveSystem(s)    { return post('/api/systems', s); },
-  async deleteSystem(id) { return del(`/api/systems/${id}`); },
+  async getSystems()     { return get('api/systems'); },
+  async saveSystem(s)    { return post('api/systems', s); },
+  async deleteSystem(id) { return del(`api/systems/${id}`); },
 
   async uploadDocs(systemId, files) {
     const fd = new FormData();
     for (const f of files) fd.append('files', f);
-    const res = await fetch(`/api/systems/${systemId}/docs`, {
+    const res = await fetch(`api/systems/${systemId}/docs`, {
       method: 'POST', body: fd, credentials: 'include'
     });
     return res.json();
   },
   async removeDoc({ systemId, docId }) {
-    return del(`/api/systems/${systemId}/docs/${docId}`);
+    return del(`api/systems/${systemId}/docs/${docId}`);
   },
 
   // ── REQUIREMENTS ──────────────────────────────────────────
@@ -38,34 +38,34 @@ const API = {
     const q = new URLSearchParams(
       Object.fromEntries(Object.entries(params).filter(([,v]) => v))
     );
-    return get('/api/requirements' + (q.toString() ? '?' + q : ''));
+    return get('api/requirements' + (q.toString() ? '?' + q : ''));
   },
-  async saveRequirement(r)     { return post('/api/requirements', r); },
-  async deleteRequirement(id)  { return del(`/api/requirements/${id}`); },
+  async saveRequirement(r)     { return post('api/requirements', r); },
+  async deleteRequirement(id)  { return del(`api/requirements/${id}`); },
   async addComment({ reqId, comment }) {
-    return post(`/api/requirements/${reqId}/comments`, comment);
+    return post(`api/requirements/${reqId}/comments`, comment);
   },
   async assignRequirement({ reqId, userId, subcategory }) {
-    return post(`/api/requirements/${reqId}/assign`, { userId, subcategory });
+    return post(`api/requirements/${reqId}/assign`, { userId, subcategory });
   },
 
   // ── BACKLOGS ──────────────────────────────────────────────
-  async getBacklogs(systemId)  { return get('/api/backlogs' + (systemId ? `?systemId=${systemId}` : '')); },
-  async saveBacklog(b)         { return post('/api/backlogs', b); },
-  async deleteBacklog(id)      { return del(`/api/backlogs/${id}`); },
+  async getBacklogs(systemId)  { return get('api/backlogs' + (systemId ? `?systemId=${systemId}` : '')); },
+  async saveBacklog(b)         { return post('api/backlogs', b); },
+  async deleteBacklog(id)      { return del(`api/backlogs/${id}`); },
 
   // ── WORKSHOPS ─────────────────────────────────────────────
-  async getWorkshops(systemId) { return get('/api/workshops' + (systemId ? `?systemId=${systemId}` : '')); },
-  async saveWorkshop(w)        { return post('/api/workshops', w); },
+  async getWorkshops(systemId) { return get('api/workshops' + (systemId ? `?systemId=${systemId}` : '')); },
+  async saveWorkshop(w)        { return post('api/workshops', w); },
 
   // ── DIAGRAMS ──────────────────────────────────────────────
-  async getDiagrams(systemId)  { return get('/api/diagrams' + (systemId ? `?systemId=${systemId}` : '')); },
-  async saveDiagram(d)         { return post('/api/diagrams', d); },
-  async deleteDiagram(id)      { return del(`/api/diagrams/${id}`); },
+  async getDiagrams(systemId)  { return get('api/diagrams' + (systemId ? `?systemId=${systemId}` : '')); },
+  async saveDiagram(d)         { return post('api/diagrams', d); },
+  async deleteDiagram(id)      { return del(`api/diagrams/${id}`); },
 
   // ── ANTHROPIC (über Backend-Proxy) ───────────────────────
   async anthropicRequest({ body }) {
-    const res = await fetch('/api/ai/chat', {
+    const res = await fetch('api/ai/chat', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -76,13 +76,13 @@ const API = {
 
   // ── JIRA (über Backend-Proxy) ─────────────────────────────
   async jiraGetProjects({ url, email, token }) {
-    return post('/api/jira/projects', { url, email, token, path: '/rest/api/3/project?maxResults=50', method: 'GET' });
+    return post('api/jira/projects', { url, email, token, path: '/rest/api/3/project?maxResults=50', method: 'GET' });
   },
   async jiraGetIssues({ url, email, token, projectKey }) {
-    return post('/api/jira/issues', { url, email, token, path: `/rest/api/3/search?jql=${encodeURIComponent(`project=${projectKey} ORDER BY created DESC`)}&maxResults=100&fields=summary,description,issuetype,priority,status`, method: 'GET' });
+    return post('api/jira/issues', { url, email, token, path: `/rest/api/3/search?jql=${encodeURIComponent(`project=${projectKey} ORDER BY created DESC`)}&maxResults=100&fields=summary,description,issuetype,priority,status`, method: 'GET' });
   },
   async jiraCreateIssues({ url, email, token, projectKey, issues }) {
-    return post('/api/jira/create', { url, email, token, path: '/rest/api/3/issue/bulk', method: 'POST',
+    return post('api/jira/create', { url, email, token, path: '/rest/api/3/issue/bulk', method: 'POST',
       body: { issueUpdates: issues.map(i => ({ fields: {
         project: { key: projectKey },
         summary: i.title,
@@ -127,9 +127,9 @@ const API = {
   },
 
   // ── LICENSE ───────────────────────────────────────────────
-  async getLicenseStatus()     { return get('/api/license/status'); },
-  async activateLicense(key)   { return post('/api/license/activate', { key }); },
-  async removeLicense()        { return del('/api/license'); },
+  async getLicenseStatus()     { return get('api/license/status'); },
+  async activateLicense(key)   { return post('api/license/activate', { key }); },
+  async removeLicense()        { return del('api/license'); },
 
   // ── EINSTELLUNGEN (localStorage) ─────────────────────────
   async loadSettings() {
@@ -155,7 +155,7 @@ const API = {
 };
 
 function defaultSettings() {
-  return { model:'claude-sonnet-4-20250514', language:'de', detail:'standard', voiceURI:'', persona:'professional', jiraUrl:'', jiraEmail:'', jiraToken:'' };
+  return { provider:'anthropic', model:'claude-sonnet-4-20250514', grokApiKey:'', grokModel:'grok-3-mini', language:'de', detail:'standard', voiceURI:'', persona:'professional', jiraUrl:'', jiraEmail:'', jiraToken:'' };
 }
 
 async function get(url) {
