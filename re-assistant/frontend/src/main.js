@@ -2,12 +2,12 @@
  * main.js — RE-Assistent v3.2
  */
 import './features/theme.js';  // Zuerst — verhindert Flash of Dark Content
+import './core/helpers.js';    // $ global verfügbar machen
 import './features/service-worker.js';
 
 import './styles.css';
 import './api.js';
 import './core/state.js';
-import './core/helpers.js';
 import './core/api-client.js';
 import './core/personas.js';
 import './core/error-handler.js';

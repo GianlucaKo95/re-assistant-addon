@@ -205,7 +205,9 @@ document.addEventListener('DOMContentLoaded', () => {
 // Exports (global, da kein Bundler-Tree-Shaking für globale Funktionen)
 window.$ = $;
 window.setVal = setVal;
-window.esc = esc;
+window.$      = $;
+window.setVal = setVal;
+window.esc    = esc;
 window.now = now;
 window.timeSince = timeSince;
 window.statusLabel = statusLabel;
