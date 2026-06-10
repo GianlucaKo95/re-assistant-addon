@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/pipeline.js
  * Nr. 3: Durchgehende Pipeline Workshop → Requirements → Backlog

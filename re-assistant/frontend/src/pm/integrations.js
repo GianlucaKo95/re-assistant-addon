@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * pm/integrations.js
  * Jira und Azure DevOps — Export, Import, KI-Analyse.

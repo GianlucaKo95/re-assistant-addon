@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/onboarding.js
  * Onboarding-Wizard — erster Start, System anlegen, erste Anforderungen.

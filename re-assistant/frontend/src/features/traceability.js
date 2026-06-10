@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/traceability.js
  * Nr. 7: Vollständige Traceability-Matrix

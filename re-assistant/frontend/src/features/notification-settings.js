@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/notification-settings.js
  * F: UI für Benachrichtigungs-Einstellungen — E-Mail SMTP + HA-Webhook + Webhook.

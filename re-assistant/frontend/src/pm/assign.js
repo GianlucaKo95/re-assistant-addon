@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * pm/assign.js
  * PM Assign — Anforderungen Entwicklern zuweisen, Source-Code-Analyse.

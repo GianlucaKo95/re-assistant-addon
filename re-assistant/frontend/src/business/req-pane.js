@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * business/req-pane.js
  * Live-Anforderungs-Pane im Business Chat — CRUD, KI-Verfeinerung,

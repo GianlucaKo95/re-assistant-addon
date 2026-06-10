@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/import.js
  * B: Requirements-Import — CSV, Excel, JSON, JIRA-Export, Azure DevOps Export.

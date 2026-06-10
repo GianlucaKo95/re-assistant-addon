@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * nav/navigation.js
  * NAV-Konfiguration, buildNav(), switchView(), Icon-Bibliothek.

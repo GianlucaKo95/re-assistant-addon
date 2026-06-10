@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/qs-trends.js
  * H: QS-Qualitätstrends — historische Scores, Charts, Team-Dashboard.

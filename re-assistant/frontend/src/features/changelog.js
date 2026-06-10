@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/changelog.js
  * N: Changelog-Generierung — aus Änderungen ein lesbares Management-Dokument.

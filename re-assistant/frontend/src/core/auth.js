@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * core/auth.js
  * Login, Session-Persistenz, App-Initialisierung, Settings.

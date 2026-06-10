@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * pm/backlog.js
  * PM Backlog Builder — Epics/Features/Stories, Jira-Export.

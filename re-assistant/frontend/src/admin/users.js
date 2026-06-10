@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * admin/users.js
  * Benutzerverwaltung — Tabelle, Erstellen, Bearbeiten, Löschen.

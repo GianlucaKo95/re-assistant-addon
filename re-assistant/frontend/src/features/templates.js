@@ -1,4 +1,5 @@
 'use strict';
+const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/templates.js
  * Anforderungsvorlagen — eingebaut, KI-generiert, eigene Vorlagen.
