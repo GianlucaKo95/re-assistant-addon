@@ -118,6 +118,7 @@ const VIEW_LOADERS = {
   'ba-dashboard':      () => loadBaDashboard(),
   'templates':        () => loadTemplates(),
   'dev-work':         () => loadDevWork(),
+  'settings':         () => applyApiSectionVisibility(),
 };
 
 // ── Build Nav ─────────────────────────────────────────────────
@@ -153,6 +154,33 @@ async function switchView(id) {
   // Loader aufrufen
   const loader = VIEW_LOADERS[id];
   if (loader) await loader();
+}
+
+// Setzt API-Sektion je nach Rolle sichtbar/gesperrt
+function applyApiSectionVisibility() {
+  if (typeof applySettingsToForm === 'function') applySettingsToForm();
+  const isAdmin = S.user?.role === 'admin';
+  const apiSection = document.getElementById('cfg-api-section');
+  if (!apiSection) return;
+  // Reset
+  apiSection.querySelectorAll('input, button, select').forEach(el => {
+    el.disabled = false;
+    el.style.opacity = '';
+    el.style.cursor = '';
+  });
+  apiSection.querySelectorAll('.api-non-admin-banner').forEach(el => el.remove());
+  if (!isAdmin) {
+    apiSection.querySelectorAll('input, button, select').forEach(el => {
+      el.disabled = true;
+      el.style.opacity = '0.5';
+      el.style.cursor = 'not-allowed';
+    });
+    const banner = document.createElement('div');
+    banner.className = 'api-non-admin-banner';
+    banner.style.cssText = 'padding:8px 10px;background:var(--s2);border-radius:var(--r);font-size:12px;color:var(--t2);margin-top:8px';
+    banner.textContent = 'ℹ Der API-Key wird vom Administrator verwaltet.';
+    apiSection.appendChild(banner);
+  }
 }
 
 window.buildNav    = buildNav;
