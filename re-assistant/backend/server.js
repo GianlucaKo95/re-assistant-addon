@@ -72,7 +72,10 @@ async function resolveApiConfig(userId) {
   const globalGrok   = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value;
   const globalAnth   = process.env.ANTHROPIC_API_KEY || (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value;
 
-  if (globalProv === 'grok' && globalGrok) return { key: globalGrok, provider: 'grok' };
+  const globalGroq = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value;
+
+  if (globalProv === 'grok'  && globalGrok) return { key: globalGrok, provider: 'grok' };
+  if (globalProv === 'groq'  && globalGroq) return { key: globalGroq, provider: 'groq' };
   if (globalAnth) return { key: globalAnth, provider: 'anthropic' };
   return { key: null, provider: 'anthropic' };
 }
@@ -751,9 +754,14 @@ app.post('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
   if (prov === 'grok' && grokApiKey && !grokApiKey.startsWith('xai-')) {
     return res.status(400).json({ error: 'Ungültiger Grok Key — muss mit xai- beginnen' });
   }
+  const groqApiKey = req.body.groqApiKey;
+  if (prov === 'groq' && groqApiKey && !groqApiKey.startsWith('gsk_')) {
+    return res.status(400).json({ error: 'Ungültiger Groq Key — muss mit gsk_ beginnen' });
+  }
   await query("INSERT INTO app_settings (key,value) VALUES ('global_ai_provider',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [prov]);
-  if (apiKey)    await query("INSERT INTO app_settings (key,value) VALUES ('global_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [apiKey]);
+  if (apiKey)     await query("INSERT INTO app_settings (key,value) VALUES ('global_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [apiKey]);
   if (grokApiKey) await query("INSERT INTO app_settings (key,value) VALUES ('global_grok_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [grokApiKey]);
+  if (groqApiKey) await query("INSERT INTO app_settings (key,value) VALUES ('global_groq_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [groqApiKey]);
   res.json({ ok:true });
 });
 
@@ -797,6 +805,7 @@ app.get('/api/apikey/user/status', requireAuth, async (req, res) => {
   const user         = await queryOne('SELECT api_key, ai_provider FROM users WHERE id=$1', [req.session.userId]);
   const globalKey    = process.env.ANTHROPIC_API_KEY || (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value;
   const globalGrok   = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value;
+  const globalGroq   = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value;
   const globalProv   = (await queryOne("SELECT value FROM app_settings WHERE key='global_ai_provider'"))?.value || 'anthropic';
   res.json({
     mode,
@@ -804,6 +813,7 @@ app.get('/api/apikey/user/status', requireAuth, async (req, res) => {
     userProvider:   user?.ai_provider || 'anthropic',
     hasGlobalKey:   !!globalKey,
     hasGrokKey:     !!globalGrok,
+    hasGroqKey:     !!globalGroq,
     globalProvider: globalProv,
   });
 });
@@ -1024,7 +1034,7 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
       });
     }
 
-    const { _feature, _systemId, _provider: clientProvider, _grokApiKey: clientGrokKey, ...cleanBody } = req.body;
+    const { _feature, _systemId, _provider: clientProvider, _grokApiKey: clientGrokKey, _groqApiKey: clientGroqKey, ...cleanBody } = req.body;
 
     // Provider + Key auflösen
     let apiCfg = await resolveApiConfig(req.session.userId);
@@ -1032,6 +1042,8 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
     // Client-seitige Überschreibung (per-User localStorage Settings)
     if (clientProvider === 'grok' && clientGrokKey?.startsWith('xai-')) {
       apiCfg = { key: clientGrokKey, provider: 'grok' };
+    } else if (clientProvider === 'groq' && clientGroqKey?.startsWith('gsk_')) {
+      apiCfg = { key: clientGroqKey, provider: 'groq' };
     } else if (clientProvider === 'anthropic' && cleanBody._apiKey?.startsWith('sk-')) {
       apiCfg = { key: cleanBody._apiKey, provider: 'anthropic' };
       delete cleanBody._apiKey;
@@ -1041,18 +1053,20 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
 
     let apiUrl, apiHeaders, apiBody;
 
-    if (apiCfg.provider === 'grok') {
-      // Grok xAI — OpenAI-kompatible API
-      const grokModel = cleanBody.model?.startsWith('claude') ? 'grok-3-mini' : (cleanBody.model || 'grok-3-mini');
+    if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
+      // Grok (xAI) + Groq — beide OpenAI-kompatibel
+      const defaultModel = apiCfg.provider === 'groq' ? 'llama-3.3-70b-versatile' : 'grok-3-mini';
+      const model = cleanBody.model?.startsWith('claude') ? defaultModel : (cleanBody.model || defaultModel);
       const msgs = [];
       if (cleanBody.system) msgs.push({ role: 'system', content: cleanBody.system });
       for (const m of (cleanBody.messages || [])) {
         const text = Array.isArray(m.content) ? m.content.map(c => c.text || '').join('') : m.content;
         msgs.push({ role: m.role, content: text });
       }
-      apiUrl     = 'https://api.x.ai/v1/chat/completions';
+      const baseUrl = apiCfg.provider === 'groq' ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://api.x.ai/v1/chat/completions';
+      apiUrl     = baseUrl;
       apiHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key };
-      apiBody    = { model: grokModel, messages: msgs, max_tokens: cleanBody.max_tokens || 1000 };
+      apiBody    = { model, messages: msgs, max_tokens: cleanBody.max_tokens || 1000 };
     } else {
       apiUrl     = 'https://api.anthropic.com/v1/messages';
       apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
@@ -1062,8 +1076,8 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
     const response = await fetch(apiUrl, { method:'POST', headers: apiHeaders, body: JSON.stringify(apiBody) });
     let data = await response.json();
 
-    // Grok Response → Anthropic Format
-    if (apiCfg.provider === 'grok' && response.ok) {
+    // Grok/Groq Response → Anthropic Format
+    if ((apiCfg.provider === 'grok' || apiCfg.provider === 'groq') && response.ok) {
       const choice = data.choices?.[0];
       data = {
         id: data.id, type: 'message', role: 'assistant',

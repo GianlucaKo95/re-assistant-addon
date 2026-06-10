@@ -121,13 +121,18 @@ function applySettingsToForm() {
   setVal('cfg-provider',   provider);
   setVal('cfg-apikey',     S.settings.apiKey    || '');
   setVal('cfg-model',      S.settings.model);
-  setVal('cfg-grok-apikey', S.settings.grokApiKey || '');
-  setVal('cfg-grok-model',  S.settings.grokModel  || 'grok-3-mini');
+  setVal('cfg-grok-apikey',  S.settings.grokApiKey  || '');
+  setVal('cfg-grok-model',   S.settings.grokModel   || 'grok-3-mini');
+  setVal('cfg-groq-apikey',  S.settings.groqApiKey  || '');
+  setVal('cfg-groq-model',   S.settings.groqModel   || 'llama-3.3-70b-versatile');
   const isGrok = provider === 'grok';
+  const isGroq = provider === 'groq';
   const aw = document.getElementById('cfg-anthropic-wrap');
   const gw = document.getElementById('cfg-grok-wrap');
-  if (aw) aw.style.display = isGrok ? 'none' : '';
-  if (gw) gw.style.display = isGrok ? '' : 'none';
+  const grw = document.getElementById('cfg-groq-wrap');
+  if (aw)  aw.style.display  = (!isGrok && !isGroq) ? '' : 'none';
+  if (gw)  gw.style.display  = isGrok ? '' : 'none';
+  if (grw) grw.style.display = isGroq ? '' : 'none';
 
   // Für Nicht-Admins: API-Key Sektion nur lesend
   const isAdmin = S.user?.role === 'admin';
@@ -158,8 +163,10 @@ async function saveCfg() {
   S.settings.provider   = provider;
   S.settings.apiKey     = $('cfg-apikey')?.value.trim() || '';
   S.settings.model      = $('cfg-model')?.value || 'claude-sonnet-4-20250514';
-  S.settings.grokApiKey = $('cfg-grok-apikey')?.value.trim() || '';
-  S.settings.grokModel  = $('cfg-grok-model')?.value || 'grok-3-mini';
+  S.settings.grokApiKey  = $('cfg-grok-apikey')?.value.trim()  || '';
+  S.settings.grokModel   = $('cfg-grok-model')?.value           || 'grok-3-mini';
+  S.settings.groqApiKey  = $('cfg-groq-apikey')?.value.trim()  || '';
+  S.settings.groqModel   = $('cfg-groq-model')?.value           || 'llama-3.3-70b-versatile';
   S.settings.language  = $('cfg-lang').value;
   S.settings.detail    = $('cfg-detail').value;
   S.settings.persona   = $('cfg-persona').value;
@@ -238,12 +245,21 @@ document.addEventListener('DOMContentLoaded', () => {
     i.type = i.type === 'password' ? 'text' : 'password';
     $('cfg-grok-toggle').textContent = i.type === 'password' ? 'Anzeigen' : 'Verbergen';
   });
+  $('cfg-groq-toggle')?.addEventListener('click', () => {
+    const i = $('cfg-groq-apikey');
+    if (!i) return;
+    i.type = i.type === 'password' ? 'text' : 'password';
+    $('cfg-groq-toggle').textContent = i.type === 'password' ? 'Anzeigen' : 'Verbergen';
+  });
   $('cfg-provider')?.addEventListener('change', function() {
     const isGrok = this.value === 'grok';
-    const aw = document.getElementById('cfg-anthropic-wrap');
-    const gw = document.getElementById('cfg-grok-wrap');
-    if (aw) aw.style.display = isGrok ? 'none' : '';
-    if (gw) gw.style.display = isGrok ? '' : 'none';
+    const isGroq = this.value === 'groq';
+    const aw  = document.getElementById('cfg-anthropic-wrap');
+    const gw  = document.getElementById('cfg-grok-wrap');
+    const grw = document.getElementById('cfg-groq-wrap');
+    if (aw)  aw.style.display  = (!isGrok && !isGroq) ? '' : 'none';
+    if (gw)  gw.style.display  = isGrok ? '' : 'none';
+    if (grw) grw.style.display = isGroq ? '' : 'none';
   });
   $('btn-save-cfg')?.addEventListener('click', saveCfg);
   $('btn-docs')?.addEventListener('click', () => window.api.openExternal('https://docs.anthropic.com'));

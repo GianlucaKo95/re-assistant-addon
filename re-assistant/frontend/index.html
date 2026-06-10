@@ -633,7 +633,8 @@
             <div class="frow"><label>Anbieter</label>
               <select id="cfg-provider">
                 <option value="anthropic">🤖 Anthropic (Claude)</option>
-                <option value="grok">⚡ Grok (xAI) — kostenlos verfügbar</option>
+                <option value="groq">🚀 Groq — kostenlos &amp; schnell</option>
+                <option value="grok">⚡ Grok (xAI)</option>
               </select>
             </div>
             <div id="cfg-anthropic-wrap">
@@ -649,6 +650,23 @@
                   <option value="claude-sonnet-4-20250514">Claude Sonnet 4 — empfohlen</option>
                   <option value="claude-opus-4-5">Claude Opus 4.5</option>
                   <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
+                </select>
+              </div>
+            </div>
+            <div id="cfg-groq-wrap" style="display:none">
+              <div class="frow"><label>Groq API-Schlüssel</label>
+                <div class="input-addon">
+                  <input type="password" id="cfg-groq-apikey" placeholder="gsk_…"/>
+                  <button class="addon-btn" id="cfg-groq-toggle">Anzeigen</button>
+                </div>
+                <span class="fhint">Kostenlos unter <a href="https://console.groq.com" target="_blank" style="color:var(--aa)">console.groq.com</a></span>
+              </div>
+              <div class="frow"><label>Modell</label>
+                <select id="cfg-groq-model">
+                  <option value="llama-3.3-70b-versatile">Llama 3.3 70B — empfohlen</option>
+                  <option value="llama-3.1-8b-instant">Llama 3.1 8B — schnellstes</option>
+                  <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+                  <option value="gemma2-9b-it">Gemma 2 9B</option>
                 </select>
               </div>
             </div>

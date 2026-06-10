@@ -171,7 +171,7 @@ const API = {
 };
 
 function defaultSettings() {
-  return { provider:'anthropic', model:'claude-sonnet-4-20250514', grokApiKey:'', grokModel:'grok-3-mini', language:'de', detail:'standard', voiceURI:'', persona:'professional', jiraUrl:'', jiraEmail:'', jiraToken:'' };
+  return { provider:'anthropic', model:'claude-sonnet-4-20250514', grokApiKey:'', grokModel:'grok-3-mini', groqApiKey:'', groqModel:'llama-3.3-70b-versatile', language:'de', detail:'standard', voiceURI:'', persona:'professional', jiraUrl:'', jiraEmail:'', jiraToken:'' };
 }
 
 async function get(url) {

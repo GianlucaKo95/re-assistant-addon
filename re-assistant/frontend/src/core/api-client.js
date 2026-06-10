@@ -51,7 +51,8 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
         _systemId:  sysId,
         // Provider + Key aus User-Settings mitschicken
         _provider:   S.settings?.provider   || 'anthropic',
-        _grokApiKey: S.settings?.grokApiKey || undefined,
+        _grokApiKey: S.settings?.provider === 'grok'  ? (S.settings?.grokApiKey  || undefined) : undefined,
+        _groqApiKey: S.settings?.provider === 'groq'  ? (S.settings?.groqApiKey  || undefined) : undefined,
       }),
     });
 
