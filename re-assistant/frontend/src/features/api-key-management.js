@@ -9,7 +9,7 @@ const $ = window.$ || (id => document.getElementById(id));
 // ── Status laden (wird beim App-Start aufgerufen) ─────────────
 async function loadApiKeyStatus() {
   try {
-    const res  = await fetch('/api/apikey/user/status', { credentials:'include' });
+    const res  = await fetch('api/apikey/user/status', { credentials:'include' });
     const data = await res.json();
     S.apiKeyStatus = data;
 
@@ -39,8 +39,8 @@ async function loadApiKeyAdmin() {
 
   try {
     const [modeRes, usersRes] = await Promise.all([
-      fetch('/api/apikey/mode', { credentials:'include' }).then(r=>r.json()),
-      fetch('/api/apikey/users/status', { credentials:'include' }).then(r=>r.json()),
+      fetch('api/apikey/mode', { credentials:'include' }).then(r=>r.json()),
+      fetch('api/apikey/users/status', { credentials:'include' }).then(r=>r.json()),
     ]);
 
     const wrap = $('apikey-admin-wrap');
@@ -173,7 +173,7 @@ async function loadApiKeyAdmin() {
 }
 
 async function setApiKeyMode(mode) {
-  await fetch('/api/apikey/mode', {
+  await fetch('api/apikey/mode', {
     method:'POST', credentials:'include',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ mode }),
@@ -188,7 +188,7 @@ async function setApiKeyMode(mode) {
 async function saveGlobalApiKey() {
   const key = $('ak-global-key')?.value.trim();
   if (!key) { toast('⚠ API-Key eingeben'); return; }
-  const res  = await fetch('/api/apikey/global', {
+  const res  = await fetch('api/apikey/global', {
     method:'POST', credentials:'include',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ apiKey: key }),
@@ -293,7 +293,7 @@ async function testApiKey(scope) {
   const statusEl = $(`ak-${scope}-status`);
   if (statusEl) statusEl.innerHTML = '<span class="spin"></span> Teste …';
   try {
-    const res = await fetch('/api/ai/chat', {
+    const res = await fetch('api/ai/chat', {
       method:'POST', credentials:'include',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
@@ -317,7 +317,7 @@ async function renderApiKeySection() {
   const wrap = $('apikey-user-wrap');
   if (!wrap) return;
 
-  const res    = await fetch('/api/apikey/user/status', { credentials:'include' }).then(r=>r.json());
+  const res    = await fetch('api/apikey/user/status', { credentials:'include' }).then(r=>r.json());
   const isAdmin = S.user?.role === 'admin';
 
   if (res.mode === 'global' && !isAdmin) {
@@ -371,7 +371,7 @@ async function saveUserApiKey() {
     $('ak-user-status').innerHTML = '<span style="color:var(--red)">⚠ Ungültiger Key (muss mit sk- beginnen)</span>';
     return;
   }
-  const res  = await fetch('/api/apikey/user', {
+  const res  = await fetch('api/apikey/user', {
     method:'POST', credentials:'include',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ apiKey: key }),
@@ -390,7 +390,7 @@ async function saveUserApiKey() {
 
 async function deleteUserApiKey() {
   if (!confirm('Eigenen API-Key entfernen?')) return;
-  await fetch('/api/apikey/user', { method:'DELETE', credentials:'include' });
+  await fetch('api/apikey/user', { method:'DELETE', credentials:'include' });
   toast('✅ Key entfernt');
   await loadApiKeyStatus();
   renderApiKeySection();

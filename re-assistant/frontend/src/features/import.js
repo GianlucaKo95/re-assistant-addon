@@ -336,7 +336,7 @@ async function executeImport(reqs, sysId) {
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Importiere …'; }
 
   try {
-    const res = await fetch('/api/requirements/import', {
+    const res = await fetch('api/requirements/import', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ systemId: sysId, requirements: reqs, mode })
@@ -493,3 +493,10 @@ window.pickJiraFile        = pickJiraFile;
 window.openPasteDialog     = openPasteDialog;
 window.parsePasteImport    = parsePasteImport;
 window.showImportPreview   = showImportPreview;
+window.parseCSV = parseCSV;
+window.parseJSON = parseJSON;
+window.parseExcel = parseExcel;
+window.parseMarkdown = parseMarkdown;
+window.parseJiraXML = parseJiraXML;
+window.detectPrefix = detectPrefix;
+window.getMaxCounter = getMaxCounter;

@@ -184,7 +184,7 @@ async function loadBudgetManagement() {
   wrap.innerHTML = '<div class="empty-state"><div class="spin"></div></div>';
 
   try {
-    const budgets = await fetch('/api/tokens/budgets', { credentials:'include' }).then(r=>r.json());
+    const budgets = await fetch('api/tokens/budgets', { credentials:'include' }).then(r=>r.json());
     renderBudgetManagement(budgets, wrap);
   } catch(e) {
     wrap.innerHTML = `<div style="color:var(--red);padding:16px">${esc(e.message)}</div>`;
@@ -286,7 +286,7 @@ let _featureStatus = {};
 
 async function refreshFeatureStatus() {
   try {
-    _featureStatus = await fetch('/api/tokens/features', { credentials:'include' }).then(r=>r.json());
+    _featureStatus = await fetch('api/tokens/features', { credentials:'include' }).then(r=>r.json());
     updateDisabledFeatureUI();
   } catch(e) {}
 }

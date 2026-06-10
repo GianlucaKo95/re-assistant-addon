@@ -280,7 +280,7 @@ JSON ohne Backticks:
     };
 
     // Speichern
-    const saveRes = await fetch('/api/sprint/plans', {
+    const saveRes = await fetch('api/sprint/plans', {
       method:'POST', credentials:'include',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify(fullPlan),
@@ -302,11 +302,11 @@ JSON ohne Backticks:
 }
 
 async function setSprintStatus(id, status) {
-  const plans = await fetch('/api/sprint/plans', {credentials:'include'}).then(r=>r.json());
+  const plans = await fetch('api/sprint/plans', {credentials:'include'}).then(r=>r.json());
   const plan  = plans.find(p=>p.id===id);
   if (!plan) return;
   plan.status = status;
-  await fetch('/api/sprint/plans', {
+  await fetch('api/sprint/plans', {
     method:'POST', credentials:'include',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify(plan),

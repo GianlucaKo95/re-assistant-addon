@@ -59,7 +59,6 @@ const NAV = {
     { id:'ba-workshop',     icon:ICONS.workshop, label:'Workshop'          },
     { id:'dependencies',    icon:ICONS.deps,     label:'Abhängigkeiten'    },
     { id:'templates',       icon:ICONS.tmpl,     label:'Vorlagen'          },
-    { id:'consistency',       icon:ICONS.check,    label:'Konsistenz'        },
     { id:'review-workflow',   icon:ICONS.check,    label:'Review'            },
     { id:'business-chat',     icon:ICONS.chat,     label:'Chat & Prozesse'   },
   ],
@@ -114,10 +113,10 @@ const VIEW_LOADERS = {
   'archive':             () => loadArchive(),
   'dna':                 () => loadDNA(),
   'my-tasks':           () => loadTasksView(),
-  'consistency':        () => { /* loaded inline */ },
   'ba-dashboard':      () => loadBaDashboard(),
   'templates':        () => loadTemplates(),
   'dev-work':         () => loadDevWork(),
+  'voice':            () => { buildVoice && buildVoice(); populateVoices && populateVoices(); },
   'settings':         () => applyApiSectionVisibility(),
 };
 

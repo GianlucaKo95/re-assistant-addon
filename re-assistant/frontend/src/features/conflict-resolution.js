@@ -16,7 +16,7 @@ window.api.saveRequirement = async function(req) {
   if (req.updatedAt) payload._expectedUpdatedAt = req.updatedAt;
 
   try {
-    const res = await fetch('/api/requirements', {
+    const res = await fetch('api/requirements', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)

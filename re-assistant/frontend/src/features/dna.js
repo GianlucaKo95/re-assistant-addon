@@ -40,7 +40,7 @@ async function loadDNADashboard() {
   if (!sysId) return;
 
   const [queue, drift] = await Promise.all([
-    fetch('/api/dna/queue', { credentials:'include' }).then(r=>r.json()).catch(()=>({pending:0,processing:0})),
+    fetch('api/dna/queue', { credentials:'include' }).then(r=>r.json()).catch(()=>({pending:0,processing:0})),
     fetch(`/api/dna/drift?systemId=${sysId}&threshold=0.2`, { credentials:'include' }).then(r=>r.json()).catch(()=>[]),
   ]);
 
@@ -384,7 +384,7 @@ async function addGenealogyRelation(sourceId) {
   const targetId = $('gen-target-id')?.value.trim();
   const relType  = $('gen-rel-type')?.value;
   if (!targetId) return;
-  const res  = await fetch('/api/dna/genealogy', {
+  const res  = await fetch('api/dna/genealogy', {
     method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ sourceReqId: sourceId, targetReqId: targetId, relationType: relType }),
   });

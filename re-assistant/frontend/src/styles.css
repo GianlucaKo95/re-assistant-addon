@@ -1043,3 +1043,218 @@ select option:hover {
   background: var(--s1);
   border-bottom-color: var(--b1);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE — Vollständig überarbeitet
+   Breakpoints: Tablet ≤1024px | Mobile ≤768px | Small ≤480px
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Tablet (≤1024px) ────────────────────────────────────────── */
+@media (max-width: 1024px) {
+
+  /* Titlebar */
+  #titlebar { padding: 0 12px; gap: 6px; }
+  #tb-title  { font-size: 13px; }
+  #presence-bar { display: none !important; }
+  #tb-right { gap: 4px; }
+
+  /* Nav */
+  #leftnav { width: 52px; min-width: 52px; }
+  .ln-tooltip { display: none !important; }
+
+  /* App Layout */
+  #app-layout { grid-template-columns: 52px 1fr; }
+
+  /* View Header */
+  .view-header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
+  .view-header h2 { font-size: 17px; }
+  .view-header > div:last-child { flex-wrap: wrap; gap: 6px; }
+
+  /* Filter Bar */
+  .filter-bar { flex-wrap: wrap; padding: 8px 16px; gap: 6px; }
+
+  /* Tabellen */
+  .data-table { font-size: 12px; }
+  .data-table th, .data-table td { padding: 8px 10px; }
+
+  /* Settings */
+  #settings-content { padding: 16px; max-width: 100%; }
+  .sg { margin-bottom: 12px; }
+  .sg-body { padding: 14px; }
+
+  /* Stats */
+  .stats-row { gap: 8px; padding: 10px 14px; }
+  .stat-card { min-width: 100px; padding: 10px 14px; }
+
+  /* Modal */
+  #modal-box { max-width: 92vw; }
+}
+
+/* ── Mobile (≤768px) — bereits teilweise vorhanden, erweitert ── */
+@media (max-width: 768px) {
+
+  /* Titlebar kompakt */
+  #titlebar { height: 44px; padding: 0 8px; gap: 4px; }
+  #tb-title  { display: none; }
+  .tb-icon-btn { padding: 5px; }
+  #user-pill { gap: 6px; padding: 4px 8px; }
+  #user-name-label { display: none; }
+
+  /* Nav minimal */
+  #leftnav { width: 44px; min-width: 44px; }
+  #ln-brand { padding: 8px 0; }
+  .ln-btn { width: 34px; height: 34px; }
+  #app-layout { grid-template-columns: 44px 1fr; }
+
+  /* Login */
+  #login-screen { padding: 16px; padding-top: 10vh; }
+  #login-box { width: 100%; max-width: 100%; padding: 24px 16px; }
+  #login-title { font-size: 20px; }
+
+  /* View Header */
+  .view-header { padding: 10px 12px; gap: 6px; }
+  .view-header h2 { font-size: 15px; }
+  .view-sub { font-size: 11px; }
+  .view-header > div:last-child { width: 100%; justify-content: flex-start; }
+
+  /* Filter Bar */
+  .filter-bar { padding: 6px 10px; gap: 5px; }
+  .filter-bar input,
+  .filter-bar select { font-size: 12px; padding: 5px 8px; min-width: 0; flex: 1; }
+
+  /* Tabellen scrollbar */
+  .scroll-body, #users-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .data-table { min-width: 480px; font-size: 12px; }
+  .data-table th, .data-table td { padding: 7px 8px; white-space: nowrap; }
+
+  /* Buttons kleiner */
+  .btn-primary, .btn-secondary, .btn-danger {
+    font-size: 12px; padding: 7px 12px;
+  }
+
+  /* Stats 2-spaltig */
+  .stats-row { grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px 10px; }
+  .stat-card  { min-width: 0; padding: 10px; }
+  .stat-n     { font-size: 20px; }
+  .stat-l     { font-size: 10px; }
+
+  /* Settings */
+  #settings-content { padding: 10px 12px; }
+  .sg-body { padding: 12px; }
+  .frow { gap: 5px; }
+  .frow label { font-size: 12px; }
+  .frow input, .frow select, .frow textarea { font-size: 13px; }
+
+  /* Modal volle Breite */
+  #modal-box {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    max-height: 92vh;
+    margin: 8px;
+    border-radius: var(--rl);
+  }
+  #modal-head { padding: 12px 14px; }
+  #modal-body { padding: 12px 14px; }
+
+  /* Chat Input */
+  .input-bar { padding: 8px 10px; gap: 6px; }
+  .chat-textarea { font-size: 13px; }
+  .chips { gap: 4px; padding: 6px 10px; flex-wrap: wrap; }
+  .chip  { font-size: 11px; padding: 5px 10px; }
+
+  /* Req-Liste */
+  .req-card { padding: 10px 12px; }
+  .req-title { font-size: 13px; }
+  .req-meta  { flex-wrap: wrap; gap: 4px; }
+
+  /* System-Cards */
+  .system-card-head { flex-wrap: wrap; gap: 8px; }
+  .system-card-head > div:last-child { width: 100%; justify-content: flex-start; }
+
+  /* User-Tabelle — verstecke unwichtige Spalten */
+  .data-table .col-hide-mobile { display: none; }
+
+  /* Pagination */
+  #audit-pagination div { flex-wrap: wrap; gap: 6px; padding: 8px 12px; }
+
+  /* Toast */
+  #toast { bottom: 70px; right: 10px; left: 10px; max-width: none; }
+
+  /* Onboarding */
+  #onboarding-wrap { padding: 16px; }
+  #onboarding-content > div { padding: 20px 16px !important; }
+
+  /* Req-Netzwerk */
+  #req-network-wrap .view-header > div:last-child {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  #req-network-wrap select,
+  #req-network-wrap input { flex: 1; min-width: 120px; }
+}
+
+/* ── Klein (≤480px) ─────────────────────────────────────────── */
+@media (max-width: 480px) {
+
+  /* Titlebar — nur Icons */
+  .tb-icon-btn { padding: 4px; }
+  #user-role-badge { display: none; }
+
+  /* Nav — minimal */
+  #leftnav { width: 40px; min-width: 40px; }
+  .ln-btn  { width: 30px; height: 30px; font-size: 14px; }
+  #app-layout { grid-template-columns: 40px 1fr; }
+
+  /* Login */
+  #login-box { padding: 20px 14px; }
+  #login-title { font-size: 18px; }
+
+  /* Stats 1-spaltig */
+  .stats-row { grid-template-columns: 1fr; }
+
+  /* Filter — vertikal */
+  .filter-bar { flex-direction: column; align-items: stretch; }
+  .filter-bar input,
+  .filter-bar select,
+  .filter-bar button { width: 100%; }
+
+  /* Modal */
+  #modal-box { margin: 4px; width: calc(100vw - 8px); border-radius: var(--r); }
+
+  /* View Header — vertikal */
+  .view-header { flex-direction: column; align-items: flex-start; }
+  .view-header > div:last-child { width: 100%; }
+
+  /* Buttons in Gruppen stapeln */
+  .btn-group { flex-direction: column; }
+  .btn-group .btn-primary,
+  .btn-group .btn-secondary { width: 100%; }
+
+  /* Chips wrappen */
+  .chips { overflow-x: auto; flex-wrap: nowrap; }
+
+  /* Toast */
+  #toast { font-size: 12px; padding: 8px 12px; }
+}
+
+/* ── Landscape Mobile ────────────────────────────────────────── */
+@media (max-width: 768px) and (orientation: landscape) {
+  #login-screen { padding-top: 5vh; }
+  #login-box { padding: 16px; }
+  .view-header { padding: 6px 12px; }
+  .view-header h2 { font-size: 14px; }
+  .stats-row { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* ── Touch-Optimierungen ─────────────────────────────────────── */
+@media (hover: none) and (pointer: coarse) {
+  /* Größere Touch-Targets */
+  .ln-btn { min-height: 40px; min-width: 40px; }
+  .btn-primary, .btn-secondary, .btn-danger { min-height: 40px; }
+  .data-table td button { min-height: 36px; padding: 4px 10px; }
+  input, select, textarea { min-height: 40px; }
+  .chip { min-height: 36px; display: flex; align-items: center; }
+  /* Kein Hover-Effekt auf Touch */
+  .req-card:hover { background: var(--s1); }
+  .data-table tbody tr:hover { background: transparent; }
+}

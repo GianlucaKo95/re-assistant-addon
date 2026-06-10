@@ -35,10 +35,6 @@ async function registerServiceWorker() {
     window.addEventListener('online',  onOnline);
     window.addEventListener('offline', onOffline);
 
-    // Session beim Schließen des Tabs beenden (Chrome behält sonst Session-Cookies)
-    window.addEventListener('beforeunload', () => {
-      navigator.sendBeacon('api/auth/logout');
-    });
 
     // Initial-Status prüfen
     if (!navigator.onLine) onOffline();

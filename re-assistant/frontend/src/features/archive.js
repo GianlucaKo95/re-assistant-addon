@@ -171,7 +171,7 @@ window.delPaneReq = async function(id) {
 // ── Archiv-Statistiken für Admin-Dashboard ────────────────────
 async function getArchiveStats() {
   try {
-    const res = await fetch('/api/requirements/archived', { credentials:'include' });
+    const res = await fetch('api/requirements/archived', { credentials:'include' });
     const data = await res.json();
     return { count: data.length, oldest: data[data.length-1]?.archivedAt };
   } catch(e) { return { count: 0 }; }

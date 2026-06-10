@@ -144,26 +144,48 @@ function applySettingsToForm() {
 }
 
 async function saveCfg() {
-  const provider = $('cfg-provider')?.value || 'anthropic';
+  const provider    = $('cfg-provider')?.value    || 'anthropic';
+  const apiKey      = $('cfg-apikey')?.value.trim()      || '';
+  const grokApiKey  = $('cfg-grok-apikey')?.value.trim() || '';
+  const groqApiKey  = $('cfg-groq-apikey')?.value.trim() || '';
+
   S.settings.provider   = provider;
-  S.settings.apiKey     = $('cfg-apikey')?.value.trim() || '';
-  S.settings.model      = $('cfg-model')?.value || 'claude-sonnet-4-20250514';
-  S.settings.grokApiKey  = $('cfg-grok-apikey')?.value.trim()  || '';
-  S.settings.grokModel   = $('cfg-grok-model')?.value           || 'grok-3-mini';
-  S.settings.groqApiKey  = $('cfg-groq-apikey')?.value.trim()  || '';
-  S.settings.groqModel   = $('cfg-groq-model')?.value           || 'llama-3.3-70b-versatile';
-  S.settings.language  = $('cfg-lang').value;
-  S.settings.detail    = $('cfg-detail').value;
-  S.settings.persona   = $('cfg-persona').value;
-  S.settings.voiceURI  = $('cfg-voice').value;
-  S.settings.jiraUrl   = $('cfg-jira-url').value.trim();
-  S.settings.jiraEmail = $('cfg-jira-email').value.trim();
-  S.settings.jiraToken = $('cfg-jira-token').value.trim();
+  S.settings.apiKey     = apiKey;
+  S.settings.model      = $('cfg-model')?.value      || 'claude-sonnet-4-20250514';
+  S.settings.grokApiKey = grokApiKey;
+  S.settings.grokModel  = $('cfg-grok-model')?.value  || 'grok-3-mini';
+  S.settings.groqApiKey = groqApiKey;
+  S.settings.groqModel  = $('cfg-groq-model')?.value  || 'llama-3.3-70b-versatile';
+
+  // Key ans Backend senden
+  const keyBody = { provider };
+  if (apiKey)     keyBody.apiKey     = apiKey;
+  if (grokApiKey) keyBody.grokApiKey = grokApiKey;
+  if (groqApiKey) keyBody.groqApiKey = groqApiKey;
+
+  if (apiKey || grokApiKey || groqApiKey) {
+    try {
+      const res  = await fetch('api/apikey/global', {
+        method:'POST', credentials:'include',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(keyBody),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if ($('cfg-msg')) $('cfg-msg').innerHTML = '<span style="color:var(--red)">❌ ' + esc(data.error||'Fehler') + '</span>';
+        return;
+      }
+    } catch(e) {
+      if ($('cfg-msg')) $('cfg-msg').innerHTML = '<span style="color:var(--red)">❌ Netzwerkfehler</span>';
+      return;
+    }
+  }
+
   await window.api.saveSettings(S.settings);
-  $('cfg-msg').textContent = '✅ Gespeichert.';
-  setTimeout(() => $('cfg-msg').textContent = '', 3000);
-  if (typeof updatePersonaBadge === 'function') updatePersonaBadge();
-  if (typeof renderPersonaSelector === 'function') renderPersonaSelector('persona-selector-wrap');
+  if ($('cfg-msg')) {
+    $('cfg-msg').innerHTML = '<span style="color:var(--grn)">✅ Gespeichert</span>';
+    setTimeout(() => { if ($('cfg-msg')) $('cfg-msg').innerHTML = ''; }, 3000);
+  }
 }
 
 // 🔴 FIX 3: Passwort ändern (eigenes)

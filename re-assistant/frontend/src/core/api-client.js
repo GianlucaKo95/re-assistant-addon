@@ -43,7 +43,12 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
         'X-RE-System':   sysId || '',
       },
       body: JSON.stringify({
-        model:      S.settings?.model || 'claude-sonnet-4-20250514',
+        model: (() => {
+          const p = S.settings?.provider || 'anthropic';
+          if (p === 'groq') return S.settings?.groqModel || 'llama-3.3-70b-versatile';
+          if (p === 'grok') return S.settings?.grokModel || 'grok-3-mini';
+          return S.settings?.model || 'claude-sonnet-4-20250514';
+        })(),
         max_tokens: maxTokens,
         system:     system || undefined,
         messages,
