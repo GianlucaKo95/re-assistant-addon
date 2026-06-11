@@ -7,13 +7,28 @@
 const { Pool } = require('pg');
 
 // ── Connection Pool ───────────────────────────────────────────
+// SSL automatisch für externe DBs
+const dbUrl = process.env.DATABASE_URL ||
+  `postgresql://${process.env.PGUSER||'reassistant'}:${process.env.PGPASSWORD||'repassword'}@${process.env.PGHOST||'localhost'}:${process.env.PGPORT||5432}/${process.env.PGDATABASE||'reassistant'}`;
+
+const isExternal = !!(process.env.DATABASE_URL);
+const needsSSL   = isExternal && (
+  process.env.PGSSLMODE === 'require' ||
+  /supabase|render\.com|railway\.app|neon\.tech|heroku/.test(dbUrl)
+);
+
+if (isExternal) {
+  console.log('[DB] Externer Modus:', dbUrl.replace(/:[^:@]*@/, ':***@'));
+} else {
+  console.log('[DB] Interner Modus: lokale PostgreSQL');
+}
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL ||
-    `postgresql://${process.env.PGUSER||'reassistant'}:${process.env.PGPASSWORD||'repassword'}@${process.env.PGHOST||'localhost'}:${process.env.PGPORT||5432}/${process.env.PGDATABASE||'reassistant'}`,
-  ssl: process.env.PGSSLMODE === 'require' ? { rejectUnauthorized: false } : false,
+  connectionString: dbUrl,
+  ssl: needsSSL ? { rejectUnauthorized: false } : false,
   max:                     20,
   idleTimeoutMillis:       30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 15000,
   statement_timeout:       30000,
 });
 

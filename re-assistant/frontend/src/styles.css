@@ -5,16 +5,16 @@
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
 
-  /* Dark mode — tiefes Schieferblau statt reines Schwarz */
+  /* Dark mode — mehr Kontrast */
   --bg:  #0d1117;
-  --s1:  #161b22;
-  --s2:  #21262d;
-  --s3:  #30363d;
-  --b1:  #30363d;
-  --b2:  #484f58;
-  --t1:  #e6edf3;
-  --t2:  #8b949e;
-  --t3:  #484f58;
+  --s1:  #1a2030;
+  --s2:  #242d3d;
+  --s3:  #2e3a4e;
+  --b1:  #3a4a60;
+  --b2:  #5a6a80;
+  --t1:  #e8edf5;
+  --t2:  #9aabc0;
+  --t3:  #5a6a80;
 
   /* Akzent: klares Indigo statt lila Gradient */
   --aa:  #4f8ef7;
@@ -1286,4 +1286,261 @@ select option:hover {
 #view-token-dashboard.active {
   flex-direction: column;
   overflow: hidden;
+}
+
+/* ── Light Mode: Button & Icon Kontrast ─────────────────────── */
+[data-theme="light"] .btn-secondary {
+  background: #ffffff;
+  border: 1px solid #c0c8d4;
+  color: #1f2328;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
+}
+[data-theme="light"] .btn-secondary:hover {
+  background: #f0f3f7;
+  border-color: #9ba8b6;
+  color: #1f2328;
+}
+
+[data-theme="light"] .btn-danger {
+  background: #fff0f0;
+  border: 1px solid #f0a0a0;
+  color: #c0392b;
+}
+[data-theme="light"] .btn-danger:hover {
+  background: #ffe0e0;
+}
+
+/* Titlebar Icons im Light-Mode */
+[data-theme="light"] .tb-icon-btn {
+  color: #444c56;
+}
+[data-theme="light"] .tb-icon-btn:hover {
+  background: #e2e8f0;
+  color: #1f2328;
+}
+
+/* Nav Icons im Light-Mode */
+[data-theme="light"] .ln-btn {
+  color: #57606a;
+}
+[data-theme="light"] .ln-btn:hover {
+  background: #e2e8f0;
+  color: #1f2328;
+}
+[data-theme="light"] .ln-btn.active {
+  background: rgba(9,105,218,.1);
+  color: #0969da;
+}
+[data-theme="light"] .ln-btn.active::before {
+  background: #0969da;
+}
+
+/* Input & Select im Light-Mode — sichtbarer Rahmen */
+[data-theme="light"] input[type=text],
+[data-theme="light"] input[type=email],
+[data-theme="light"] input[type=password],
+[data-theme="light"] input[type=date],
+[data-theme="light"] input[type=number],
+[data-theme="light"] select,
+[data-theme="light"] textarea {
+  background: #ffffff;
+  border-color: #c0c8d4;
+  color: #1f2328;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06);
+}
+[data-theme="light"] input:focus,
+[data-theme="light"] select:focus,
+[data-theme="light"] textarea:focus {
+  border-color: #0969da;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(9,105,218,.12);
+}
+
+/* Labels im Light-Mode */
+[data-theme="light"] .frow label {
+  color: #444c56;
+  font-weight: 600;
+}
+
+/* Send-Button im Chat */
+[data-theme="light"] .send-btn {
+  background: #0969da;
+}
+[data-theme="light"] .send-btn:hover {
+  background: #0860ca;
+}
+
+/* Mic-Button */
+[data-theme="light"] .mic-btn {
+  background: #f0f3f7;
+  border: 1px solid #c0c8d4;
+  color: #444c56;
+}
+[data-theme="light"] .mic-btn:hover {
+  background: #e2e8f0;
+}
+[data-theme="light"] .mic-btn.mic-on {
+  background: #ffe0e0;
+  border-color: #f0a0a0;
+  color: #c0392b;
+}
+
+/* Chips */
+[data-theme="light"] .chip {
+  background: #f0f3f7;
+  border: 1px solid #c0c8d4;
+  color: #444c56;
+}
+[data-theme="light"] .chip:hover {
+  background: #e2e8f0;
+  border-color: #9ba8b6;
+}
+
+/* Tags/Badges */
+[data-theme="light"] .rtag {
+  background: #e8edf5;
+  color: #444c56;
+  border: 1px solid #c8d0dc;
+}
+
+/* Input-Addon-Button */
+[data-theme="light"] .addon-btn {
+  background: #f0f3f7;
+  border-left: 1px solid #c0c8d4;
+  color: #444c56;
+}
+[data-theme="light"] .addon-btn:hover {
+  background: #e2e8f0;
+}
+
+/* Stat-Cards */
+[data-theme="light"] .stat-card {
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+
+/* Req-Cards */
+[data-theme="light"] .req-card {
+  border-color: #d0d7de;
+  background: #ffffff;
+}
+[data-theme="light"] .req-card:hover {
+  background: #f6f8fa;
+  border-color: #9ba8b6;
+}
+
+/* Data Table */
+[data-theme="light"] .data-table thead th {
+  background: #f6f8fa;
+  color: #57606a;
+  border-bottom: 2px solid #d0d7de;
+}
+[data-theme="light"] .data-table tbody td {
+  border-bottom: 1px solid #e8edf5;
+}
+[data-theme="light"] .data-table tbody tr:hover {
+  background: #f6f8fa;
+}
+
+/* Toast */
+[data-theme="light"] #toast {
+  background: #1f2328;
+  color: #ffffff;
+}
+
+/* Scrollbar */
+[data-theme="light"] ::-webkit-scrollbar-track { background: #f6f8fa; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #c0c8d4; }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #9ba8b6; }
+
+/* ── Dark Mode: Button & Icon Kontrast ──────────────────────── */
+.btn-secondary {
+  background: var(--s2);
+  border: 1px solid var(--b1);
+  color: var(--t1);
+}
+.btn-secondary:hover {
+  background: var(--s3);
+  border-color: var(--b2);
+  color: #ffffff;
+}
+
+/* Nav-Icons dunkler Modus — sichtbarer */
+.ln-btn {
+  color: var(--t2);
+}
+.ln-btn:hover {
+  background: var(--s2);
+  color: var(--t1);
+}
+
+/* Titlebar-Icons */
+.tb-icon-btn {
+  color: var(--t2);
+}
+.tb-icon-btn:hover {
+  background: var(--s2);
+  color: var(--t1);
+}
+
+/* Inputs Dark-Mode — sichtbarerer Rahmen */
+input[type=text], input[type=email], input[type=password],
+input[type=date], input[type=number], select, textarea {
+  background: var(--s1);
+  border: 1px solid var(--b1);
+  color: var(--t1);
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--aa);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79,142,247,.15);
+}
+
+/* Chips */
+.chip {
+  background: var(--s2);
+  border: 1px solid var(--b1);
+  color: var(--t2);
+}
+.chip:hover {
+  background: var(--s3);
+  border-color: var(--b2);
+  color: var(--t1);
+}
+
+/* Data Table Dark */
+.data-table thead th {
+  background: var(--s1);
+  color: var(--t2);
+  border-bottom: 2px solid var(--b1);
+}
+.data-table tbody td {
+  border-bottom: 1px solid var(--b1);
+  color: var(--t1);
+}
+.data-table tbody tr:hover {
+  background: var(--s2);
+}
+
+/* Req-Cards */
+.req-card {
+  border: 1px solid var(--b1);
+  background: var(--s1);
+}
+.req-card:hover {
+  border-color: var(--b2);
+  background: var(--s2);
+}
+
+/* sg */
+.sg {
+  border: 1px solid var(--b1);
+  background: var(--s1);
+}
+.sg-head {
+  background: var(--s2);
+  border-bottom: 1px solid var(--b1);
+  color: var(--t2);
+  font-weight: 600;
 }

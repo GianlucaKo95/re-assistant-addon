@@ -541,6 +541,22 @@ Bestehende:\n${rows.slice(0,15).map(r=>`- [${r.id}] ${r.title}: ${(r.description
       });
     }
 
+    // Änderungshistorie tracken
+    if (existing) {
+      const user = await queryOne('SELECT name FROM users WHERE id=$1', [req.session.userId]);
+      await trackReqChanges(existing, r, req.session.userId, user?.name || '');
+      
+      // Watcher benachrichtigen
+      const updatedReq = await queryOne('SELECT watchers,title FROM requirements WHERE id=$1', [r.id]);
+      const watchers = JSON.parse(updatedReq?.watchers || '[]');
+      for (const wId of watchers) {
+        if (wId !== req.session.userId) {
+          await query('INSERT INTO notifications (user_id,type,title,message,req_id) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',
+            [wId, 'update', 'Anforderung geändert', `${user?.name} hat "${updatedReq?.title}" geändert`, r.id]).catch(() => {});
+        }
+      }
+    }
+
     res.json({ ok: true, updatedAt: saved?.updated_at?.getTime?.() });
   } catch(e) { log('error', 'Req-Save: ' + e.message); res.status(500).json({ error: e.message }); }
 });
@@ -907,10 +923,10 @@ app.delete('/api/sprint/plans/:id', requireAuth, async (req, res) => {
 
 // ── NOTIFICATION SETTINGS ─────────────────────────────────────
 app.get('/api/notifications/settings', requireAuth, requireAdmin, async (req, res) => {
-  try { res.json(notif.loadSettings()); } catch(e) { res.status(500).json({ error: e.message }); }
+  try { res.json(await notif.loadSettings()); } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/notifications/settings', requireAuth, requireAdmin, async (req, res) => {
-  try { notif.saveSettings(req.body); res.json({ ok:true }); } catch(e) { res.status(500).json({ error: e.message }); }
+  try { await notif.saveSettings(req.body); res.json({ ok:true }); } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/notifications/test', requireAuth, requireAdmin, async (req, res) => {
   try { await notif.sendTest(); res.json({ ok:true }); } catch(e) { res.status(500).json({ error:e.message }); }
@@ -1416,6 +1432,389 @@ app.get('/api/backup', requireAuth, requireAdmin, async (req, res) => {
       workshops: workshops.map(mapGeneric),
       diagrams:  diagrams.map(mapGeneric),
     });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// AUDIT LOG
+// ══════════════════════════════════════════════════════════════
+
+app.get('/api/audit-log', requireAuth, async (req, res) => {
+  try {
+    const user = await queryOne('SELECT * FROM users WHERE id=$1', [req.session.userId]);
+    if (!user) return res.status(401).json({ error: 'Nicht authentifiziert' });
+    const limit = Math.min(parseInt(req.query.limit)||100, 500);
+    const offset = parseInt(req.query.offset)||0;
+    const where = []; const params = []; let p = 1;
+    if (user.role !== 'admin') {
+      const userSystems = JSON.parse(user.systems||'[]');
+      if (!userSystems.length) return res.json({ entries:[], total:0 });
+      where.push(`(system_id = ANY($${p}::text[]) AND event_type != 'login')`);
+      params.push(userSystems); p++;
+    }
+    if (req.query.action)   { where.push(`action=$${p}`);      params.push(req.query.action);   p++; }
+    if (req.query.entity)   { where.push(`entity_type=$${p}`); params.push(req.query.entity);   p++; }
+    if (req.query.systemId) { where.push(`system_id=$${p}`);   params.push(req.query.systemId); p++; }
+    if (req.query.dateFrom) { where.push(`created_at>=$${p}`); params.push(req.query.dateFrom); p++; }
+    const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const total = parseInt((await queryOne(`SELECT COUNT(*) as c FROM audit_log ${wc}`, params))?.c||0);
+    const rows = (await query(`SELECT * FROM audit_log ${wc} ORDER BY created_at DESC LIMIT $${p} OFFSET $${p+1}`, [...params, limit, offset])).rows;
+    res.json({ entries: rows, total });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/audit-log/systems', requireAuth, async (req, res) => {
+  try {
+    const user = await queryOne('SELECT * FROM users WHERE id=$1', [req.session.userId]);
+    const rows = user.role === 'admin'
+      ? (await query('SELECT id, name FROM systems ORDER BY name', [])).rows
+      : (await query('SELECT id, name FROM systems WHERE id = ANY($1::text[]) ORDER BY name', [JSON.parse(user.systems||'[]')])).rows;
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/audit-log/write', requireAuth, async (req, res) => {
+  try {
+    const user = await queryOne('SELECT name FROM users WHERE id=$1', [req.session.userId]);
+    await writeAuditLog({ ...req.body, userId: req.session.userId, userName: user?.name||'', ipAddress: req.ip });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════
+// CONFLICTS
+// ══════════════════════════════════════════════════════════════
+
+app.get('/api/conflicts', requireAuth, async (req, res) => {
+  try {
+    const where = ["status!='resolved'"]; const params = []; let p = 1;
+    if (req.query.systemId) { where.push(`(system_id_a=$${p} OR system_id_b=$${p})`); params.push(req.query.systemId); p++; }
+    if (req.query.status)   { where[0] = `status=$${p}`; params.push(req.query.status); p++; }
+    const rows = (await query(`SELECT * FROM req_conflicts WHERE ${where.join(' AND ')} ORDER BY created_at DESC`, params)).rows;
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/conflicts/:id/resolve', requireAuth, async (req, res) => {
+  try {
+    await query("UPDATE req_conflicts SET status='resolved' WHERE id=$1", [req.params.id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/conflicts/analyze', requireAuth, async (req, res) => {
+  try {
+    const { reqId, systemId, crossSystem } = req.body;
+    const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [reqId]);
+    if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
+    const relIds = [systemId];
+    if (crossSystem) {
+      const sys = await queryOne('SELECT parent_id FROM systems WHERE id=$1', [systemId]);
+      if (sys?.parent_id) {
+        relIds.push(sys.parent_id);
+        const siblings = (await query('SELECT id FROM systems WHERE parent_id=$1 AND id!=$2',[sys.parent_id,systemId])).rows;
+        relIds.push(...siblings.map(s=>s.id));
+      }
+    }
+    const rows = (await query('SELECT id,title,description,system_id FROM requirements WHERE system_id = ANY($1::text[]) AND id!=$2 LIMIT 25',[relIds,reqId])).rows;
+    if (!rows.length) return res.json({ conflicts:[] });
+    const apiCfg = await resolveApiConfig(req.session.userId);
+    if (!apiCfg.key) return res.json({ conflicts:[] });
+    const prompt = `Analysiere Konflikte. JSON: {"conflicts":[{"reqId":"ID","type":"contradiction|overlap|ambiguity","severity":"high|medium|low","description":"kurz","suggestion":"Lösung"}]}
+Falls keine: {"conflicts":[]}
+Neu: [${req_.id}] ${req_.title}
+Bestehende:
+${rows.slice(0,15).map(r=>`- [${r.id}] ${r.title}`).join('\n')}`;
+    let apiUrl, apiHeaders, apiBody;
+    if (apiCfg.provider!=='anthropic') {
+      const model = apiCfg.provider==='groq'?'llama-3.3-70b-versatile':'grok-3-mini';
+      apiUrl = apiCfg.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'https://api.x.ai/v1/chat/completions';
+      apiHeaders={'Content-Type':'application/json','Authorization':'Bearer '+apiCfg.key};
+      apiBody={model,messages:[{role:'user',content:prompt}],max_tokens:600};
+    } else {
+      apiUrl='https://api.anthropic.com/v1/messages';
+      apiHeaders={'Content-Type':'application/json','x-api-key':apiCfg.key,'anthropic-version':'2023-06-01'};
+      apiBody={model:'claude-haiku-4-5-20251001',max_tokens:600,messages:[{role:'user',content:prompt}]};
+    }
+    const response = await fetch(apiUrl,{method:'POST',headers:apiHeaders,body:JSON.stringify(apiBody)});
+    const data = await response.json();
+    const text = apiCfg.provider==='anthropic'?data.content?.[0]?.text||'{}':data.choices?.[0]?.message?.content||'{}';
+    const result = JSON.parse(text.replace(/```json|```/g,'').trim());
+    for (const c of (result.conflicts||[])) {
+      const ex = await queryOne("SELECT id FROM req_conflicts WHERE req_id_a=$1 AND req_id_b=$2 AND status!='resolved'",[reqId,c.reqId]);
+      if (!ex) {
+        const cr=rows.find(r=>r.id===c.reqId);
+        await query('INSERT INTO req_conflicts (req_id_a,req_id_b,system_id_a,system_id_b,conflict_type,description,severity,ai_suggestion) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+          [reqId,c.reqId,systemId,cr?.system_id||systemId,c.type,c.description,c.severity||'medium',c.suggestion||'']);
+      }
+    }
+    res.json({conflicts:result.conflicts||[],count:(result.conflicts||[]).length});
+  } catch(e) { log('warning','Konflikt: '+e.message); res.json({conflicts:[]}); }
+});
+
+// ══════════════════════════════════════════════════════════════
+// USER STORIES + TEST CASES
+// ══════════════════════════════════════════════════════════════
+
+app.get('/api/user-stories', requireAuth, async (req,res) => {
+  try {
+    const {reqId,systemId}=req.query;
+    const rows = reqId ? (await query('SELECT * FROM user_stories WHERE req_id=$1 ORDER BY created_at',[reqId])).rows
+      : systemId ? (await query('SELECT * FROM user_stories WHERE system_id=$1 ORDER BY created_at',[systemId])).rows
+      : (await query('SELECT * FROM user_stories ORDER BY created_at DESC LIMIT 200',[])).rows;
+    res.json(rows.map(r=>({id:r.id,reqId:r.req_id,systemId:r.system_id,title:r.title,description:r.description,
+      acceptanceCriteria:JSON.parse(r.acceptance_criteria||'[]'),priority:r.priority,status:r.status,
+      storyPoints:r.story_points,createdAt:r.created_at})));
+  } catch(e){res.status(500).json({error:e.message});}
+});
+
+app.post('/api/user-stories', requireAuth, async (req,res) => {
+  try {
+    const {id,reqId,systemId,title,description,acceptanceCriteria,priority,status,storyPoints}=req.body;
+    const now=new Date().toISOString();
+    if(id){
+      await query('UPDATE user_stories SET title=$1,description=$2,acceptance_criteria=$3,priority=$4,status=$5,story_points=$6,updated_at=$7 WHERE id=$8',
+        [title,description||'',JSON.stringify(acceptanceCriteria||[]),priority||'medium',status||'open',storyPoints||null,now,id]);
+    } else {
+      await query('INSERT INTO user_stories (id,req_id,system_id,title,description,acceptance_criteria,priority,status,story_points,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)',
+        ['us-'+Date.now()+'-'+Math.floor(Math.random()*1000),reqId,systemId,title,description||'',JSON.stringify(acceptanceCriteria||[]),priority||'medium',status||'open',storyPoints||null,now]);
+    }
+    res.json({ok:true});
+  } catch(e){res.status(500).json({error:e.message});}
+});
+
+app.delete('/api/user-stories/:id', requireAuth, async (req,res) => {
+  try{await query('DELETE FROM user_stories WHERE id=$1',[req.params.id]);res.json({ok:true});}
+  catch(e){res.status(500).json({error:e.message});}
+});
+
+app.post('/api/user-stories/generate', requireAuth, async (req,res) => {
+  try {
+    const {reqId,systemId}=req.body;
+    const req_=await queryOne('SELECT * FROM requirements WHERE id=$1',[reqId]);
+    if(!req_) return res.status(404).json({error:'Nicht gefunden'});
+    const apiCfg=await resolveApiConfig(req.session.userId);
+    if(!apiCfg.key) return res.status(500).json({error:'Kein API-Key'});
+    const prompt=`Generiere 2-4 User Stories. NUR JSON-Array ohne weiteren Text:
+[{"title":"Als [Rolle] möchte ich...","description":"Damit...","acceptanceCriteria":["AC1"],"priority":"medium","storyPoints":3}]
+Anforderung: ${req_.title}
+${req_.description||''}`;
+    let apiUrl,apiHeaders,apiBody;
+    if(apiCfg.provider!=='anthropic'){
+      const model=apiCfg.provider==='groq'?'llama-3.3-70b-versatile':'grok-3-mini';
+      apiUrl=apiCfg.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'https://api.x.ai/v1/chat/completions';
+      apiHeaders={'Content-Type':'application/json','Authorization':'Bearer '+apiCfg.key};
+      apiBody={model,messages:[{role:'user',content:prompt}],max_tokens:1000};
+    } else {
+      apiUrl='https://api.anthropic.com/v1/messages';
+      apiHeaders={'Content-Type':'application/json','x-api-key':apiCfg.key,'anthropic-version':'2023-06-01'};
+      apiBody={model:'claude-haiku-4-5-20251001',max_tokens:1000,messages:[{role:'user',content:prompt}]};
+    }
+    const response=await fetch(apiUrl,{method:'POST',headers:apiHeaders,body:JSON.stringify(apiBody)});
+    const data=await response.json();
+    const text=apiCfg.provider==='anthropic'?data.content?.[0]?.text||'[]':data.choices?.[0]?.message?.content||'[]';
+    const stories=JSON.parse(text.replace(/```json|```/g,'').trim());
+    res.json({stories:Array.isArray(stories)?stories:[]});
+  } catch(e){res.status(500).json({error:e.message});}
+});
+
+app.get('/api/test-cases', requireAuth, async (req,res) => {
+  try {
+    const {storyId,reqId,systemId}=req.query;
+    const rows=storyId?(await query('SELECT * FROM test_cases WHERE story_id=$1 ORDER BY created_at',[storyId])).rows
+      :reqId?(await query('SELECT * FROM test_cases WHERE req_id=$1 ORDER BY created_at',[reqId])).rows
+      :systemId?(await query('SELECT * FROM test_cases WHERE system_id=$1 ORDER BY created_at',[systemId])).rows:[];
+    res.json(rows.map(r=>({id:r.id,storyId:r.story_id,reqId:r.req_id,systemId:r.system_id,
+      title:r.title,steps:JSON.parse(r.steps||'[]'),expected:r.expected,status:r.status,createdAt:r.created_at})));
+  } catch(e){res.status(500).json({error:e.message});}
+});
+
+app.post('/api/test-cases', requireAuth, async (req,res) => {
+  try {
+    const {id,storyId,reqId,systemId,title,steps,expected,status}=req.body;
+    const now=new Date().toISOString();
+    if(id){
+      await query('UPDATE test_cases SET title=$1,steps=$2,expected=$3,status=$4,updated_at=$5 WHERE id=$6',
+        [title,JSON.stringify(steps||[]),expected||'',status||'not_run',now,id]);
+    } else {
+      await query('INSERT INTO test_cases (id,story_id,req_id,system_id,title,steps,expected,status,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)',
+        ['tc-'+Date.now()+'-'+Math.floor(Math.random()*1000),storyId||null,reqId||null,systemId||null,title,JSON.stringify(steps||[]),expected||'',status||'not_run',now]);
+    }
+    res.json({ok:true});
+  } catch(e){res.status(500).json({error:e.message});}
+});
+
+app.delete('/api/test-cases/:id', requireAuth, async (req,res) => {
+  try{await query('DELETE FROM test_cases WHERE id=$1',[req.params.id]);res.json({ok:true});}
+  catch(e){res.status(500).json({error:e.message});}
+});
+
+// ══════════════════════════════════════════════════════════════
+// REQUIREMENT FEATURES
+// ══════════════════════════════════════════════════════════════
+
+app.get('/api/requirements/:id/comments', requireAuth, async (req,res) => {
+  try {
+    const rows=(await query('SELECT * FROM req_comments WHERE req_id=$1 ORDER BY created_at ASC',[req.params.id])).rows;
+    res.json(rows.map(r=>({id:r.id,reqId:r.req_id,userId:r.user_id,userName:r.user_name,
+      content:r.content,mentions:JSON.parse(r.mentions||'[]'),edited:r.edited,editedAt:r.edited_at,createdAt:r.created_at})));
+  } catch(e){res.status(500).json({error:e.message});}
+});
+
+app.put('/api/requirements/:reqId/comments/:commentId', requireAuth, async (req,res) => {
+  try {
+    await query('UPDATE req_comments SET content=$1,edited=true,edited_at=$2 WHERE id=$3 AND user_id=$4',
+      [req.body.content,new Date().toISOString(),req.params.commentId,req.session.userId]);
+    res.json({ok:true});
+  } catch(e){res.status(500).json({error:e.message});}
+});
+
+app.delete('/api/requirements/:reqId/comments/:commentId', requireAuth, async (req,res) => {
+  try {
+    const user=await queryOne('SELECT role FROM users WHERE id=$1',[req.session.userId]);
+    const cmt=await queryOne('SELECT user_id FROM req_comments WHERE id=$1',[req.params.commentId]);
+    if(cmt?.user_id!==req.session.userId&&user?.role!=='admin')
+      return res.status(403).json({error:'Nur eigene Kommentare löschen'});
+    await query('DELETE FROM req_comments WHERE id=$1',[req.params.commentId]);
+    res.json({ok:true});
+  } catch(e){res.status(500).json({error:e.message});}
+});
+
+app.post('/api/requirements/:id/watch', requireAuth, async (req,res) => {
+  try {
+    const req_=await queryOne('SELECT watchers FROM requirements WHERE id=$1',[req.params.id]);
+    if(!req_) return res.status(404).json({error:'Nicht gefunden'});
+    let watchers=JSON.parse(req_.watchers||'[]');
+    const idx=watchers.indexOf(req.session.userId);
+    if(idx===-1) watchers.push(req.session.userId);
+    else watchers.splice(idx,1);
+    await query('UPDATE requirements SET watchers=$1 WHERE id=$2',[JSON.stringify(watchers),req.params.id]);
+    res.json({ok:true,watching:watchers.includes(req.session.userId),count:watchers.length});
+  } catch(e){res.status(500).json({error:e.message});}
+});
+
+app.post('/api/requirements/:id/links', requireAuth, async (req,res) => {
+  try {
+    const req_=await queryOne('SELECT linked_reqs FROM requirements WHERE id=$1',[req.params.id]);
+    if(!req_) return res.status(404).json({error:'Nicht gefunden'});
+    let links=JSON.parse(req_.linked_reqs||'[]');
+    if(!links.find(l=>l.id===req.body.targetId)) links.push({id:req.body.targetId,type:req.body.linkType||'relates'});
+    await query('UPDATE requirements SET linked_reqs=$1 WHERE id=$2',[JSON.stringify(links),req.params.id]);
+    res.json({ok:true});
+  } catch(e){res.status(500).json({error:e.message});}
+});
+
+app.delete('/api/requirements/:id/links/:targetId', requireAuth, async (req,res) => {
+  try {
+    const req_=await queryOne('SELECT linked_reqs FROM requirements WHERE id=$1',[req.params.id]);
+    const links=JSON.parse(req_?.linked_reqs||'[]').filter(l=>l.id!==req.params.targetId);
+    await query('UPDATE requirements SET linked_reqs=$1 WHERE id=$2',[JSON.stringify(links),req.params.id]);
+    res.json({ok:true});
+  } catch(e){res.status(500).json({error:e.message});}
+});
+
+// ══════════════════════════════════════════════════════════════
+// WORKSHOPS
+// ══════════════════════════════════════════════════════════════
+
+app.get('/api/workshops', requireAuth, async (req,res) => {
+  try {
+    const user=await queryOne('SELECT * FROM users WHERE id=$1',[req.session.userId]);
+    const {systemId}=req.query;
+    let rows;
+    if(user.role==='admin'){
+      rows=systemId?(await query('SELECT * FROM workshops WHERE system_id=$1 ORDER BY created_at DESC',[systemId])).rows
+        :(await query('SELECT * FROM workshops ORDER BY created_at DESC',[])).rows;
+    } else {
+      const ids=JSON.parse(user.systems||'[]');
+      if(!ids.length) return res.json([]);
+      rows=systemId&&ids.includes(systemId)
+        ?(await query('SELECT * FROM workshops WHERE system_id=$1 ORDER BY created_at DESC',[systemId])).rows
+        :(await query('SELECT * FROM workshops WHERE system_id = ANY($1::text[]) ORDER BY created_at DESC',[ids])).rows;
+    }
+    res.json(rows.map(w=>({id:w.id,name:w.name,goal:w.goal||'',systemId:w.system_id,
+      entries:JSON.parse(w.entries||'[]'),structured:JSON.parse(w.structured||'{}'),createdAt:w.created_at})));
+  } catch(e){res.status(500).json({error:e.message});}
+});
+
+app.post('/api/workshops', requireAuth, async (req,res) => {
+  try {
+    const {id,name,goal,systemId,entries,structured}=req.body;
+    const now=new Date().toISOString();
+    if(id){
+      await query('UPDATE workshops SET name=$1,goal=$2,entries=$3,structured=$4,updated_at=$5 WHERE id=$6',
+        [name,goal||'',JSON.stringify(entries||[]),JSON.stringify(structured||{}),now,id]);
+    } else {
+      await query('INSERT INTO workshops (id,name,goal,system_id,entries,structured,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$7)',
+        ['ws-'+Date.now(),name,goal||'',systemId||null,JSON.stringify(entries||[]),JSON.stringify(structured||{}),now]);
+    }
+    res.json({ok:true});
+  } catch(e){res.status(500).json({error:e.message});}
+});
+
+app.delete('/api/workshops/:id', requireAuth, async (req,res) => {
+  try{await query('DELETE FROM workshops WHERE id=$1',[req.params.id]);res.json({ok:true});}
+  catch(e){res.status(500).json({error:e.message});}
+});
+
+
+// ── BACKUP & EXPORT ───────────────────────────────────────────
+
+app.get('/api/backup/export', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [systems, reqs, workshops, users] = await Promise.all([
+      query('SELECT * FROM systems', []),
+      query('SELECT * FROM requirements WHERE archived=false', []),
+      query('SELECT * FROM workshops', []).catch(() => ({ rows: [] })),
+      query('SELECT id,name,email,role,systems,subcategories,ai_provider FROM users', []),
+    ]);
+
+    const backup = {
+      version: '4.2',
+      exportedAt: new Date().toISOString(),
+      systems: systems.rows,
+      requirements: reqs.rows,
+      workshops: workshops.rows,
+      users: users.rows,
+    };
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="re-assistant-backup-${new Date().toISOString().split('T')[0]}.json"`);
+    res.json(backup);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/backup/import', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { systems, requirements, workshops } = req.body;
+    let imported = { systems: 0, requirements: 0, workshops: 0 };
+
+    for (const s of (systems || [])) {
+      await query(
+        'INSERT INTO systems (id,name,description,docs,id_prefix,id_counter,parent_id,level,sort_order,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (id) DO UPDATE SET name=$2,description=$3',
+        [s.id,s.name,s.description||'',s.docs||'[]',s.id_prefix||'REQ',s.id_counter||0,s.parent_id||null,s.level||0,s.sort_order||0,s.created_at||new Date(),s.updated_at||new Date()]
+      ).catch(() => {});
+      imported.systems++;
+    }
+
+    for (const r of (requirements || [])) {
+      await query(
+        'INSERT INTO requirements (id,system_id,title,description,category,priority,status,rationale,tags,acceptance_criteria,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (id) DO UPDATE SET title=$3,description=$4',
+        [r.id,r.system_id,r.title,r.description||'',r.category||'Funktional',r.priority||'medium',r.status||'open',r.rationale||'',r.tags||'[]',r.acceptance_criteria||'[]',r.created_at||new Date(),r.updated_at||new Date()]
+      ).catch(() => {});
+      imported.requirements++;
+    }
+
+    for (const w of (workshops || [])) {
+      await query(
+        'INSERT INTO workshops (id,name,goal,system_id,entries,structured,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (id) DO UPDATE SET name=$2',
+        [w.id,w.name,w.goal||'',w.system_id||null,w.entries||'[]',w.structured||'{}',w.created_at||new Date(),w.updated_at||new Date()]
+      ).catch(() => {});
+      imported.workshops++;
+    }
+
+    res.json({ ok: true, imported });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

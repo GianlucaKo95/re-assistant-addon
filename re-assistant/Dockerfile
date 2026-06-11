@@ -10,9 +10,8 @@ RUN apk add --no-cache \
     postgresql postgresql-client postgresql-contrib \
     python3 make g++
 
-# PostgreSQL Datenverzeichnis vorbereiten
-RUN mkdir -p /data/postgres && \
-    chown -R postgres:postgres /data/postgres
+# PostgreSQL Datenverzeichnis wird zur Laufzeit in run.sh erstellt
+# NICHT im Build — /data ist ein persistenter HA-Mount
 
 WORKDIR /app
 

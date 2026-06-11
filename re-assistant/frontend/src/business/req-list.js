@@ -116,7 +116,9 @@ function _renderBizReqCard(r) {
       </div>
       <div style="padding:6px 14px 10px;display:flex;gap:6px;border-top:1px solid var(--b1)">
         <button class="btn-secondary" style="font-size:11px;padding:3px 9px"
-          onclick="openReqModal('${r.id}','${r.systemId}')">✏ Bearbeiten</button>
+          onclick="openReqModal('${r.id}', '${r.systemId}')" title="Bearbeiten">✏ Bearbeiten</button>
+          <button class="btn-secondary" style="font-size:11px;padding:3px 8px"
+            onclick="openReqDetail('${r.id}')" title="Details, Kommentare &amp; Historie">📋</button>
         <button class="btn-secondary" style="font-size:11px;padding:3px 9px"
           onclick="openACGenerator('${r.id}')">✓ AC</button>
         <button class="btn-secondary" style="font-size:11px;padding:3px 9px"

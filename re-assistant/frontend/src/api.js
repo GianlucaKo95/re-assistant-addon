@@ -55,6 +55,9 @@ const API = {
   },
   async saveTestCase(t)       { return post('api/test-cases', t); },
   async deleteTestCase(id)    { return del('api/test-cases/' + id); },
+  async getReqHistory(reqId) { return get('api/requirements/' + reqId + '/history'); },
+  async getReqComments(reqId) { return get('api/requirements/' + reqId + '/comments'); },
+
   async getConflicts(params = {}) {
     const q = new URLSearchParams(params).toString();
     return get('api/conflicts' + (q ? '?' + q : ''));

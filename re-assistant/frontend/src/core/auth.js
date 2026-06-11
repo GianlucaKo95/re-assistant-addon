@@ -440,3 +440,78 @@ async function runGlobalSearch(q) {
 window.applySettingsToForm      = applySettingsToForm;
 window.openChangePasswordModal  = openChangePasswordModal;
 window.submitChangePassword     = submitChangePassword;
+// ── Backup Export/Import ──────────────────────────────────────
+async function exportBackup() {
+  const statusEl = document.getElementById('backup-status');
+  if (statusEl) statusEl.innerHTML = '<span class="spin"></span> Exportiere …';
+  try {
+    const res  = await fetch('api/backup/export', { credentials: 'include' });
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const date = new Date().toISOString().split('T')[0];
+    a.href = url; a.download = `re-assistant-backup-${date}.json`;
+    a.click(); URL.revokeObjectURL(url);
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--grn)">✅ Backup exportiert</span>';
+    setTimeout(() => { if (statusEl) statusEl.innerHTML = ''; }, 3000);
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = `<span style="color:var(--red)">❌ ${esc(e.message)}</span>`;
+  }
+}
+
+async function importBackup() {
+  const files = await window.api.pickFiles('.json');
+  if (!files.length) return;
+  const statusEl = document.getElementById('backup-status');
+  if (statusEl) statusEl.innerHTML = '<span class="spin"></span> Importiere …';
+  try {
+    const text = await files[0].text();
+    const data = JSON.parse(text);
+    const res  = await fetch('api/backup/import', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (result.ok) {
+      if (statusEl) statusEl.innerHTML = `<span style="color:var(--grn)">✅ ${result.imported.systems} Systeme, ${result.imported.requirements} Anforderungen importiert</span>`;
+      S.systems = await window.api.getSystems();
+    } else {
+      if (statusEl) statusEl.innerHTML = `<span style="color:var(--red)">❌ ${esc(result.error)}</span>`;
+    }
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = `<span style="color:var(--red)">❌ ${esc(e.message)}</span>`;
+  }
+}
+
+window.exportBackup = exportBackup;
+window.importBackup = importBackup;
+// DB-Status in Einstellungen anzeigen
+async function loadDbStatus() {
+  const wrap = document.getElementById('db-status-wrap');
+  if (!wrap) return;
+  try {
+    const res  = await fetch('api/health', { credentials: 'include' });
+    const data = await res.json();
+    const isExternal = data.dbMode === 'external';
+    wrap.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;
+        background:var(--s2);border-radius:var(--r);border:1px solid var(--b1)">
+        <span style="font-size:20px">${data.db?.ok ? '🟢' : '🔴'}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600">
+            ${isExternal ? '🌐 Externe Datenbank' : '🏠 Interne PostgreSQL'}
+          </div>
+          <div style="font-size:11px;color:var(--t3);margin-top:2px;
+            overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            ${esc(data.dbUrl || '')}
+          </div>
+        </div>
+        <span style="font-size:11px;color:${data.db?.ok?'var(--grn)':'var(--red)'}">
+          ${data.db?.ok ? 'Verbunden' : 'Fehler'}
+        </span>
+      </div>
+      ${isExternal ? '' : '<p style="font-size:11px;color:var(--amb);margin-top:6px">⚠ Interne DB: Daten können bei Neuinstallation verloren gehen.</p>'}`;
+  } catch(e) {}
+}
+window.loadDbStatus = loadDbStatus;

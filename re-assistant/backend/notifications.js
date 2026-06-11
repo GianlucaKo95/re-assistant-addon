@@ -8,30 +8,30 @@ const fetch = require('node-fetch');
 let _settings = null;
 let _db       = null;
 
-function init(db) {
-  _db = db;
-  _settings = loadSettings();
+function init(pool) {
+  _db = pool;
+  loadSettings().then(s => { _settings = s; }).catch(() => {});
 }
 
-function loadSettings() {
+async function loadSettings() {
   if (!_db) return {};
   try {
-    const rows = _db.prepare("SELECT key, value FROM app_settings WHERE key LIKE 'notif_%'").all();
+    const res = await _db.query("SELECT key, value FROM app_settings WHERE key LIKE 'notif_%'");
     const s = {};
-    for (const r of rows) s[r.key.replace('notif_','')] = r.value;
+    for (const r of res.rows) s[r.key.replace('notif_','')] = r.value;
     return s;
   } catch(e) { return {}; }
 }
 
-function saveSettings(settings) {
+async function saveSettings(settings) {
   if (!_db) return;
-  const stmt = _db.prepare("INSERT OR REPLACE INTO app_settings VALUES (?, ?)");
-  const tx   = _db.transaction((s) => {
-    for (const [k, v] of Object.entries(s))
-      stmt.run('notif_' + k, String(v));
-  });
-  tx(settings);
-  _settings = loadSettings();
+  for (const [k, v] of Object.entries(settings)) {
+    await _db.query(
+      "INSERT INTO app_settings (key,value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=$2",
+      ['notif_' + k, String(v)]
+    ).catch(() => {});
+  }
+  _settings = await loadSettings();
 }
 
 // ── Event-Typen ───────────────────────────────────────────────
