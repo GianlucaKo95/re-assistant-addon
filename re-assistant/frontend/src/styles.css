@@ -1544,3 +1544,20 @@ input:focus, select:focus, textarea:focus {
   color: var(--t2);
   font-weight: 600;
 }
+
+/* ── Stopp-Button ────────────────────────────────────────────── */
+.stop-btn {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--red); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: background .15s, transform .1s;
+  animation: pulse-red 1.5s infinite;
+}
+.stop-btn:hover {
+  background: #c0392b;
+  transform: scale(1.05);
+}
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(248,81,73,.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(248,81,73,.0); }
+}

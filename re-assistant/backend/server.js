@@ -344,6 +344,12 @@ app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req
     }
 
     await query('UPDATE systems SET docs=$1 WHERE id=$2', [JSON.stringify(docs), req.params.id]);
+
+    // Kontext-Cache asynchron aufbauen
+    if (added.length > 0) {
+      setImmediate(() => buildSystemContextCache(req.params.id));
+    }
+
     res.json({ ok: true, added, indexed });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -372,6 +378,9 @@ app.delete('/api/systems/:sysId/docs/:docId', requireAuth, async (req, res) => {
     const docs = (sys.docs||[]).filter(d => d.id !== req.params.docId);
     await query('UPDATE systems SET docs=$1 WHERE id=$2', [JSON.stringify(docs), req.params.sysId]);
     await query('DELETE FROM embeddings WHERE doc_id=$1', [req.params.docId]);
+    // Cache neu aufbauen nach Löschung
+    await query("INSERT INTO system_context_cache (system_id, build_status) VALUES ($1,'outdated') ON CONFLICT (system_id) DO UPDATE SET build_status='outdated'", [req.params.sysId]).catch(() => {});
+    setImmediate(() => buildSystemContextCache(req.params.sysId));
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -1856,6 +1865,169 @@ app.post('/api/backup/import', requireAuth, requireAdmin, async (req, res) => {
     }
 
     res.json({ ok: true, imported });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ── System-Kontext-Cache ──────────────────────────────────────
+async function buildSystemContextCache(systemId) {
+  try {
+    log('info', `Cache: Baue Kontext für System ${systemId} …`);
+
+    // Status auf "building" setzen
+    await query(
+      `INSERT INTO system_context_cache (system_id, build_status)
+       VALUES ($1, 'building')
+       ON CONFLICT (system_id) DO UPDATE SET build_status='building'`,
+      [systemId]
+    );
+
+    // Alle Chunks laden
+    const chunks = await queryAll(
+      'SELECT chunk_text, doc_name FROM embeddings WHERE system_id=$1 ORDER BY doc_name, chunk_index',
+      [systemId]
+    );
+
+    if (!chunks.length) {
+      await query(
+        `INSERT INTO system_context_cache (system_id, summary, build_status)
+         VALUES ($1, '', 'empty')
+         ON CONFLICT (system_id) DO UPDATE SET summary='', build_status='empty'`,
+        [systemId]
+      );
+      return;
+    }
+
+    // Dokumente gruppieren
+    const byDoc = {};
+    for (const c of chunks) {
+      if (!byDoc[c.doc_name]) byDoc[c.doc_name] = [];
+      byDoc[c.doc_name].push(c.chunk_text);
+    }
+
+    const docNames = Object.keys(byDoc);
+    log('info', `Cache: ${docNames.length} Dokumente, ${chunks.length} Chunks`);
+
+    // KI-API für Zusammenfassung
+    const apiCfg = await resolveApiConfig(null);
+    if (!apiCfg.key) {
+      // Ohne KI: einfachen Kontext aus Chunks bauen
+      const simpleContext = Object.entries(byDoc)
+        .map(([name, texts]) => `=== ${name} ===\n${texts.slice(0,3).join('\n')}`)
+        .join('\n\n');
+
+      await query(
+        `INSERT INTO system_context_cache (system_id, summary, doc_names, token_count, build_status, built_at)
+         VALUES ($1,$2,$3,$4,'ready',NOW())
+         ON CONFLICT (system_id) DO UPDATE SET summary=$2, doc_names=$3, token_count=$4, build_status='ready', built_at=NOW()`,
+        [systemId, simpleContext.substring(0, 50000), JSON.stringify(docNames), simpleContext.length]
+      );
+      log('info', `Cache: Einfacher Kontext gespeichert (kein API-Key)`);
+      return;
+    }
+
+    // Volltext pro Dokument (max 3000 Zeichen je Dokument)
+    const docSummaries = Object.entries(byDoc).map(([name, texts]) => {
+      const content = texts.join(' ').substring(0, 3000);
+      return `[${name}]:\n${content}`;
+    }).join('\n\n---\n\n');
+
+    const prompt = `Analysiere diese Systemdokumentation und erstelle eine strukturierte Zusammenfassung.
+
+Dokumente:
+${docSummaries.substring(0, 20000)}
+
+Erstelle eine Zusammenfassung mit:
+1. Überblick: Was ist das System? (3-5 Sätze)
+2. Hauptfunktionen: Alle wichtigen Funktionen als Liste
+3. Technische Details: Architektur, Technologien, APIs
+4. Prozesse: Wichtige Abläufe und Workflows
+5. Schlüsselbegriffe: Wichtige Fachbegriffe aus den Dokumenten
+
+Antworte auf Deutsch. Sei konkret und vollständig.`;
+
+    let apiUrl, apiHeaders, apiBody;
+    if (apiCfg.provider !== 'anthropic') {
+      const model = apiCfg.provider === 'groq' ? 'llama-3.3-70b-versatile' : 'grok-3-mini';
+      apiUrl = apiCfg.provider === 'groq'
+        ? 'https://api.groq.com/openai/v1/chat/completions'
+        : 'https://api.x.ai/v1/chat/completions';
+      apiHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key };
+      apiBody = { model, messages: [{ role: 'user', content: prompt }], max_tokens: 3000 };
+    } else {
+      apiUrl = 'https://api.anthropic.com/v1/messages';
+      apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
+      apiBody = { model: 'claude-haiku-4-5-20251001', max_tokens: 3000, messages: [{ role: 'user', content: prompt }] };
+    }
+
+    const response = await fetch(apiUrl, { method: 'POST', headers: apiHeaders, body: JSON.stringify(apiBody) });
+    const data = await response.json();
+    const summary = apiCfg.provider === 'anthropic'
+      ? data.content?.[0]?.text || ''
+      : data.choices?.[0]?.message?.content || '';
+
+    // Schlüsselthemen extrahieren
+    const topicMatches = summary.match(/\*\*([^*]+)\*\*/g) || [];
+    const keyTopics = topicMatches.map(t => t.replace(/\*/g, '')).slice(0, 20);
+
+    await query(
+      `INSERT INTO system_context_cache (system_id, summary, key_topics, doc_names, token_count, build_status, built_at)
+       VALUES ($1,$2,$3,$4,$5,'ready',NOW())
+       ON CONFLICT (system_id) DO UPDATE
+         SET summary=$2, key_topics=$3, doc_names=$4, token_count=$5, build_status='ready', built_at=NOW()`,
+      [systemId, summary, JSON.stringify(keyTopics), JSON.stringify(docNames),
+       summary.length + docSummaries.length]
+    );
+
+    log('info', `Cache: ✅ Kontext für ${systemId} gespeichert (${summary.length} Zeichen)`);
+  } catch(e) {
+    log('warning', `Cache: Fehler für ${systemId}: ${e.message}`);
+    await query(
+      `INSERT INTO system_context_cache (system_id, build_status)
+       VALUES ($1, 'error')
+       ON CONFLICT (system_id) DO UPDATE SET build_status='error'`,
+      [systemId]
+    ).catch(() => {});
+  }
+}
+
+// Cache-Status abrufen
+app.get('/api/systems/:id/context-cache', requireAuth, async (req, res) => {
+  try {
+    const cache = await queryOne('SELECT * FROM system_context_cache WHERE system_id=$1', [req.params.id]);
+    res.json({
+      systemId:    req.params.id,
+      status:      cache?.build_status || 'not_built',
+      builtAt:     cache?.built_at || null,
+      docCount:    JSON.parse(cache?.doc_names || '[]').length,
+      tokenCount:  cache?.token_count || 0,
+      hasCache:    !!cache && cache.build_status === 'ready',
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Cache manuell neu aufbauen
+app.post('/api/systems/:id/rebuild-cache', requireAuth, async (req, res) => {
+  try {
+    res.json({ ok: true, message: 'Cache wird im Hintergrund aufgebaut …' });
+    setImmediate(() => buildSystemContextCache(req.params.id));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+
+app.get('/api/embeddings/summary', requireAuth, async (req, res) => {
+  try {
+    const { systemId } = req.query;
+    if (!systemId) return res.status(400).json({ error: 'systemId fehlt' });
+    const cache = await queryOne('SELECT * FROM system_context_cache WHERE system_id=$1', [systemId]);
+    res.json({
+      systemId,
+      summary:   cache?.summary   || '',
+      keyTopics: JSON.parse(cache?.key_topics || '[]'),
+      docNames:  JSON.parse(cache?.doc_names  || '[]'),
+      builtAt:   cache?.built_at  || null,
+      status:    cache?.build_status || 'not_built',
+    });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

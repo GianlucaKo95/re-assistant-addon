@@ -31,12 +31,28 @@ function setAPIContext(feature, systemId) {
   _currentSystemId = systemId || S.activeSystemId || null;
 }
 
+// ── Abort-Controller ─────────────────────────────────────────
+let _activeAbortController = null;
+
+function abortCurrentRequest() {
+  if (_activeAbortController) {
+    _activeAbortController.abort();
+    _activeAbortController = null;
+    return true;
+  }
+  return false;
+}
+
 async function callAPI(messages, system = '', maxTokens = 2000, feature = null) {
+  if (_activeAbortController) _activeAbortController.abort();
+  _activeAbortController = new AbortController();
+  const signal = _activeAbortController.signal;
   const feat   = feature || _currentFeature || 'other';
   const sysId  = _currentSystemId || S.activeSystemId || null;
   try {
     const res = await fetch('api/ai/chat', {
       method: 'POST', credentials: 'include',
+      signal,
       headers: {
         'Content-Type':  'application/json',
         'X-RE-Feature':  feat,
@@ -84,7 +100,12 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
     const text = data.content?.find(c => c.type === 'text')?.text || '';
     return { ok: true, text };
   } catch(e) {
+    if (e.name === 'AbortError') {
+      return { ok: true, text: '', _aborted: true };
+    }
     return { ok: false, text: `Netzwerkfehler: ${e.message}` };
+  } finally {
+    _activeAbortController = null;
   }
 }
 
@@ -123,6 +144,8 @@ function toggleChatMic(inputId, btnId) {
 
 window.langNote      = langNote;
 window.getCtx        = getCtx;
-window.callAPI       = callAPI;
+window.callAPI             = callAPI;
+window.abortCurrentRequest = abortCurrentRequest;
+window.abortCurrentRequest = abortCurrentRequest;
 window.setAPIContext = setAPIContext;
 window.toggleChatMic = toggleChatMic;

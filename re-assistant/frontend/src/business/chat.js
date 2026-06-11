@@ -74,6 +74,11 @@ async function loadBizChat() {
 }
 
 async function sendBizChat() {
+  // Stopp-Button anzeigen
+  const stopBtn = document.getElementById('bc-stop');
+  if (stopBtn) stopBtn.style.display = 'flex';
+  const sendBtn = document.getElementById('bc-send');
+  if (sendBtn) sendBtn.style.display = 'none';
   const inp  = $('bc-input');
   const text = inp.value.trim();
   if (!text) return;

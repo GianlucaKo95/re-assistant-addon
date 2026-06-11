@@ -100,6 +100,9 @@ function renderSystemNode(node, depth) {
             onclick="showDocStats('${node.id}')">📊 Stats</button>
           <button class="btn-secondary" style="font-size:11px;padding:5px 10px"
             onclick="showRAGStatus('${node.id}')">🧠 Index</button>
+          <button class="btn-secondary" style="font-size:11px;padding:5px 10px"
+            id="cache-btn-${node.id}"
+            onclick="rebuildContextCache('${node.id}')">⚡ Kontext</button>
         </div>
       </div>
     </div>
@@ -287,6 +290,27 @@ window.loadAdminSystems = loadAdminSystems;
 window.openSysModal     = openSysModal;
 window.saveSys          = saveSys;
 window.delSys           = delSys;
+async function rebuildContextCache(systemId) {
+  const btn = document.getElementById(`cache-btn-${systemId}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span>'; }
+  try {
+    await fetch(`api/systems/${systemId}/rebuild-cache`, {
+      method: 'POST', credentials: 'include'
+    });
+    toast('⚡ Kontext wird aufgebaut — dauert ca. 30 Sekunden');
+    // Nach 35s Status prüfen
+    setTimeout(async () => {
+      const res  = await fetch(`api/systems/${systemId}/context-cache`, { credentials:'include' });
+      const data = await res.json();
+      if (data.hasCache) toast(`✅ Kontext fertig: ${data.docCount} Dokumente analysiert`);
+      if (btn) { btn.disabled = false; btn.innerHTML = '⚡ Kontext'; }
+    }, 35000);
+  } catch(e) {
+    toast('❌ Fehler: ' + e.message);
+    if (btn) { btn.disabled = false; btn.innerHTML = '⚡ Kontext'; }
+  }
+}
+
 window.addFiles         = addFiles;
 window.addFolder        = addFolder;
 window.remDoc           = remDoc;

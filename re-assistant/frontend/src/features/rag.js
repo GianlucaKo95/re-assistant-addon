@@ -79,45 +79,64 @@ async function semanticSearch(systemId, query, topK = 5) {
 }
 
 // ── RAG-angereicherten Kontext für KI-Chats bauen ────────────
+// Gecachten Kontext laden
+async function getCachedContext(systemId) {
+  try {
+    const res  = await fetch(`api/systems/${systemId}/context-cache`, { credentials:'include' });
+    const data = await res.json();
+    if (!data.hasCache) return null;
+    // Vollständige Zusammenfassung laden
+    const full = await fetch(`api/embeddings/summary?systemId=${systemId}`, { credentials:'include' });
+    if (!full.ok) return null;
+    const summary = await full.json();
+    return summary.summary || null;
+  } catch(e) { return null; }
+}
+
 async function buildRAGContext(systemId, userQuery) {
   if (!systemId) return '';
-
   const q = (userQuery || '').toLowerCase();
 
-  // Erkenne "Überblick"-Fragen — hier alle Dokumente nutzen
-  const isOverviewQuery = /überblick|übersicht|zusammenfassung|alles|komplett|gesamt|alle funk|was kann|was macht|erklär|beschreib|zeig mir|worum geht/i.test(q);
+  // 1. Überblick-Fragen → gecachte Zusammenfassung nutzen
+  const isOverviewQuery = /überblick|übersicht|zusammenfassung|alles|komplett|gesamt|alle funk|was kann|was macht|erklär|beschreib|zeig mir|worum geht|vorstell/i.test(q);
 
   if (isOverviewQuery) {
-    // Alle Chunks laden — breiter Überblick
+    const cached = await getCachedContext(systemId);
+    if (cached) {
+      return `Systemzusammenfassung (KI-analysiert):\n\n${cached}`;
+    }
     return await buildFullContext(systemId, 12000);
   }
 
-  // Normale semantische Suche mit mehr Chunks
-  const results = await semanticSearch(systemId, userQuery, 12);
+  // 2. Spezifische Fragen → semantische Suche + Kontext-Cache als Basis
+  const [results, cached] = await Promise.all([
+    semanticSearch(systemId, userQuery, 8),
+    getCachedContext(systemId),
+  ]);
 
-  if (!results.length) {
-    return await buildFullContext(systemId, 8000);
+  const parts = [];
+
+  // Gecachte Zusammenfassung als Basis (gekürzt)
+  if (cached) {
+    parts.push(`Systemüberblick:\n${cached.substring(0, 2000)}\n…`);
   }
 
-  // Nur relevante Chunks (niedrigere Schwelle)
+  // Spezifische Chunks obendrauf
   const relevant = results.filter(r => r.score > 0.05);
-
-  if (!relevant.length) {
-    return await buildFullContext(systemId, 8000);
+  if (relevant.length) {
+    const byDoc = {};
+    for (const r of relevant) {
+      if (!byDoc[r.docName]) byDoc[r.docName] = [];
+      byDoc[r.docName].push(r.text);
+    }
+    const specific = Object.entries(byDoc)
+      .map(([name, texts]) => `[${name}]\n${texts.slice(0,2).join(' … ')}`)
+      .join('\n\n---\n\n');
+    parts.push(`Relevante Details:\n\n${specific}`);
   }
 
-  // Chunks nach Dokument gruppieren — jedes Dokument gleichmäßig vertreten
-  const byDoc = {};
-  for (const r of relevant) {
-    if (!byDoc[r.docName]) byDoc[r.docName] = [];
-    byDoc[r.docName].push(r.text);
-  }
-
-  const contextParts = Object.entries(byDoc).map(([docName, texts]) =>
-    `[${docName}]\n${texts.slice(0, 3).join(' ... ')}`
-  );
-
-  return `Relevante Dokumentation:\n\n${contextParts.join('\n\n---\n\n')}`;
+  if (!parts.length) return await buildFullContext(systemId, 8000);
+  return parts.join('\n\n════════\n\n');
 }
 
 // Vollständiger Kontext aller Dokumente (für Überblick-Fragen)
