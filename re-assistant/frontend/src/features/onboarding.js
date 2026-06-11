@@ -11,10 +11,8 @@ async function checkAndShowOnboarding() {
     const status = await fetch('api/onboarding/status', { credentials:'include' }).then(r=>r.json());
     // Wizard zeigen wenn: nicht abgeschlossen UND noch kein System angelegt
     // Oder: nicht abgeschlossen UND noch keine Anforderungen (frischer Start)
-    const shouldShow = !status.complete && (
-      !status.steps.hasSystem ||
-      (!status.steps.hasRequirements && !status.steps.hasSystem)
-    );
+    // Wizard zeigen wenn nicht abgeschlossen ODER kein System vorhanden
+    const shouldShow = !status.complete || !status.steps.hasSystem;
     if (shouldShow) {
       showOnboardingWizard(status);
     }

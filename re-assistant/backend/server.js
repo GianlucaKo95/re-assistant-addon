@@ -751,11 +751,15 @@ app.get('/api/onboarding/status', requireAuth, async (req, res) => {
       queryOne('SELECT COUNT(*) as c FROM requirements'),
       queryOne('SELECT COUNT(*) as c FROM users'),
     ]);
+    const systemCount = parseInt(sysCount?.c||0);
+    const reqCount_   = parseInt(reqCount?.c||0);
+    // Wizard zeigen wenn: keine Systeme vorhanden — egal was onboarding_complete sagt
+    const complete_   = complete?.value === '1' && systemCount > 0;
     res.json({
-      complete:    complete?.value === '1',
-      systemCount: parseInt(sysCount?.c||0),
-      reqCount:    parseInt(reqCount?.c||0),
-      steps: { hasSystem: parseInt(sysCount?.c||0) > 0, hasRequirements: parseInt(reqCount?.c||0) > 0, hasUsers: parseInt(userCount?.c||0) > 1 },
+      complete:    complete_,
+      systemCount,
+      reqCount:    reqCount_,
+      steps: { hasSystem: systemCount > 0, hasRequirements: reqCount_ > 0, hasUsers: parseInt(userCount?.c||0) > 1 },
     });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
