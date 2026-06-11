@@ -86,6 +86,43 @@ async function resolveApiKey(userId) {
   return cfg.key;
 }
 
+
+// ── writeAuditLog Hilfsfunktion ───────────────────────────────
+async function writeAuditLog({ eventType, action, entityType, entityId, entityName,
+  systemId, userId, userName, details, ipAddress }) {
+  try {
+    await query(
+      `INSERT INTO audit_log (event_type,entity_type,entity_id,entity_name,system_id,
+        action,user_id,user_name,details,ip_address)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [eventType||'action', entityType||null, entityId||null, entityName||null,
+       systemId||null, action||'update', userId||null, userName||null,
+       JSON.stringify(details||{}), ipAddress||null]
+    );
+  } catch(e) {
+    // Audit-Log-Fehler nie crashen lassen
+    console.warn('[AUDIT] Fehler:', e.message);
+  }
+}
+
+
+// ── trackReqChanges ───────────────────────────────────────────
+async function trackReqChanges(oldReq, newReq, userId, userName) {
+  if (!oldReq || !newReq) return;
+  const tracked = ['title','description','priority','status','category',
+    'rationale','due_date','story_points'];
+  for (const field of tracked) {
+    const oldVal = String(oldReq[field] ?? '');
+    const newVal = String(newReq[field] ?? '');
+    if (oldVal !== newVal) {
+      await query(
+        'INSERT INTO req_history (req_id,user_id,user_name,field,old_value,new_value) VALUES ($1,$2,$3,$4,$5,$6)',
+        [newReq.id, userId, userName, field, oldVal||null, newVal||null]
+      ).catch(() => {});
+    }
+  }
+}
+
 // ── AUTH ──────────────────────────────────────────────────────
 app.post('/api/auth/login', async (req, res) => {
   try {
