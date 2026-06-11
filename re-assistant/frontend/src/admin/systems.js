@@ -10,9 +10,11 @@ async function loadAdminSystems() {
   S.systems = await window.api.getSystems();
   renderSystems();
   document.getElementById('btn-new-system').onclick = () => {
-    // Wizard für neues System starten
-    if (typeof startNewSystemWizard === 'function') {
-      startNewSystemWizard();
+    // Wizard direkt aufrufen — showOnboardingWizard ist global
+    if (typeof showOnboardingWizard === 'function') {
+      window._onboardingData = {};
+      window._onboardingStep = 1;
+      showOnboardingWizard({ complete: false, steps: { hasSystem: false, hasRequirements: false } });
     } else {
       openSysModal(null, null);
     }
