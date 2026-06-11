@@ -9,7 +9,14 @@ const $ = window.$ || (id => document.getElementById(id));
 async function loadAdminSystems() {
   S.systems = await window.api.getSystems();
   renderSystems();
-  document.getElementById('btn-new-system').onclick = () => openSysModal(null, null);
+  document.getElementById('btn-new-system').onclick = () => {
+    // Wizard für neues System starten
+    if (typeof startNewSystemWizard === 'function') {
+      startNewSystemWizard();
+    } else {
+      openSysModal(null, null);
+    }
+  };
 }
 
 // ── Hierarchische Darstellung ─────────────────────────────────

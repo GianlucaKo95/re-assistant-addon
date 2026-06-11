@@ -578,15 +578,29 @@ function renderDone() {
 async function finishOnboarding(targetView) {
   await fetch('api/onboarding/complete', { method:'POST', credentials:'include' });
   document.getElementById('onboarding-overlay')?.remove();
-  if (targetView) switchView(targetView);
-  else {
-    S.systems = await window.api.getSystems();
-    switchView(S.user.role === 'business' ? 'business-chat' :
-               S.user.role === 'businessanalyst' ? 'ba-dashboard' :
-               S.user.role === 'projectmanager' ? 'pm-dashboard' : 'dev-work');
+
+  // Systeme immer neu laden
+  S.systems = await window.api.getSystems();
+
+  // Admin-Systemliste aktualisieren falls offen
+  if (typeof loadAdminSystems === 'function') {
+    try { await loadAdminSystems(); } catch(e) {}
   }
+
+  if (targetView) {
+    switchView(targetView);
+  } else {
+    const view = S.user.role === 'admin' ? 'admin-systems' :
+                 S.user.role === 'business' ? 'business-chat' :
+                 S.user.role === 'businessanalyst' ? 'ba-dashboard' :
+                 S.user.role === 'projectmanager' ? 'pm-dashboard' : 'dev-work';
+    switchView(view);
+  }
+
   if (typeof addNotif === 'function')
-    addNotif('🎉', 'Einrichtung abgeschlossen', 'RE-Assistent ist bereit');
+    addNotif('🎉', 'System angelegt', `"${window._onboardingData?.systemName || 'Neues System'}" ist bereit`);
+
+  window._onboardingData = {};
 }
 
 async function skipOnboarding() {
@@ -617,6 +631,13 @@ function onboardingHeader(step, total, icon, title, subtitle) {
     </div>`;
 }
 
+
+// ── Wizard für neues System starten ──────────────────────────
+function startNewSystemWizard() {
+  window._onboardingData = {};
+  showOnboardingWizard({ complete: false, steps: { hasSystem: false, hasRequirements: false } });
+}
+window.startNewSystemWizard = startNewSystemWizard;
 window.checkAndShowOnboarding = checkAndShowOnboarding;
 window.nextOnboardingStep     = nextOnboardingStep;
 window.prevOnboardingStep     = prevOnboardingStep;
