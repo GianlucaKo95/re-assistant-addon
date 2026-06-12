@@ -84,7 +84,15 @@ async function getCachedContext(systemId) {
   try {
     const res  = await fetch(`api/systems/${systemId}/context-cache`, { credentials:'include' });
     const data = await res.json();
-    if (!data.hasCache) return null;
+
+    if (!data.hasCache) {
+      // Cache existiert nicht — im Hintergrund anstoßen für nächstes Mal
+      if (data.status !== 'building') {
+        fetch(`api/systems/${systemId}/rebuild-cache`, { method:'POST', credentials:'include' }).catch(()=>{});
+      }
+      return null;
+    }
+
     // Vollständige Zusammenfassung laden
     const full = await fetch(`api/embeddings/summary?systemId=${systemId}`, { credentials:'include' });
     if (!full.ok) return null;
@@ -145,7 +153,7 @@ async function buildFullContext(systemId, maxChars = 10000) {
     const res  = await fetch('api/embeddings/search', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ systemId, query: 'system funktionen überblick', topK: 50 })
+      body: JSON.stringify({ systemId, query: 'system funktionen überblick', topK: 20 })
     });
     const data = await res.json();
     const chunks = data.results || [];

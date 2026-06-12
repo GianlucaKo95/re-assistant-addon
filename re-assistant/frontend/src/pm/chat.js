@@ -21,13 +21,19 @@ async function loadPMChat(){
 }
 async function sendPMChat(){
   const inp=$('pmc-input');const text=inp.value.trim();if(!text)return;
+  document.getElementById('pmc-stop')?.style.setProperty('display','flex');
+  document.getElementById('pmc-send')?.style.setProperty('display','none');
   inp.value='';inp.style.height='auto';
   pushMsg('pm-chat-msgs','u',text);S.chatHistory.pmc.push({role:'user',content:text});
   const typing=addTyping('pm-chat-msgs');
   const sys=S.systems.find(s=>s.id===S.activeSystemId);
   const sr=S.requirements.filter(r=>r.systemId===S.activeSystemId).map(r=>`- ${r.id}: ${r.title} [${r.status}]`).join('\n');
   const res=await callAPI(S.chatHistory.pmc,`PM-Assistent. ${langNote()}\n${sys?`System: ${sys.name}\nAnforderungen:\n${sr}\n\n${getCtx(sys)}`:'Kein System.'}`,1800);
-  typing.remove();pushMsg('pm-chat-msgs','a',res.ok?res.text:`❌ ${res.text}`);
+  typing.remove();
+  document.getElementById('pmc-stop')?.style.setProperty('display','none');
+  document.getElementById('pmc-send')?.style.setProperty('display','flex');
+  if(res._aborted) return;
+  pushMsg('pm-chat-msgs','a',res.ok?res.text:`❌ ${res.text}`);
   if(res.ok){S.chatHistory.pmc.push({role:'assistant',content:res.text});if(S.chatHistory.pmc.length>40)S.chatHistory.pmc=S.chatHistory.pmc.slice(-40);}
 }
 

@@ -315,3 +315,4 @@ window.addFiles         = addFiles;
 window.addFolder        = addFolder;
 window.remDoc           = remDoc;
 window.showDocStats     = showDocStats;
+window.rebuildContextCache = rebuildContextCache;

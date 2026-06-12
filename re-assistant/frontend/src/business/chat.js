@@ -105,6 +105,14 @@ async function sendBizChat() {
   const res = await callAPI(S.chatHistory.bc, system, 1800);
   typing.remove();
 
+  // Stopp-/Send-Button zurücksetzen
+  document.getElementById('bc-stop')?.style.setProperty('display','none');
+  document.getElementById('bc-send')?.style.setProperty('display','flex');
+
+  if (res._aborted) {
+    return; // Abgebrochen — keine leere Nachricht anzeigen
+  }
+
   const reply = res.ok ? res.text : `❌ ${res.text}`;
   pushMsg('bc-chat-msgs', 'a', reply);
 
