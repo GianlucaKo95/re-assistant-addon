@@ -856,11 +856,20 @@ app.post('/api/embeddings/search', requireAuth, async (req, res) => {
     const { systemId, query: q2, topK = 12 } = req.body;
     if (!systemId || !q2) return res.status(400).json({ error: 'Ungültige Eingabe' });
 
+    const chunkCountRow = await queryOne('SELECT COUNT(*) as c FROM embeddings WHERE system_id=$1', [systemId]);
+    const totalChunks = parseInt(chunkCountRow?.c || 0);
+    if (totalChunks === 0) return res.json({ results: [], fallback: true });
+
+    // Bei sehr großen Systemen: Hard-Limit um Hänger zu vermeiden
+    const MAX_CHUNKS = 2000;
     const chunks = await queryAll(
-      'SELECT * FROM embeddings WHERE system_id=$1 ORDER BY chunk_index ASC',
-      [systemId]
+      `SELECT * FROM embeddings WHERE system_id=$1 ORDER BY chunk_index ASC LIMIT $2`,
+      [systemId, MAX_CHUNKS]
     );
     if (!chunks.length) return res.json({ results: [], fallback: true });
+    if (totalChunks > MAX_CHUNKS) {
+      log('warning', `embeddings/search: System ${systemId} hat ${totalChunks} Chunks — limitiert auf ${MAX_CHUNKS}`);
+    }
 
     const queryVec = simpleTextVector(q2);
 
@@ -1884,7 +1893,7 @@ async function buildSystemContextCache(systemId) {
 
     // Alle Chunks laden
     const chunks = await queryAll(
-      'SELECT chunk_text, doc_name FROM embeddings WHERE system_id=$1 ORDER BY doc_name, chunk_index',
+      'SELECT chunk_text, doc_name FROM embeddings WHERE system_id=$1 ORDER BY doc_name, chunk_index LIMIT 3000',
       [systemId]
     );
 

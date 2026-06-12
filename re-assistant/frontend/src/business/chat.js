@@ -90,10 +90,35 @@ async function sendBizChat() {
 
   const typing = addTyping('bc-chat-msgs');
   const sys    = S.systems.find(s => s.id === S.activeSystemId);
+
+  // Eigener Abort-Controller für RAG + Chat (deckt die GESAMTE Anfrage ab)
+  if (window._chatAbortController) window._chatAbortController.abort();
+  window._chatAbortController = new AbortController();
+  const chatSignal = window._chatAbortController.signal;
+
   // RAG: semantische Suche nach relevanten Dokumenten-Passagen
-  const ragCtx = (typeof buildRAGContext === 'function')
-    ? await buildRAGContext(S.activeSystemId, text)
-    : '';
+  let ragCtx = '';
+  try {
+    ragCtx = (typeof buildRAGContext === 'function')
+      ? await buildRAGContext(S.activeSystemId, text, chatSignal)
+      : '';
+  } catch(e) {
+    if (e.name === 'AbortError' || chatSignal.aborted) {
+      typing.remove();
+      document.getElementById('bc-stop')?.style.setProperty('display','none');
+      document.getElementById('bc-send')?.style.setProperty('display','flex');
+      return;
+    }
+    ragCtx = '';
+  }
+
+  // Falls währenddessen abgebrochen wurde
+  if (chatSignal.aborted) {
+    typing.remove();
+    document.getElementById('bc-stop')?.style.setProperty('display','none');
+    document.getElementById('bc-send')?.style.setProperty('display','flex');
+    return;
+  }
   const system = [
     `Du bist ein erfahrener Requirements Engineer und Business-Analyst. ${langNote()}`,
     sys ? `System: ${sys.name}\nBeschreibung: ${sys.description || ''}\nAnzahl Dokumente: ${(sys.docs||[]).length}` : 'Kein System ausgewählt.',

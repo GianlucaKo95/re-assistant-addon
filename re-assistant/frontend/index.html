@@ -100,7 +100,7 @@
                 <textarea id="bc-input" class="chat-textarea" placeholder="Prozess beschreiben oder Frage stellen …" rows="1"></textarea>
                 <button class="mic-btn mic-off" id="bc-mic" title="Spracheingabe"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
                 <button class="send-btn" id="bc-send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
-                <button class="stop-btn" id="bc-stop" style="display:none" onclick="abortCurrentRequest && abortCurrentRequest(); document.getElementById('bc-stop').style.display='none'; document.getElementById('bc-send').style.display='flex';" title="Antwort abbrechen">
+                <button class="stop-btn" id="bc-stop" style="display:none" onclick="abortCurrentRequest && abortCurrentRequest(); window._chatAbortController && window._chatAbortController.abort(); document.getElementById('bc-stop').style.display='none'; document.getElementById('bc-send').style.display='flex';" title="Antwort abbrechen">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
                 </button>
               </div>
@@ -244,7 +244,7 @@
                 <textarea id="pmc-input" class="chat-textarea" placeholder="Fragen zum System …" rows="1"></textarea>
                 <button class="mic-btn mic-off" id="pmc-mic" title="Spracheingabe"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
                 <button class="send-btn" id="pmc-send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
-                <button class="stop-btn" id="pmc-stop" style="display:none" onclick="abortCurrentRequest && abortCurrentRequest(); document.getElementById('pmc-stop').style.display='none'; document.getElementById('pmc-send').style.display='flex';" title="Antwort abbrechen">
+                <button class="stop-btn" id="pmc-stop" style="display:none" onclick="abortCurrentRequest && abortCurrentRequest(); window._chatAbortController && window._chatAbortController.abort(); document.getElementById('pmc-stop').style.display='none'; document.getElementById('pmc-send').style.display='flex';" title="Antwort abbrechen">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
                 </button>
               </div>

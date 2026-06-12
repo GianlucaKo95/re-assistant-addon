@@ -64,10 +64,10 @@ async function indexSystemDocs(systemId, onProgress) {
 }
 
 // ── Semantische Suche ─────────────────────────────────────────
-async function semanticSearch(systemId, query, topK = 5) {
+async function semanticSearch(systemId, query, topK = 5, signal) {
   try {
     const res = await fetch('api/embeddings/search', {
-      method: 'POST', credentials: 'include',
+      method: 'POST', credentials: 'include', signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ systemId, query, topK })
     });
@@ -80,9 +80,9 @@ async function semanticSearch(systemId, query, topK = 5) {
 
 // ── RAG-angereicherten Kontext für KI-Chats bauen ────────────
 // Gecachten Kontext laden
-async function getCachedContext(systemId) {
+async function getCachedContext(systemId, signal) {
   try {
-    const res  = await fetch(`api/systems/${systemId}/context-cache`, { credentials:'include' });
+    const res  = await fetch(`api/systems/${systemId}/context-cache`, { credentials:'include', signal });
     const data = await res.json();
 
     if (!data.hasCache) {
@@ -94,14 +94,14 @@ async function getCachedContext(systemId) {
     }
 
     // Vollständige Zusammenfassung laden
-    const full = await fetch(`api/embeddings/summary?systemId=${systemId}`, { credentials:'include' });
+    const full = await fetch(`api/embeddings/summary?systemId=${systemId}`, { credentials:'include', signal });
     if (!full.ok) return null;
     const summary = await full.json();
     return summary.summary || null;
   } catch(e) { return null; }
 }
 
-async function buildRAGContext(systemId, userQuery) {
+async function buildRAGContext(systemId, userQuery, signal) {
   if (!systemId) return '';
   const q = (userQuery || '').toLowerCase();
 
@@ -109,17 +109,17 @@ async function buildRAGContext(systemId, userQuery) {
   const isOverviewQuery = /überblick|übersicht|zusammenfassung|alles|komplett|gesamt|alle funk|was kann|was macht|erklär|beschreib|zeig mir|worum geht|vorstell/i.test(q);
 
   if (isOverviewQuery) {
-    const cached = await getCachedContext(systemId);
+    const cached = await getCachedContext(systemId, signal);
     if (cached) {
       return `Systemzusammenfassung (KI-analysiert):\n\n${cached}`;
     }
-    return await buildFullContext(systemId, 12000);
+    return await buildFullContext(systemId, 12000, signal);
   }
 
   // 2. Spezifische Fragen → semantische Suche + Kontext-Cache als Basis
   const [results, cached] = await Promise.all([
-    semanticSearch(systemId, userQuery, 8),
-    getCachedContext(systemId),
+    semanticSearch(systemId, userQuery, 8, signal),
+    getCachedContext(systemId, signal),
   ]);
 
   const parts = [];
@@ -143,15 +143,15 @@ async function buildRAGContext(systemId, userQuery) {
     parts.push(`Relevante Details:\n\n${specific}`);
   }
 
-  if (!parts.length) return await buildFullContext(systemId, 8000);
+  if (!parts.length) return await buildFullContext(systemId, 8000, signal);
   return parts.join('\n\n════════\n\n');
 }
 
 // Vollständiger Kontext aller Dokumente (für Überblick-Fragen)
-async function buildFullContext(systemId, maxChars = 10000) {
+async function buildFullContext(systemId, maxChars = 10000, signal) {
   try {
     const res  = await fetch('api/embeddings/search', {
-      method: 'POST', credentials: 'include',
+      method: 'POST', credentials: 'include', signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ systemId, query: 'system funktionen überblick', topK: 20 })
     });
