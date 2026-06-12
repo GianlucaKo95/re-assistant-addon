@@ -297,14 +297,44 @@ async function rebuildContextCache(systemId) {
     await fetch(`api/systems/${systemId}/rebuild-cache`, {
       method: 'POST', credentials: 'include'
     });
-    toast('⚡ Kontext wird aufgebaut — dauert ca. 30 Sekunden');
-    // Nach 35s Status prüfen
-    setTimeout(async () => {
+    toast('⚡ Kontext wird aufgebaut — kann je nach Anzahl Dokumente 1-2 Minuten dauern');
+
+    // Echtes Polling — Spinner bleibt bis build_status='ready' oder 'error'/'empty'
+    const POLL_INTERVAL = 4000;
+    const MAX_POLLS     = 45; // ~3 Minuten Obergrenze
+    let polls = 0;
+
+    const poll = async () => {
+      polls++;
       const res  = await fetch(`api/systems/${systemId}/context-cache`, { credentials:'include' });
       const data = await res.json();
-      if (data.hasCache) toast(`✅ Kontext fertig: ${data.docCount} Dokumente analysiert`);
-      if (btn) { btn.disabled = false; btn.innerHTML = '⚡ Kontext'; }
-    }, 35000);
+
+      if (data.status === 'ready') {
+        toast(`✅ Kontext fertig: ${data.docCount} Dokumente analysiert (${data.tokenCount} Zeichen)`);
+        if (btn) { btn.disabled = false; btn.innerHTML = '⚡ Kontext'; }
+        return;
+      }
+      if (data.status === 'error') {
+        toast('❌ Kontext-Aufbau fehlgeschlagen — siehe Logs');
+        if (btn) { btn.disabled = false; btn.innerHTML = '⚡ Kontext'; }
+        return;
+      }
+      if (data.status === 'empty') {
+        toast('⚠ Keine Dokumente zum Indexieren gefunden');
+        if (btn) { btn.disabled = false; btn.innerHTML = '⚡ Kontext'; }
+        return;
+      }
+
+      // Noch "building" oder "pending" oder "outdated" — weiter pollen
+      if (polls >= MAX_POLLS) {
+        toast('⏱ Kontext-Aufbau läuft noch im Hintergrund weiter (Zeitlimit für Anzeige erreicht)');
+        if (btn) { btn.disabled = false; btn.innerHTML = '⚡ Kontext'; }
+        return;
+      }
+      setTimeout(poll, POLL_INTERVAL);
+    };
+
+    setTimeout(poll, POLL_INTERVAL);
   } catch(e) {
     toast('❌ Fehler: ' + e.message);
     if (btn) { btn.disabled = false; btn.innerHTML = '⚡ Kontext'; }
