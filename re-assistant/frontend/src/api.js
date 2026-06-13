@@ -23,7 +23,11 @@ const API = {
 
   async uploadDocs(systemId, files) {
     const fd = new FormData();
-    for (const f of files) fd.append('files', f);
+    for (const f of files) {
+      // Bei Ordner-Upload: relativen Pfad als Dateinamen nutzen (für Gruppierung)
+      const name = f.webkitRelativePath || f.name;
+      fd.append('files', f, name);
+    }
     const res = await fetch(`api/systems/${systemId}/docs`, {
       method: 'POST', body: fd, credentials: 'include'
     });
@@ -201,7 +205,7 @@ const API = {
 };
 
 function defaultSettings() {
-  return { provider:'anthropic', model:'claude-sonnet-4-20250514', grokApiKey:'', grokModel:'grok-3-mini', groqApiKey:'', groqModel:'llama-3.3-70b-versatile', language:'de', detail:'standard', voiceURI:'', persona:'professional', jiraUrl:'', jiraEmail:'', jiraToken:'' };
+  return { provider:'anthropic', model:'claude-sonnet-4-6', grokApiKey:'', grokModel:'grok-3-mini', groqApiKey:'', groqModel:'llama-3.3-70b-versatile', language:'de', detail:'standard', voiceURI:'', persona:'professional', jiraUrl:'', jiraEmail:'', jiraToken:'' };
 }
 
 async function get(url) {

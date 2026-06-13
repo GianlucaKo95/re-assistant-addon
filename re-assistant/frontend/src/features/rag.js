@@ -85,6 +85,12 @@ async function getCachedContext(systemId, signal) {
     const res  = await fetch(`api/systems/${systemId}/context-cache`, { credentials:'include', signal });
     const data = await res.json();
 
+    // Cache ohne KI-Analyse (ready_no_ai) — versuche Rebuild anzustoßen,
+    // nutze aber den vorhandenen (rohen) Inhalt trotzdem als besser-als-nichts
+    if (data.hasCache && !data.isAiGenerated && data.status !== 'building') {
+      fetch(`api/systems/${systemId}/rebuild-cache`, { method:'POST', credentials:'include' }).catch(()=>{});
+    }
+
     if (!data.hasCache) {
       // Cache existiert nicht — im Hintergrund anstoßen für nächstes Mal
       if (data.status !== 'building') {
@@ -101,9 +107,22 @@ async function getCachedContext(systemId, signal) {
   } catch(e) { return null; }
 }
 
+// Detailtiefe aus den Nutzer-Einstellungen — beeinflusst Chunk-Anzahl und Cache-Größe
+function getDetailLevel() {
+  const level = S.settings?.detail || 'standard';
+  // [normal-topK, deep-topK, normal-chunksPerDoc, deep-chunksPerDoc, overviewMaxChars, normalCacheChars, deepCacheChars]
+  const presets = {
+    compact:  { topK: 5,  deepTopK: 8,  chunksPerDoc: 1, deepChunksPerDoc: 3,  overviewChars: 6000,  cacheChars: 1200, deepCacheChars: 800  },
+    standard: { topK: 8,  deepTopK: 15, chunksPerDoc: 2, deepChunksPerDoc: 6,  overviewChars: 12000, cacheChars: 2000, deepCacheChars: 1200 },
+    detailed: { topK: 12, deepTopK: 25, chunksPerDoc: 4, deepChunksPerDoc: 10, overviewChars: 20000, cacheChars: 3000, deepCacheChars: 1500 },
+  };
+  return presets[level] || presets.standard;
+}
+
 async function buildRAGContext(systemId, userQuery, signal) {
   if (!systemId) return '';
   const q = (userQuery || '').toLowerCase();
+  const detail = getDetailLevel();
 
   // 1. Überblick-Fragen → gecachte Zusammenfassung nutzen
   const isOverviewQuery = /überblick|übersicht|zusammenfassung|alles|komplett|gesamt|alle funk|was kann|was macht|erklär|beschreib|zeig mir|worum geht|vorstell/i.test(q);
@@ -113,23 +132,30 @@ async function buildRAGContext(systemId, userQuery, signal) {
     if (cached) {
       return `Systemzusammenfassung (KI-analysiert):\n\n${cached}`;
     }
-    return await buildFullContext(systemId, 12000, signal);
+    return await buildFullContext(systemId, detail.overviewChars, signal);
   }
 
-  // 2. Spezifische Fragen → semantische Suche + Kontext-Cache als Basis
+  // 2. Erkenne "tiefe" Fragen — wollen detaillierten Code/Funktionsverständnis
+  const isDeepQuery = /wie funktioniert|erklär.*code|erklär.*funktion|implementier|im detail|genauer|funktionsweise|wie ist.*aufgebaut|wie wird.*umgesetzt|zeig.*code|quellcode|logik von|ablauf von/i.test(q);
+
+  // 3. Spezifische Fragen → semantische Suche + Kontext-Cache als Basis
+  const topK         = isDeepQuery ? detail.deepTopK         : detail.topK;
+  const chunksPerDoc = isDeepQuery ? detail.deepChunksPerDoc : detail.chunksPerDoc;
+  const cacheChars   = isDeepQuery ? detail.deepCacheChars   : detail.cacheChars;
+
   const [results, cached] = await Promise.all([
-    semanticSearch(systemId, userQuery, 8, signal),
+    semanticSearch(systemId, userQuery, topK, signal),
     getCachedContext(systemId, signal),
   ]);
 
   const parts = [];
 
-  // Gecachte Zusammenfassung als Basis (gekürzt)
+  // Gecachte Zusammenfassung als Basis (gekürzt, bei Deep-Queries kompakter)
   if (cached) {
-    parts.push(`Systemüberblick:\n${cached.substring(0, 2000)}\n…`);
+    parts.push(`Systemüberblick:\n${cached.substring(0, cacheChars)}\n…`);
   }
 
-  // Spezifische Chunks obendrauf
+  // Spezifische Chunks obendrauf — bei Deep-Queries mehr Chunks pro Datei
   const relevant = results.filter(r => r.score > 0.05);
   if (relevant.length) {
     const byDoc = {};
@@ -138,12 +164,12 @@ async function buildRAGContext(systemId, userQuery, signal) {
       byDoc[r.docName].push(r.text);
     }
     const specific = Object.entries(byDoc)
-      .map(([name, texts]) => `[${name}]\n${texts.slice(0,2).join(' … ')}`)
+      .map(([name, texts]) => `[${name}]\n${texts.slice(0, chunksPerDoc).join('\n…\n')}`)
       .join('\n\n---\n\n');
-    parts.push(`Relevante Details:\n\n${specific}`);
+    parts.push(`${isDeepQuery ? 'Relevanter Code/Inhalt (detailliert)' : 'Relevante Details'}:\n\n${specific}`);
   }
 
-  if (!parts.length) return await buildFullContext(systemId, 8000, signal);
+  if (!parts.length) return await buildFullContext(systemId, detail.cacheChars + 6000, signal);
   return parts.join('\n\n════════\n\n');
 }
 
@@ -263,6 +289,7 @@ function log_rag(msg) {
 // ── Patch: Chat-Funktionen mit RAG-Kontext anreichern ─────────
 // Wird aufgerufen wenn ein System Dokumente hat und Embeddings vorhanden sind
 window.buildRAGContext   = buildRAGContext;
+window.getDetailLevel    = getDetailLevel;
 window.buildFullContext  = buildFullContext;
 window.semanticSearch    = semanticSearch;
 window.indexDocument     = indexDocument;

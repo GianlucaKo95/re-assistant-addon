@@ -637,6 +637,11 @@ function startNewSystemWizard() {
   window._onboardingData = {};
   showOnboardingWizard({ complete: false, steps: { hasSystem: false, hasRequirements: false } });
 }
+window.obSelectImportSource = obSelectImportSource;
+window.obConnectJira        = obConnectJira;
+window.obPickImportFile     = obPickImportFile;
+window.obExecuteImport      = obExecuteImport;
+window.showObImportPreview  = showObImportPreview;
 window.startNewSystemWizard = startNewSystemWizard;
 window.checkAndShowOnboarding = checkAndShowOnboarding;
 window.nextOnboardingStep     = nextOnboardingStep;

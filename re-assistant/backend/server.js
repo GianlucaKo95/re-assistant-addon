@@ -1008,7 +1008,8 @@ app.get('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
   const provider   = (await queryOne("SELECT value FROM app_settings WHERE key='global_ai_provider'"))?.value || 'anthropic';
   const hasAnthKey = !!(process.env.ANTHROPIC_API_KEY || (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value);
   const hasGrokKey = !!(await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value;
-  res.json({ provider, hasAnthKey, hasGrokKey });
+  const hasGroqKey = !!(await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value;
+  res.json({ provider, hasAnthKey, hasGrokKey, hasGroqKey });
 });
 app.post('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
   const { apiKey, provider, grokApiKey } = req.body;
@@ -1028,7 +1029,21 @@ app.post('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
   if (apiKey)     await query("INSERT INTO app_settings (key,value) VALUES ('global_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [apiKey]);
   if (grokApiKey) await query("INSERT INTO app_settings (key,value) VALUES ('global_grok_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [grokApiKey]);
   if (groqApiKey) await query("INSERT INTO app_settings (key,value) VALUES ('global_groq_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [groqApiKey]);
-  res.json({ ok:true });
+
+  // Falls jetzt erstmals ein Key vorhanden ist: alle "ready_no_ai"-Caches neu aufbauen
+  if (apiKey || grokApiKey || groqApiKey) {
+    const staleSystems = await query(
+      "SELECT system_id FROM system_context_cache WHERE build_status='ready_no_ai'", []
+    );
+    if (staleSystems.rows.length) {
+      log('info', `API-Key gespeichert — baue ${staleSystems.rows.length} Cache(s) ohne KI-Inhalt neu auf`);
+      for (const row of staleSystems.rows) {
+        setImmediate(() => buildSystemContextCache(row.system_id));
+      }
+    }
+  }
+
+  res.json({ ok:true, rebuilding: (apiKey||grokApiKey||groqApiKey) ? true : false });
 });
 
 // Per-User Key — Anthropic oder Grok
@@ -1300,22 +1315,16 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
       });
     }
 
-    const { _feature, _systemId, _provider: clientProvider, _grokApiKey: clientGrokKey, _groqApiKey: clientGroqKey, ...cleanBody } = req.body;
+    const { _feature, _systemId, _apiKey, _provider, _grokApiKey, _groqApiKey, ...cleanBody } = req.body;
 
-    // Provider + Key auflösen
-    let apiCfg = await resolveApiConfig(req.session.userId);
+    // Provider + Key ausschließlich serverseitig auflösen (app_settings / per-user DB)
+    const apiCfg = await resolveApiConfig(req.session.userId);
 
-    // Client-seitige Überschreibung (per-User localStorage Settings)
-    if (clientProvider === 'grok' && clientGrokKey?.startsWith('xai-')) {
-      apiCfg = { key: clientGrokKey, provider: 'grok' };
-    } else if (clientProvider === 'groq' && clientGroqKey?.startsWith('gsk_')) {
-      apiCfg = { key: clientGroqKey, provider: 'groq' };
-    } else if (clientProvider === 'anthropic' && cleanBody._apiKey?.startsWith('sk-')) {
-      apiCfg = { key: cleanBody._apiKey, provider: 'anthropic' };
-      delete cleanBody._apiKey;
+    if (!apiCfg.key) {
+      log('warning', `AI-Chat: Kein API-Key — Provider=${apiCfg.provider}, Mode=${(await queryOne("SELECT value FROM app_settings WHERE key='api_key_mode'"))?.value||'global'}`);
+      return res.status(500).json({ error: 'Kein API-Key konfiguriert. Bitte in den Einstellungen hinterlegen.', debugProvider: apiCfg.provider });
     }
-
-    if (!apiCfg.key) return res.status(500).json({ error: 'Kein API-Key konfiguriert. Bitte in den Einstellungen hinterlegen.' });
+    log('info', `AI-Chat: Provider=${apiCfg.provider}, KeyPrefix=${apiCfg.key.substring(0,7)}…, Feature=${feature}`);
 
     let apiUrl, apiHeaders, apiBody;
 
@@ -1336,11 +1345,19 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
     } else {
       apiUrl     = 'https://api.anthropic.com/v1/messages';
       apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
-      apiBody    = cleanBody;
+      // Default-Modell falls Client keines vorgibt oder ein xAI/Groq-Modell hinterlegt war
+      const model = (cleanBody.model && cleanBody.model.startsWith('claude'))
+        ? cleanBody.model
+        : 'claude-sonnet-4-6';
+      apiBody    = { ...cleanBody, model };
     }
 
+    log('info', `AI-Chat: Sende an ${apiUrl} (Model: ${apiBody.model})`);
     const response = await fetch(apiUrl, { method:'POST', headers: apiHeaders, body: JSON.stringify(apiBody) });
     let data = await response.json();
+    if (!response.ok) {
+      log('error', `AI-Chat: ${apiCfg.provider} antwortete mit ${response.status}: ${JSON.stringify(data).substring(0,300)}`);
+    }
 
     // Grok/Groq Response → Anthropic Format
     if ((apiCfg.provider === 'grok' || apiCfg.provider === 'groq') && response.ok) {
@@ -1879,118 +1896,246 @@ app.post('/api/backup/import', requireAuth, requireAdmin, async (req, res) => {
 
 
 // ── System-Kontext-Cache ──────────────────────────────────────
-async function buildSystemContextCache(systemId) {
-  try {
-    log('info', `Cache: Baue Kontext für System ${systemId} …`);
+// Helper: fetch mit Timeout (verhindert ewiges Hängen)
+async function fetchWithTimeout(url, opts, timeoutMs = 25000) {
+  return fetch(url, { ...opts, signal: AbortSignal.timeout(timeoutMs) });
+}
 
-    // Status auf "building" setzen
+// Kleinen Prompt an die KI senden — gibt Text zurück oder null bei Fehler
+async function aiCall(apiCfg, prompt, maxTokens = 400, timeoutMs = 30000, retries = 1) {
+  let apiUrl, apiHeaders, apiBody;
+  if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
+    const model = apiCfg.provider === 'groq' ? 'llama-3.3-70b-versatile' : 'grok-3-mini';
+    apiUrl = apiCfg.provider === 'groq'
+      ? 'https://api.groq.com/openai/v1/chat/completions'
+      : 'https://api.x.ai/v1/chat/completions';
+    apiHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key };
+    apiBody = { model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens };
+  } else {
+    apiUrl = 'https://api.anthropic.com/v1/messages';
+    apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
+    apiBody = { model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] };
+  }
+
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetchWithTimeout(apiUrl, {
+        method: 'POST', headers: apiHeaders, body: JSON.stringify(apiBody),
+      }, timeoutMs);
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        // Bei 429 (Rate Limit) oder 5xx: Retry lohnt sich
+        if ((response.status === 429 || response.status >= 500) && attempt < retries) {
+          await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+          continue;
+        }
+        throw new Error(`${apiCfg.provider} ${response.status}: ${errText.substring(0, 200)}`);
+      }
+
+      const data = await response.json();
+      return apiCfg.provider === 'anthropic'
+        ? data.content?.[0]?.text || ''
+        : data.choices?.[0]?.message?.content || '';
+    } catch(e) {
+      lastErr = e;
+      // Bei Timeout/AbortError: einmal retry mit etwas mehr Zeit
+      if ((e.name === 'TimeoutError' || e.name === 'AbortError') && attempt < retries) {
+        timeoutMs = Math.round(timeoutMs * 1.5);
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
+// ── System-Kontext-Cache — inkrementell, mit Timeouts und Progress ───
+async function buildSystemContextCache(systemId) {
+  const updateStatus = async (status, extra = {}) => {
+    const fields = ['build_status=$2'];
+    const params = [systemId, status];
+    let p = 3;
+    for (const [k, v] of Object.entries(extra)) {
+      fields.push(`${k}=$${p}`);
+      params.push(v);
+      p++;
+    }
     await query(
       `INSERT INTO system_context_cache (system_id, build_status)
-       VALUES ($1, 'building')
-       ON CONFLICT (system_id) DO UPDATE SET build_status='building'`,
+       VALUES ($1, $2)
+       ON CONFLICT (system_id) DO UPDATE SET ${fields.join(', ')}`,
+      params
+    ).catch(e => log('warning', `Cache-Status-Update fehlgeschlagen: ${e.message}`));
+  };
+
+  try {
+    log('info', `Cache: Baue Kontext für System ${systemId} …`);
+    await updateStatus('building', { docs_processed: 0, docs_total: 0 });
+
+    // Dokumente ermitteln (gruppiert)
+    const chunkRows = await queryAll(
+      'SELECT chunk_text, doc_name, doc_id FROM embeddings WHERE system_id=$1 ORDER BY doc_name, chunk_index LIMIT 3000',
       [systemId]
     );
 
-    // Alle Chunks laden
-    const chunks = await queryAll(
-      'SELECT chunk_text, doc_name FROM embeddings WHERE system_id=$1 ORDER BY doc_name, chunk_index LIMIT 3000',
-      [systemId]
-    );
-
-    if (!chunks.length) {
-      await query(
-        `INSERT INTO system_context_cache (system_id, summary, build_status)
-         VALUES ($1, '', 'empty')
-         ON CONFLICT (system_id) DO UPDATE SET summary='', build_status='empty'`,
-        [systemId]
-      );
+    if (!chunkRows.length) {
+      await updateStatus('empty', { summary: '', docs_total: 0 });
       return;
     }
 
-    // Dokumente gruppieren
     const byDoc = {};
-    for (const c of chunks) {
-      if (!byDoc[c.doc_name]) byDoc[c.doc_name] = [];
-      byDoc[c.doc_name].push(c.chunk_text);
+    for (const c of chunkRows) {
+      if (!byDoc[c.doc_id]) byDoc[c.doc_id] = { name: c.doc_name, texts: [] };
+      byDoc[c.doc_id].texts.push(c.chunk_text);
     }
+    const docIds = Object.keys(byDoc);
+    await updateStatus('building', { docs_total: docIds.length });
 
-    const docNames = Object.keys(byDoc);
-    log('info', `Cache: ${docNames.length} Dokumente, ${chunks.length} Chunks`);
-
-    // KI-API für Zusammenfassung
     const apiCfg = await resolveApiConfig(null);
-    if (!apiCfg.key) {
-      // Ohne KI: einfachen Kontext aus Chunks bauen
-      const simpleContext = Object.entries(byDoc)
-        .map(([name, texts]) => `=== ${name} ===\n${texts.slice(0,3).join('\n')}`)
-        .join('\n\n');
 
-      await query(
-        `INSERT INTO system_context_cache (system_id, summary, doc_names, token_count, build_status, built_at)
-         VALUES ($1,$2,$3,$4,'ready',NOW())
-         ON CONFLICT (system_id) DO UPDATE SET summary=$2, doc_names=$3, token_count=$4, build_status='ready', built_at=NOW()`,
-        [systemId, simpleContext.substring(0, 50000), JSON.stringify(docNames), simpleContext.length]
-      );
-      log('info', `Cache: Einfacher Kontext gespeichert (kein API-Key)`);
+    // ── Ohne API-Key: einfacher Kontext ohne KI ─────────────────
+    if (!apiCfg.key) {
+      const simpleContext = Object.values(byDoc)
+        .map(d => `=== ${d.name} ===\n${d.texts.slice(0,3).join('\n')}`)
+        .join('\n\n')
+        .substring(0, 50000);
+      // 'ready_no_ai' statt 'ready' — wird automatisch neu gebaut sobald ein Key vorhanden ist
+      await updateStatus('ready_no_ai', {
+        summary: simpleContext, doc_names: JSON.stringify(Object.values(byDoc).map(d=>d.name)),
+        token_count: simpleContext.length, docs_processed: docIds.length,
+      });
+      log('info', `Cache: Einfacher Kontext gespeichert (kein API-Key) — Status 'ready_no_ai'`);
       return;
     }
 
-    // Volltext pro Dokument (max 3000 Zeichen je Dokument)
-    const docSummaries = Object.entries(byDoc).map(([name, texts]) => {
-      const content = texts.join(' ').substring(0, 3000);
-      return `[${name}]:\n${content}`;
-    }).join('\n\n---\n\n');
+    // ── Schritt 1: Pro Dokument eine kurze Zusammenfassung ──────
+    // Bereits vorhandene Zusammenfassungen wiederverwenden (resumable)
+    const existing = await queryAll(
+      'SELECT doc_id, summary FROM doc_summaries WHERE system_id=$1', [systemId]
+    );
+    const existingMap = {};
+    for (const e of existing) existingMap[e.doc_id] = e.summary;
 
-    const prompt = `Analysiere diese Systemdokumentation und erstelle eine strukturierte Zusammenfassung.
+    const BATCH_SIZE = 5; // parallel
+    let processed = Object.keys(existingMap).length;
 
-Dokumente:
-${docSummaries.substring(0, 20000)}
+    const toProcess = docIds.filter(id => !existingMap[id]);
 
-Erstelle eine Zusammenfassung mit:
-1. Überblick: Was ist das System? (3-5 Sätze)
-2. Hauptfunktionen: Alle wichtigen Funktionen als Liste
-3. Technische Details: Architektur, Technologien, APIs
-4. Prozesse: Wichtige Abläufe und Workflows
-5. Schlüsselbegriffe: Wichtige Fachbegriffe aus den Dokumenten
+    for (let i = 0; i < toProcess.length; i += BATCH_SIZE) {
+      const batch = toProcess.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(async (docId) => {
+        const doc = byDoc[docId];
+        const content = doc.texts.join(' ').substring(0, 4000);
+        const prompt = `Fasse den Inhalt dieser Datei in 2-3 Sätzen auf Deutsch zusammen. Konzentriere dich auf: Was macht dieser Code/diese Datei? Welche Funktionen, Komponenten oder Konfigurationen enthält sie?\n\nDatei: ${doc.name}\n\nInhalt:\n${content}`;
 
-Antworte auf Deutsch. Sei konkret und vollständig.`;
+        try {
+          const summary = await aiCall(apiCfg, prompt, 200, 30000, 1);
+          await query(
+            'INSERT INTO doc_summaries (doc_id,system_id,doc_name,summary) VALUES ($1,$2,$3,$4) ON CONFLICT (doc_id) DO UPDATE SET summary=$4',
+            [docId, systemId, doc.name, summary.trim()]
+          );
+        } catch(e) {
+          log('warning', `Cache: Dok-Zusammenfassung fehlgeschlagen für ${doc.name}: ${e.message}`);
+          // Fallback: erster Chunk als "Zusammenfassung"
+          await query(
+            'INSERT INTO doc_summaries (doc_id,system_id,doc_name,summary) VALUES ($1,$2,$3,$4) ON CONFLICT (doc_id) DO UPDATE SET summary=$4',
+            [docId, systemId, doc.name, content.substring(0, 300)]
+          ).catch(() => {});
+        }
+        processed++;
+      }));
 
-    let apiUrl, apiHeaders, apiBody;
-    if (apiCfg.provider !== 'anthropic') {
-      const model = apiCfg.provider === 'groq' ? 'llama-3.3-70b-versatile' : 'grok-3-mini';
-      apiUrl = apiCfg.provider === 'groq'
-        ? 'https://api.groq.com/openai/v1/chat/completions'
-        : 'https://api.x.ai/v1/chat/completions';
-      apiHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key };
-      apiBody = { model, messages: [{ role: 'user', content: prompt }], max_tokens: 3000 };
-    } else {
-      apiUrl = 'https://api.anthropic.com/v1/messages';
-      apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
-      apiBody = { model: 'claude-haiku-4-5-20251001', max_tokens: 3000, messages: [{ role: 'user', content: prompt }] };
+      // Fortschritt aktualisieren
+      await updateStatus('building', { docs_processed: processed });
+      log('info', `Cache: ${processed}/${docIds.length} Dokumente zusammengefasst`);
     }
 
-    const response = await fetch(apiUrl, { method: 'POST', headers: apiHeaders, body: JSON.stringify(apiBody) });
-    const data = await response.json();
-    const summary = apiCfg.provider === 'anthropic'
-      ? data.content?.[0]?.text || ''
-      : data.choices?.[0]?.message?.content || '';
+    // ── Schritt 2: Dateien nach Ordnerstruktur gruppieren ───────
+    const allSummaries = await queryAll(
+      'SELECT doc_name, summary FROM doc_summaries WHERE system_id=$1 ORDER BY doc_name', [systemId]
+    );
 
-    // Schlüsselthemen extrahieren
-    const topicMatches = summary.match(/\*\*([^*]+)\*\*/g) || [];
+    // Gruppierung anhand des Pfads — z.B. "frontend/src/business/chat.js" -> Gruppe "frontend/src/business"
+    const groupOf = (path) => {
+      const parts = path.split('/');
+      if (parts.length <= 1) return '(root)';
+      // Bis zu 3 Ebenen tief gruppieren (verhindert zu viele Mini-Gruppen)
+      return parts.slice(0, Math.min(parts.length - 1, 3)).join('/');
+    };
+
+    const groups = {};
+    for (const s of allSummaries) {
+      const g = groupOf(s.doc_name);
+      if (!groups[g]) groups[g] = [];
+      groups[g].push(s);
+    }
+    const groupNames = Object.keys(groups).sort();
+    log('info', `Cache: ${allSummaries.length} Dateien in ${groupNames.length} Gruppen`);
+
+    // ── Schritt 3: Pro Gruppe eine Zwischenzusammenfassung ──────
+    const groupSummaries = {};
+    const GROUP_BATCH = 4;
+    const groupEntries = Object.entries(groups);
+
+    for (let i = 0; i < groupEntries.length; i += GROUP_BATCH) {
+      const batch = groupEntries.slice(i, i + GROUP_BATCH);
+      await Promise.all(batch.map(async ([groupName, files]) => {
+        // Kleine Gruppen (1-2 Dateien) nicht extra zusammenfassen — direkt übernehmen
+        if (files.length <= 2) {
+          groupSummaries[groupName] = files.map(f => `${f.doc_name}: ${f.summary}`).join(' ');
+          return;
+        }
+        const fileList = files.map(f => `- ${f.doc_name}: ${f.summary}`).join('\n');
+        const prompt = `Diese Dateien gehören zum Modul "${groupName}" eines Softwaresystems. Fasse in 2-4 Sätzen auf Deutsch zusammen, welchen Zweck dieses Modul erfüllt und welche Hauptfunktionen es bereitstellt.\n\nDateien:\n${fileList.substring(0, 6000)}`;
+        try {
+          groupSummaries[groupName] = await aiCall(apiCfg, prompt, 250, 30000, 1);
+        } catch(e) {
+          log('warning', `Cache: Gruppe ${groupName} fehlgeschlagen: ${e.message}`);
+          groupSummaries[groupName] = fileList.substring(0, 500);
+        }
+      }));
+      await updateStatus('building', { docs_processed: docIds.length }); // Phase 2 läuft, Doks bereits fertig
+    }
+
+    // ── Schritt 4: Finale Gesamtzusammenfassung aus Gruppen ─────
+    const groupsCombined = groupNames
+      .map(g => `### ${g}\n${groupSummaries[g]}`)
+      .join('\n\n');
+
+    const finalPrompt = `Hier sind Zusammenfassungen aller Module/Ordner eines Softwaresystems (${allSummaries.length} Dateien in ${groupNames.length} Modulen). Erstelle daraus eine strukturierte Gesamtübersicht auf Deutsch mit:
+1. Überblick: Was ist das System? (3-5 Sätze)
+2. Hauptfunktionen — möglichst vollständig, gruppiert nach Bereich
+3. Technische Details: Architektur, Technologien, Module/Ordnerstruktur
+4. Wichtige Prozesse und Abläufe
+
+Modul-Zusammenfassungen:
+${groupsCombined.substring(0, 30000)}`;
+
+    let finalSummary;
+    try {
+      finalSummary = await aiCall(apiCfg, finalPrompt, 4000, 60000, 1);
+    } catch(e) {
+      log('warning', `Cache: Finale Zusammenfassung fehlgeschlagen, nutze Modul-Zusammenfassungen: ${e.message}`);
+      finalSummary = `Systemübersicht (automatisch zusammengestellt aus ${allSummaries.length} Dateien in ${groupNames.length} Modulen):\n\n${groupsCombined.substring(0, 35000)}`;
+    }
+
+    const topicMatches = finalSummary.match(/\*\*([^*]+)\*\*/g) || [];
     const keyTopics = topicMatches.map(t => t.replace(/\*/g, '')).slice(0, 20);
 
-    await query(
-      `INSERT INTO system_context_cache (system_id, summary, key_topics, doc_names, token_count, build_status, built_at)
-       VALUES ($1,$2,$3,$4,$5,'ready',NOW())
-       ON CONFLICT (system_id) DO UPDATE
-         SET summary=$2, key_topics=$3, doc_names=$4, token_count=$5, build_status='ready', built_at=NOW()`,
-      [systemId, summary, JSON.stringify(keyTopics), JSON.stringify(docNames),
-       summary.length + docSummaries.length]
-    );
+    await updateStatus('ready', {
+      summary: finalSummary,
+      key_topics: JSON.stringify(keyTopics),
+      doc_names: JSON.stringify(Object.values(byDoc).map(d => d.name)),
+      token_count: finalSummary.length,
+      docs_processed: docIds.length,
+      built_at: new Date().toISOString(),
+    });
 
-    log('info', `Cache: ✅ Kontext für ${systemId} gespeichert (${summary.length} Zeichen)`);
+    log('info', `Cache: ✅ Kontext für ${systemId} fertig (${docIds.length} Dokumente, ${finalSummary.length} Zeichen)`);
   } catch(e) {
-    log('warning', `Cache: Fehler für ${systemId}: ${e.message}`);
+    log('error', `Cache: Fehler für ${systemId}: ${e.message}`);
     await query(
       `INSERT INTO system_context_cache (system_id, build_status)
        VALUES ($1, 'error')
@@ -2005,12 +2150,15 @@ app.get('/api/systems/:id/context-cache', requireAuth, async (req, res) => {
   try {
     const cache = await queryOne('SELECT * FROM system_context_cache WHERE system_id=$1', [req.params.id]);
     res.json({
-      systemId:    req.params.id,
-      status:      cache?.build_status || 'not_built',
-      builtAt:     cache?.built_at || null,
-      docCount:    JSON.parse(cache?.doc_names || '[]').length,
-      tokenCount:  cache?.token_count || 0,
-      hasCache:    !!cache && cache.build_status === 'ready',
+      systemId:      req.params.id,
+      status:        cache?.build_status || 'not_built',
+      builtAt:       cache?.built_at || null,
+      docCount:      JSON.parse(cache?.doc_names || '[]').length,
+      tokenCount:    cache?.token_count || 0,
+      docsProcessed: cache?.docs_processed || 0,
+      docsTotal:     cache?.docs_total || 0,
+      hasCache:      !!cache && (cache.build_status === 'ready' || cache.build_status === 'ready_no_ai'),
+      isAiGenerated: cache?.build_status === 'ready',
     });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -2018,10 +2166,15 @@ app.get('/api/systems/:id/context-cache', requireAuth, async (req, res) => {
 // Cache manuell neu aufbauen
 app.post('/api/systems/:id/rebuild-cache', requireAuth, async (req, res) => {
   try {
+    // Bei vollständigem Neuaufbau: alte Dok-Zusammenfassungen löschen
+    if (req.body?.force) {
+      await query('DELETE FROM doc_summaries WHERE system_id=$1', [req.params.id]);
+    }
     res.json({ ok: true, message: 'Cache wird im Hintergrund aufgebaut …' });
     setImmediate(() => buildSystemContextCache(req.params.id));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
 
 
 app.get('/api/embeddings/summary', requireAuth, async (req, res) => {
@@ -2038,6 +2191,78 @@ app.get('/api/embeddings/summary', requireAuth, async (req, res) => {
       status:    cache?.build_status || 'not_built',
     });
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// Verbindungstest — sendet eine minimale echte Anfrage an den konfigurierten Provider
+app.post('/api/apikey/test', requireAuth, requireAdmin, async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const apiCfg = await resolveApiConfig(req.session.userId);
+
+    if (!apiCfg.key) {
+      return res.json({ ok: false, provider: apiCfg.provider, error: 'Kein API-Key konfiguriert' });
+    }
+
+    let apiUrl, apiHeaders, apiBody, model;
+
+    if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
+      model  = apiCfg.provider === 'groq' ? 'llama-3.3-70b-versatile' : 'grok-3-mini';
+      apiUrl = apiCfg.provider === 'groq'
+        ? 'https://api.groq.com/openai/v1/chat/completions'
+        : 'https://api.x.ai/v1/chat/completions';
+      apiHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key };
+      apiBody    = { model, messages: [{ role: 'user', content: 'Antworte nur mit OK' }], max_tokens: 5 };
+    } else {
+      model      = 'claude-haiku-4-5-20251001';
+      apiUrl     = 'https://api.anthropic.com/v1/messages';
+      apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
+      apiBody    = { model, max_tokens: 5, messages: [{ role: 'user', content: 'Antworte nur mit OK' }] };
+    }
+
+    log('info', `API-Test: ${apiCfg.provider} (${model}) → ${apiUrl}`);
+
+    const response = await fetch(apiUrl, {
+      method: 'POST', headers: apiHeaders, body: JSON.stringify(apiBody),
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await response.json();
+    const latency = Date.now() - startTime;
+
+    if (!response.ok) {
+      log('warning', `API-Test: ${apiCfg.provider} antwortete ${response.status}: ${JSON.stringify(data).substring(0,300)}`);
+      return res.json({
+        ok: false,
+        provider: apiCfg.provider,
+        model,
+        status: response.status,
+        error: data.error?.message || data.error?.type || JSON.stringify(data).substring(0,200),
+        latency,
+      });
+    }
+
+    const replyText = apiCfg.provider === 'anthropic'
+      ? data.content?.[0]?.text || ''
+      : data.choices?.[0]?.message?.content || '';
+
+    log('info', `API-Test: ✅ ${apiCfg.provider} OK (${latency}ms)`);
+    res.json({
+      ok: true,
+      provider: apiCfg.provider,
+      model,
+      reply: replyText.trim(),
+      latency,
+      keyPrefix: apiCfg.key.substring(0, 8) + '…',
+    });
+  } catch(e) {
+    const latency = Date.now() - startTime;
+    log('error', `API-Test: Fehler: ${e.message}`);
+    let error = e.message;
+    if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+      error = 'Zeitüberschreitung (15s) — Provider nicht erreichbar oder Netzwerk blockiert';
+    }
+    res.json({ ok: false, error, latency });
+  }
 });
 
 // ── SPA Fallback ──────────────────────────────────────────────
@@ -2065,6 +2290,16 @@ server.listen(PORT, '127.0.0.1', async () => {
   log('info', `PostgreSQL: ${db.ok ? 'OK' : 'FEHLER — ' + db.error}`);
   log('info', `Pool: ${db.pool?.total||0} Verbindungen`);
   await notif.initAsync?.();
+
+  // Hängende Cache-Builds zurücksetzen (z.B. nach Container-Neustart während Build)
+  try {
+    const stuck = await query(
+      "UPDATE system_context_cache SET build_status='outdated' WHERE build_status='building' RETURNING system_id"
+    );
+    if (stuck.rows.length) {
+      log('info', `Cache: ${stuck.rows.length} hängende Builds zurückgesetzt (status=outdated)`);
+    }
+  } catch(e) {}
 });
 
 process.on('SIGTERM', async () => {

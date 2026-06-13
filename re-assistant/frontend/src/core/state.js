@@ -9,7 +9,7 @@ const S = {
 
   // Settings (werden aus localStorage/API geladen)
   settings: {
-    apiKey: '', model: 'claude-sonnet-4-20250514',
+    apiKey: '', model: 'claude-sonnet-4-6',
     language: 'de', detail: 'standard',
     voiceURI: '', persona: 'professional',
     jiraUrl: '', jiraEmail: '', jiraToken: '',

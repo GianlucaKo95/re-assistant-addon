@@ -151,7 +151,7 @@ async function saveCfg() {
 
   S.settings.provider   = provider;
   S.settings.apiKey     = apiKey;
-  S.settings.model      = $('cfg-model')?.value      || 'claude-sonnet-4-20250514';
+  S.settings.model      = $('cfg-model')?.value      || 'claude-sonnet-4-6';
   S.settings.grokApiKey = grokApiKey;
   S.settings.grokModel  = $('cfg-grok-model')?.value  || 'grok-3-mini';
   S.settings.groqApiKey = groqApiKey;
@@ -174,6 +174,9 @@ async function saveCfg() {
       if (!res.ok) {
         if ($('cfg-msg')) $('cfg-msg').innerHTML = '<span style="color:var(--red)">❌ ' + esc(data.error||'Fehler') + '</span>';
         return;
+      }
+      if (data.rebuilding && typeof toast === 'function') {
+        toast('🔄 Kontext-Cache wird mit KI neu aufgebaut …');
       }
     } catch(e) {
       if ($('cfg-msg')) $('cfg-msg').innerHTML = '<span style="color:var(--red)">❌ Netzwerkfehler</span>';
@@ -269,6 +272,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (grw) grw.style.display = isGroq ? '' : 'none';
   });
   $('btn-save-cfg')?.addEventListener('click', saveCfg);
+  $('btn-test-api')?.addEventListener('click', testApiConnection);
   $('btn-docs')?.addEventListener('click', () => window.api.openExternal('https://docs.anthropic.com'));
   $('btn-change-pw')?.addEventListener('click', openChangePasswordModal);
 });
@@ -515,3 +519,48 @@ async function loadDbStatus() {
   } catch(e) {}
 }
 window.loadDbStatus = loadDbStatus;
+// ── KI-Provider Verbindungstest ───────────────────────────────
+async function testApiConnection() {
+  const btn = $('btn-test-api');
+  const out = $('api-test-result');
+  if (!btn || !out) return;
+
+  btn.disabled = true;
+  const origText = btn.innerHTML;
+  btn.innerHTML = '<span class="spin"></span> Teste …';
+  out.innerHTML = '';
+
+  try {
+    const res  = await fetch('api/apikey/test', { method:'POST', credentials:'include' });
+    const data = await res.json();
+
+    if (data.ok) {
+      out.innerHTML = `
+        <div style="padding:10px 12px;background:var(--grnbg);border:1px solid rgba(63,185,80,.3);
+          border-radius:var(--r);font-size:12px;color:var(--grn)">
+          ✅ Verbindung erfolgreich — <strong>${esc(data.provider)}</strong> (${esc(data.model)})<br/>
+          Antwortzeit: ${data.latency}ms · Key: ${esc(data.keyPrefix)}<br/>
+          Antwort: "${esc(data.reply)}"
+        </div>`;
+    } else {
+      out.innerHTML = `
+        <div style="padding:10px 12px;background:var(--redbg);border:1px solid rgba(248,81,73,.3);
+          border-radius:var(--r);font-size:12px;color:var(--red)">
+          ❌ Verbindung fehlgeschlagen — Provider: <strong>${esc(data.provider||'unbekannt')}</strong>
+          ${data.status ? ` (HTTP ${data.status})` : ''}<br/>
+          ${esc(data.error || 'Unbekannter Fehler')}
+          ${data.latency ? `<br/>Zeit: ${data.latency}ms` : ''}
+        </div>`;
+    }
+  } catch(e) {
+    out.innerHTML = `
+      <div style="padding:10px 12px;background:var(--redbg);border:1px solid rgba(248,81,73,.3);
+        border-radius:var(--r);font-size:12px;color:var(--red)">
+        ❌ Netzwerkfehler: ${esc(e.message)}
+      </div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origText;
+  }
+}
+window.testApiConnection = testApiConnection;

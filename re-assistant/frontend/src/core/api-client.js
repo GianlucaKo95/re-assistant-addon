@@ -59,21 +59,16 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
         'X-RE-System':   sysId || '',
       },
       body: JSON.stringify({
-        model: (() => {
-          const p = S.settings?.provider || 'anthropic';
-          if (p === 'groq') return S.settings?.groqModel || 'llama-3.3-70b-versatile';
-          if (p === 'grok') return S.settings?.grokModel || 'grok-3-mini';
-          return S.settings?.model || 'claude-sonnet-4-20250514';
-        })(),
+        // Modellname optional — Backend wählt bei fehlendem Wert automatisch
+        // das Default-Modell des serverseitig konfigurierten Providers.
+        model: S.settings?.model || undefined,
         max_tokens: maxTokens,
         system:     system || undefined,
         messages,
         _feature:   feat,
         _systemId:  sysId,
-        // Provider + Key aus User-Settings mitschicken
-        _provider:   S.settings?.provider   || 'anthropic',
-        _grokApiKey: S.settings?.provider === 'grok'  ? (S.settings?.grokApiKey  || undefined) : undefined,
-        _groqApiKey: S.settings?.provider === 'groq'  ? (S.settings?.groqApiKey  || undefined) : undefined,
+        // Provider/Keys werden NICHT mehr client-seitig gesendet —
+        // die serverseitige Konfiguration (app_settings) ist die einzige Quelle.
       }),
     });
 

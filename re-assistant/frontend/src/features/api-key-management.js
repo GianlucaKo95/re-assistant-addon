@@ -22,9 +22,11 @@ async function loadApiKeyStatus() {
 }
 
 function updateApiKeyBanner(status) {
+  // Prüfe ALLE Provider-Keys, nicht nur Anthropic
+  const hasAnyGlobalKey = status.hasGlobalKey || status.hasGrokKey || status.hasGroqKey;
   const noKey = status.mode === 'global'
-    ? !status.hasGlobalKey
-    : !status.hasUserKey && !status.hasGlobalKey;
+    ? !hasAnyGlobalKey
+    : !status.hasUserKey && !hasAnyGlobalKey;
 
   if (noKey) {
     if (typeof showApiKeyWarning === 'function') showApiKeyWarning();

@@ -290,18 +290,20 @@ window.loadAdminSystems = loadAdminSystems;
 window.openSysModal     = openSysModal;
 window.saveSys          = saveSys;
 window.delSys           = delSys;
-async function rebuildContextCache(systemId) {
+async function rebuildContextCache(systemId, force = false) {
   const btn = document.getElementById(`cache-btn-${systemId}`);
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span>'; }
   try {
     await fetch(`api/systems/${systemId}/rebuild-cache`, {
-      method: 'POST', credentials: 'include'
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force }),
     });
     toast('⚡ Kontext wird aufgebaut — kann je nach Anzahl Dokumente 1-2 Minuten dauern');
 
     // Echtes Polling — Spinner bleibt bis build_status='ready' oder 'error'/'empty'
     const POLL_INTERVAL = 4000;
-    const MAX_POLLS     = 45; // ~3 Minuten Obergrenze
+    const MAX_POLLS     = 90; // ~6 Minuten Obergrenze (große Systeme mit 100+ Docs)
     let polls = 0;
 
     const poll = async () => {
@@ -325,9 +327,14 @@ async function rebuildContextCache(systemId) {
         return;
       }
 
+      // Fortschritt anzeigen
+      if (btn && data.docsTotal > 0) {
+        btn.innerHTML = `<span class="spin"></span> ${data.docsProcessed}/${data.docsTotal}`;
+      }
+
       // Noch "building" oder "pending" oder "outdated" — weiter pollen
       if (polls >= MAX_POLLS) {
-        toast('⏱ Kontext-Aufbau läuft noch im Hintergrund weiter (Zeitlimit für Anzeige erreicht)');
+        toast(`⏱ Kontext-Aufbau läuft im Hintergrund weiter (${data.docsProcessed||0}/${data.docsTotal||'?'} Dokumente) — Button erneut klicken um Fortschritt zu sehen`);
         if (btn) { btn.disabled = false; btn.innerHTML = '⚡ Kontext'; }
         return;
       }
