@@ -2149,18 +2149,32 @@ ${groupsCombined.substring(0, 30000)}`;
 app.get('/api/systems/:id/context-cache', requireAuth, async (req, res) => {
   try {
     const cache = await queryOne('SELECT * FROM system_context_cache WHERE system_id=$1', [req.params.id]);
+
+    // doc_names/key_topics können je nach pg-Treiber als String ODER bereits als Objekt vorliegen
+    const safeParseArray = (val) => {
+      if (Array.isArray(val)) return val;
+      if (val == null || val === '') return [];
+      if (typeof val === 'string') {
+        try { return JSON.parse(val); } catch(e) { return []; }
+      }
+      return [];
+    };
+
     res.json({
       systemId:      req.params.id,
       status:        cache?.build_status || 'not_built',
       builtAt:       cache?.built_at || null,
-      docCount:      JSON.parse(cache?.doc_names || '[]').length,
+      docCount:      safeParseArray(cache?.doc_names).length,
       tokenCount:    cache?.token_count || 0,
       docsProcessed: cache?.docs_processed || 0,
       docsTotal:     cache?.docs_total || 0,
       hasCache:      !!cache && (cache.build_status === 'ready' || cache.build_status === 'ready_no_ai'),
       isAiGenerated: cache?.build_status === 'ready',
     });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) {
+    log('error', `context-cache GET (${req.params.id}): ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Cache manuell neu aufbauen
@@ -2182,15 +2196,26 @@ app.get('/api/embeddings/summary', requireAuth, async (req, res) => {
     const { systemId } = req.query;
     if (!systemId) return res.status(400).json({ error: 'systemId fehlt' });
     const cache = await queryOne('SELECT * FROM system_context_cache WHERE system_id=$1', [systemId]);
+    const safeParseArray = (val) => {
+      if (Array.isArray(val)) return val;
+      if (val == null || val === '') return [];
+      if (typeof val === 'string') {
+        try { return JSON.parse(val); } catch(e) { return []; }
+      }
+      return [];
+    };
     res.json({
       systemId,
       summary:   cache?.summary   || '',
-      keyTopics: JSON.parse(cache?.key_topics || '[]'),
-      docNames:  JSON.parse(cache?.doc_names  || '[]'),
+      keyTopics: safeParseArray(cache?.key_topics),
+      docNames:  safeParseArray(cache?.doc_names),
       builtAt:   cache?.built_at  || null,
       status:    cache?.build_status || 'not_built',
     });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) {
+    log('error', `embeddings/summary (${req.query?.systemId}): ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 
