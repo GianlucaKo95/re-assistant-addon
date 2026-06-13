@@ -156,9 +156,46 @@ async function switchView(id) {
 }
 
 // Setzt API-Sektion je nach Rolle sichtbar/gesperrt
-function applyApiSectionVisibility() {
+async function applyApiSectionVisibility() {
   if (typeof applySettingsToForm === 'function') applySettingsToForm();
   const isAdmin = S.user?.role === 'admin';
+
+  // Server-seitig konfigurierten Provider laden und Dropdown synchronisieren
+  // (localStorage kann veraltet/falsch sein — Server ist Quelle der Wahrheit)
+  if (isAdmin) {
+    try {
+      const res  = await fetch('api/apikey/global', { credentials:'include' });
+      if (res.ok) {
+        const data = await res.json();
+        const sel = document.getElementById('cfg-provider');
+        if (sel && data.provider) {
+          sel.value = data.provider;
+          // sichtbare Felder entsprechend dem SERVER-Provider umschalten
+          if (typeof applySettingsToForm === 'function') {
+            S.settings.provider = data.provider;
+            applySettingsToForm();
+          }
+        }
+        // Hinweis-Banner wenn Provider gesetzt aber kein Key für diesen Provider
+        const hasKeyForProvider =
+          (data.provider === 'anthropic' && data.hasAnthKey) ||
+          (data.provider === 'grok'      && data.hasGrokKey) ||
+          (data.provider === 'groq'      && data.hasGroqKey);
+
+        const existing = document.getElementById('cfg-provider-mismatch');
+        existing?.remove();
+        if (!hasKeyForProvider) {
+          const banner = document.createElement('div');
+          banner.id = 'cfg-provider-mismatch';
+          banner.style.cssText = 'padding:8px 10px;background:var(--ambbg);border:1px solid rgba(251,191,36,.3);border-radius:var(--r);font-size:12px;color:var(--amb);margin-top:8px';
+          banner.textContent = `⚠ Anbieter "${data.provider}" ist ausgewählt, aber für diesen Anbieter ist (serverseitig) noch kein Key gespeichert. Bitte Key eintragen und "Speichern" klicken.`;
+          const apiSection = document.getElementById('cfg-api-section');
+          apiSection?.appendChild(banner);
+        }
+      }
+    } catch(e) {}
+  }
+
   const apiSection = document.getElementById('cfg-api-section');
   if (!apiSection) return;
   // Reset
