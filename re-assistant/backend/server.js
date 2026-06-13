@@ -18,6 +18,18 @@ const notif = require('./notifications');
 const ws    = require('./websocket');
 
 const app      = express();
+
+// Sicheres Parsen von JSONB-Spalten: pg gibt JSONB bereits als JS-Objekt/Array
+// zurück, daher würde JSON.parse(wert) crashen ("Unexpected end of JSON input").
+function jparse(val, fallback) {
+  if (val === null || val === undefined || val === '') return fallback;
+  if (typeof val === 'object') return val;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch(e) { return fallback; }
+  }
+  return fallback;
+}
+
 const PORT     = parseInt(process.env.NODE_PORT || process.env.PORT || '3001');
 const DATA_DIR = process.env.DATA_DIR || '/data/re-assistant';
 fs.ensureDirSync(DATA_DIR);
@@ -594,7 +606,7 @@ Bestehende:\n${rows.slice(0,15).map(r=>`- [${r.id}] ${r.title}: ${(r.description
       
       // Watcher benachrichtigen
       const updatedReq = await queryOne('SELECT watchers,title FROM requirements WHERE id=$1', [r.id]);
-      const watchers = JSON.parse(updatedReq?.watchers || '[]');
+      const watchers = jparse(updatedReq?.watchers, []);
       for (const wId of watchers) {
         if (wId !== req.session.userId) {
           await query('INSERT INTO notifications (user_id,type,title,message,req_id) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',
@@ -1524,7 +1536,7 @@ app.get('/api/audit-log', requireAuth, async (req, res) => {
     const offset = parseInt(req.query.offset)||0;
     const where = []; const params = []; let p = 1;
     if (user.role !== 'admin') {
-      const userSystems = JSON.parse(user.systems||'[]');
+      const userSystems = jparse(user.systems, []);
       if (!userSystems.length) return res.json({ entries:[], total:0 });
       where.push(`(system_id = ANY($${p}::text[]) AND event_type != 'login')`);
       params.push(userSystems); p++;
@@ -1545,7 +1557,7 @@ app.get('/api/audit-log/systems', requireAuth, async (req, res) => {
     const user = await queryOne('SELECT * FROM users WHERE id=$1', [req.session.userId]);
     const rows = user.role === 'admin'
       ? (await query('SELECT id, name FROM systems ORDER BY name', [])).rows
-      : (await query('SELECT id, name FROM systems WHERE id = ANY($1::text[]) ORDER BY name', [JSON.parse(user.systems||'[]')])).rows;
+      : (await query('SELECT id, name FROM systems WHERE id = ANY($1::text[]) ORDER BY name', [jparse(user.systems, [])])).rows;
     res.json(rows);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -1640,7 +1652,7 @@ app.get('/api/user-stories', requireAuth, async (req,res) => {
       : systemId ? (await query('SELECT * FROM user_stories WHERE system_id=$1 ORDER BY created_at',[systemId])).rows
       : (await query('SELECT * FROM user_stories ORDER BY created_at DESC LIMIT 200',[])).rows;
     res.json(rows.map(r=>({id:r.id,reqId:r.req_id,systemId:r.system_id,title:r.title,description:r.description,
-      acceptanceCriteria:JSON.parse(r.acceptance_criteria||'[]'),priority:r.priority,status:r.status,
+      acceptanceCriteria:jparse(r.acceptance_criteria, []),priority:r.priority,status:r.status,
       storyPoints:r.story_points,createdAt:r.created_at})));
   } catch(e){res.status(500).json({error:e.message});}
 });
@@ -1702,7 +1714,7 @@ app.get('/api/test-cases', requireAuth, async (req,res) => {
       :reqId?(await query('SELECT * FROM test_cases WHERE req_id=$1 ORDER BY created_at',[reqId])).rows
       :systemId?(await query('SELECT * FROM test_cases WHERE system_id=$1 ORDER BY created_at',[systemId])).rows:[];
     res.json(rows.map(r=>({id:r.id,storyId:r.story_id,reqId:r.req_id,systemId:r.system_id,
-      title:r.title,steps:JSON.parse(r.steps||'[]'),expected:r.expected,status:r.status,createdAt:r.created_at})));
+      title:r.title,steps:jparse(r.steps, []),expected:r.expected,status:r.status,createdAt:r.created_at})));
   } catch(e){res.status(500).json({error:e.message});}
 });
 
@@ -1734,7 +1746,7 @@ app.get('/api/requirements/:id/comments', requireAuth, async (req,res) => {
   try {
     const rows=(await query('SELECT * FROM req_comments WHERE req_id=$1 ORDER BY created_at ASC',[req.params.id])).rows;
     res.json(rows.map(r=>({id:r.id,reqId:r.req_id,userId:r.user_id,userName:r.user_name,
-      content:r.content,mentions:JSON.parse(r.mentions||'[]'),edited:r.edited,editedAt:r.edited_at,createdAt:r.created_at})));
+      content:r.content,mentions:jparse(r.mentions, []),edited:r.edited,editedAt:r.edited_at,createdAt:r.created_at})));
   } catch(e){res.status(500).json({error:e.message});}
 });
 
@@ -1761,7 +1773,7 @@ app.post('/api/requirements/:id/watch', requireAuth, async (req,res) => {
   try {
     const req_=await queryOne('SELECT watchers FROM requirements WHERE id=$1',[req.params.id]);
     if(!req_) return res.status(404).json({error:'Nicht gefunden'});
-    let watchers=JSON.parse(req_.watchers||'[]');
+    let watchers=jparse(req_.watchers, []);
     const idx=watchers.indexOf(req.session.userId);
     if(idx===-1) watchers.push(req.session.userId);
     else watchers.splice(idx,1);
@@ -1774,7 +1786,7 @@ app.post('/api/requirements/:id/links', requireAuth, async (req,res) => {
   try {
     const req_=await queryOne('SELECT linked_reqs FROM requirements WHERE id=$1',[req.params.id]);
     if(!req_) return res.status(404).json({error:'Nicht gefunden'});
-    let links=JSON.parse(req_.linked_reqs||'[]');
+    let links=jparse(req_.linked_reqs, []);
     if(!links.find(l=>l.id===req.body.targetId)) links.push({id:req.body.targetId,type:req.body.linkType||'relates'});
     await query('UPDATE requirements SET linked_reqs=$1 WHERE id=$2',[JSON.stringify(links),req.params.id]);
     res.json({ok:true});
@@ -1784,7 +1796,7 @@ app.post('/api/requirements/:id/links', requireAuth, async (req,res) => {
 app.delete('/api/requirements/:id/links/:targetId', requireAuth, async (req,res) => {
   try {
     const req_=await queryOne('SELECT linked_reqs FROM requirements WHERE id=$1',[req.params.id]);
-    const links=JSON.parse(req_?.linked_reqs||'[]').filter(l=>l.id!==req.params.targetId);
+    const links=jparse(req_?.linked_reqs, []).filter(l=>l.id!==req.params.targetId);
     await query('UPDATE requirements SET linked_reqs=$1 WHERE id=$2',[JSON.stringify(links),req.params.id]);
     res.json({ok:true});
   } catch(e){res.status(500).json({error:e.message});}
@@ -1803,14 +1815,14 @@ app.get('/api/workshops', requireAuth, async (req,res) => {
       rows=systemId?(await query('SELECT * FROM workshops WHERE system_id=$1 ORDER BY created_at DESC',[systemId])).rows
         :(await query('SELECT * FROM workshops ORDER BY created_at DESC',[])).rows;
     } else {
-      const ids=JSON.parse(user.systems||'[]');
+      const ids=jparse(user.systems, []);
       if(!ids.length) return res.json([]);
       rows=systemId&&ids.includes(systemId)
         ?(await query('SELECT * FROM workshops WHERE system_id=$1 ORDER BY created_at DESC',[systemId])).rows
         :(await query('SELECT * FROM workshops WHERE system_id = ANY($1::text[]) ORDER BY created_at DESC',[ids])).rows;
     }
     res.json(rows.map(w=>({id:w.id,name:w.name,goal:w.goal||'',systemId:w.system_id,
-      entries:JSON.parse(w.entries||'[]'),structured:JSON.parse(w.structured||'{}'),createdAt:w.created_at})));
+      entries:jparse(w.entries, []),structured:jparse(w.structured, {}),createdAt:w.created_at})));
   } catch(e){res.status(500).json({error:e.message});}
 });
 

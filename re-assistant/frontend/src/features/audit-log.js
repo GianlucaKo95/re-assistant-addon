@@ -166,7 +166,7 @@ async function renderAuditPage(wrap) {
                 </span>` : ''}
               ${details.comment ? `
                 <span style="font-size:11px;color:var(--t3);font-style:italic">
-                  „${esc(details.comment.substring(0,80))}"</span>` : ''}
+                  „${esc((details.comment||'').substring(0,80))}"</span>` : ''}
               ${isLogin && details.role ? `
                 <span style="font-size:10px;color:var(--t3)">Rolle: ${roleLabel(details.role)}</span>` : ''}
             </div>
