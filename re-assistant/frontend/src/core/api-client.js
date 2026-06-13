@@ -15,10 +15,18 @@ function getCtx(sys, max = 50000) {
   let total = 0;
   const parts = [];
   for (const d of sys.docs) {
+    // docs[] enthält i.d.R. nur Metadaten (id, name, size) — Inhalte liegen
+    // in den Embeddings/Chunks und werden separat über RAG geladen.
+    if (!d.content) continue;
     const c = d.content.substring(0, 12000);
     total += c.length;
     if (total > max) break;
     parts.push(`### ${d.relativePath || d.name}\n\n${c}`);
+  }
+  if (!parts.length && sys.docs.length) {
+    // Kein Volltext lokal verfügbar — zumindest Dateiliste als Minimal-Kontext
+    return `Dokumente im System (${sys.docs.length}):\n` +
+      sys.docs.slice(0, 50).map(d => `- ${d.relativePath || d.name}`).join('\n');
   }
   return parts.join('\n\n---\n\n');
 }

@@ -213,7 +213,7 @@ function renderComment(c, reqId) {
         <div style="width:26px;height:26px;border-radius:50%;background:var(--aa);
           display:flex;align-items:center;justify-content:center;font-size:11px;
           color:#fff;font-weight:700;flex-shrink:0">
-          ${esc(c.userName.substring(0,2).toUpperCase())}
+          ${esc((c.userName||'??').substring(0,2).toUpperCase())}
         </div>
         <div style="flex:1;min-width:0">
           <span style="font-size:12px;font-weight:600">${esc(c.userName)}</span>
@@ -367,7 +367,7 @@ async function loadLinksTab(req) {
           <span style="font-size:18px">${lt.icon}</span>
           <div style="flex:1;min-width:0">
             <div style="font-size:11px;color:${lt.color};font-weight:600">${lt.label}</div>
-            <div style="font-size:13px">${linked ? esc(linked.title?.substring(0,50)) : esc(l.id)}</div>
+            <div style="font-size:13px">${linked ? esc((linked.title||'').substring(0,50)) : esc(l.id)}</div>
             <code style="font-size:10px;color:var(--t3)">${esc(l.id)}</code>
           </div>
           <button onclick="removeLink('${req.id}','${l.id}')"
