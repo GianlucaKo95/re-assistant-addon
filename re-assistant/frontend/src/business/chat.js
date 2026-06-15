@@ -348,8 +348,49 @@ async function previewAndCreateRequirements(reply, btnWrap) {
 
   let reqs;
   try {
-    reqs = JSON.parse(res.text.replace(/\`\`\`json|\`\`\`/g, '').trim());
-  } catch(e) { toast('❌ Konnte Anforderungen nicht parsen'); return; }
+    let raw = res.text.trim();
+
+    // 1. Backtick-Codeblöcke entfernen (```json ... ``` oder ``` ... ```)
+    raw = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+    // 2. Führenden/nachfolgenden Nicht-JSON-Text abschneiden
+    // Suche nach dem ersten [ und letzten ] im Text
+    const firstBracket = raw.indexOf('[');
+    const lastBracket  = raw.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+      raw = raw.substring(firstBracket, lastBracket + 1);
+    }
+
+    // 3. Häufige Groq/Llama-Fehler beheben
+    // Trailing commas: [{"a":1,}] → [{"a":1}]
+    raw = raw.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+    // Einfache durch doppelte Anführungszeichen (wenn nötig)
+    // Nur wenn das JSON noch nicht valide ist
+    
+    reqs = JSON.parse(raw);
+
+    // Sicherstellen dass es ein Array ist
+    if (!Array.isArray(reqs)) {
+      // Manchmal gibt die KI ein Objekt mit einem Array zurück: {"requirements": [...]}
+      reqs = reqs.requirements || reqs.data || reqs.items || Object.values(reqs)[0] || [];
+    }
+  } catch(e) {
+    // Letzter Versuch: Extrahiere JSON aus dem Text mit RegExp
+    try {
+      const jsonMatch = res.text.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (jsonMatch) {
+        reqs = JSON.parse(jsonMatch[0].replace(/,\s*}/g, '}').replace(/,\s*]/g, ']'));
+      } else {
+        console.error('Parse-Fehler:', res.text.substring(0, 500));
+        toast('❌ KI-Antwort konnte nicht als Anforderungsliste gelesen werden. Antwort: ' + res.text.substring(0, 100));
+        return;
+      }
+    } catch(e2) {
+      console.error('Parse-Fehler (2):', res.text.substring(0, 500));
+      toast('❌ Konnte Anforderungen nicht parsen — KI antwortete: ' + res.text.substring(0, 80));
+      return;
+    }
+  }
 
   if (!reqs?.length) { toast('ℹ Keine klaren Anforderungen erkannt'); return; }
 

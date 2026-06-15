@@ -122,7 +122,7 @@ async function openAiTemplateDialog() {
     btn.disabled = false; btn.innerHTML = '✦ Generieren';
     if (!res.ok) { toast('❌ ' + res.text); return; }
     try {
-      const r = JSON.parse(res.text.replace(/```json|```/g,'').trim());
+      const r = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
       await window.api.saveRequirement({...r, id:'REQ-'+Date.now(), systemId:$('ai-tmpl-sys').value, category:$('ai-tmpl-cat').value, createdBy:S.user.id, createdByName:S.user.name, status:'open'});
       closeModal(); toast('✅ KI-Anforderung erstellt');
       addNotif('🤖', 'KI-Anforderung erstellt', r.title, () => switchView('business-reqs'));

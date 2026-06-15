@@ -143,7 +143,7 @@ Input:
 ${rawReqs.map(r => r.title).join('\n')}` }], langNote(), 1500);
 
   try {
-    const improved = JSON.parse(res.text.replace(/```json|```/g,'').trim());
+    const improved = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
     w.reqs = improved;
     list.innerHTML = improved.map((r, i) => `
       <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--b1)">
@@ -240,7 +240,7 @@ Anforderungen:
 ${rl}` }], langNote(), 2000);
 
   try {
-    const bl = JSON.parse(res.text.replace(/```json|```/g,'').trim());
+    const bl = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
     const backlog = { id:null, systemId:w.systemId, systemName:sys?.name||'', epics:bl.epics, createdAt:Date.now() };
     await window.api.saveBacklog(backlog);
     S.currentBacklog = backlog;

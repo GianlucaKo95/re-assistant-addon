@@ -92,7 +92,7 @@ Antworte mit JSON ohne Backticks:
   if (!res.ok) { toast('❌ ' + res.text); return; }
 
   try {
-    const cl = JSON.parse(res.text.replace(/```json|```/g,'').trim());
+    const cl = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
     renderChangelog(cl, changes, period);
   } catch(e) { toast('❌ Parsing-Fehler'); }
 }

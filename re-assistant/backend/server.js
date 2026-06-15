@@ -112,17 +112,41 @@ async function resolveApiConfig(userId) {
     }
   }
 
-  // Globaler Modus
-  const globalProv   = (await queryOne("SELECT value FROM app_settings WHERE key='global_ai_provider'"))?.value || 'anthropic';
-  const globalGrok   = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value;
-  // Key NUR aus DB — kein Fallback auf Umgebungsvariable
-  const globalAnth   = (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value || null;
-
-  const globalGroq = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value;
+  // Globaler Modus — Key NUR aus DB
+  const globalProv = (await queryOne("SELECT value FROM app_settings WHERE key='global_ai_provider'"))?.value || 'anthropic';
+  const globalAnth = (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value || null;
+  const globalGrok = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value || null;
+  const globalGroq = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value || null;
 
   if (globalProv === 'grok'  && globalGrok) return { key: globalGrok, provider: 'grok' };
   if (globalProv === 'groq'  && globalGroq) return { key: globalGroq, provider: 'groq' };
   if (globalAnth) return { key: globalAnth, provider: 'anthropic' };
+  return { key: null, provider: 'anthropic' };
+}
+
+// ── Cache-Build nutzt immer das stärkste verfügbare Modell ────
+// Priorität: Anthropic Sonnet > Grok-3 > Groq Llama-70B
+// Grund: Code-Analyse-Qualität entscheidet über die gesamte KI-Antwortqualität
+async function resolveApiConfigForCacheBuild() {
+  const globalAnth = (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value || null;
+  const globalGrok = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value || null;
+  const globalGroq = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value || null;
+
+  // Anthropic Sonnet: beste Code-Analyse-Qualität
+  if (globalAnth) {
+    log('info', 'Cache-Build: Nutze Anthropic Sonnet (beste Code-Analyse-Qualität)');
+    return { key: globalAnth, provider: 'anthropic' };
+  }
+  // Grok-3: zweitbeste Option
+  if (globalGrok) {
+    log('info', 'Cache-Build: Nutze Grok-3 (kein Anthropic-Key vorhanden)');
+    return { key: globalGrok, provider: 'grok' };
+  }
+  // Groq Llama-70B: funktioniert, aber eingeschränkte Code-Analyse-Tiefe
+  if (globalGroq) {
+    log('info', 'Cache-Build: Nutze Groq Llama-70B (Tipp: Anthropic-Key für bessere Ergebnisse)');
+    return { key: globalGroq, provider: 'groq' };
+  }
   return { key: null, provider: 'anthropic' };
 }
 
@@ -2441,7 +2465,8 @@ async function buildSystemContextCache(systemId) {
       summary:        '',
     });
 
-    const apiCfg = await resolveApiConfig(null);
+    // Für Cache-Build: immer das stärkste verfügbare Modell
+    const apiCfg = await resolveApiConfigForCacheBuild();
 
     // ── Ohne API-Key: einfacher Kontext ohne KI ─────────────────
     if (!apiCfg.key) {

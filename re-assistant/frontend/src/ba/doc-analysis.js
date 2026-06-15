@@ -98,7 +98,7 @@ async function runDocAnalysis() {
 
   if (!res.ok) { toast('❌ ' + res.text); $('da-results').innerHTML = ''; return; }
   try {
-    const a = JSON.parse(res.text.replace(/```json|```/g, '').trim());
+    const a = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
     renderDocAnalysis(a, sysId);
     toast(`✅ ${a.requirements?.length||0} Anforderungen · ${a.assumptions?.length||0} Annahmen · ${a.risks?.length||0} Risiken`);
   } catch(e) { toast('❌ Parsing-Fehler'); }

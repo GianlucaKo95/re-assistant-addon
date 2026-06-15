@@ -79,7 +79,7 @@ async function generateBacklog(){
   btn.disabled=false;btn.innerHTML='⚡ Backlog generieren';
   if(!res.ok){toast('❌ '+res.text);return;}
   try{
-    const bl=JSON.parse(res.text.replace(/```json|```/g,'').trim());
+    const bl=JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
     const sys=S.systems.find(s=>s.id===sysId);
     S.currentBacklog={id:null,systemId:sysId,systemName:sys?.name||'',epics:bl.epics};
     await window.api.saveBacklog(S.currentBacklog);
@@ -210,7 +210,7 @@ async function mergeNewReqsIntoBacklog(backlog, newReqs, systemId) {
     if (!res.ok) return;
 
     let plan;
-    try { plan = JSON.parse(res.text.replace(/```json|```/g, '').trim()); }
+    try { plan = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })()); }
     catch(e) { return; }
 
     // Neue Epics hinzufügen
@@ -307,7 +307,7 @@ async function autoGenerateBacklog(systemId, reqs) {
     if (!res.ok) return;
 
     let bl;
-    try { bl = JSON.parse(res.text.replace(/```json|```/g, '').trim()); }
+    try { bl = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })()); }
     catch(e) { return; }
 
     const backlog = {

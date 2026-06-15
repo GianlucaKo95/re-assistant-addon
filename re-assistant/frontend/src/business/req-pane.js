@@ -155,7 +155,13 @@ async function aiRefineReq(id) {
     langNote(), 600);
   if (!res.ok) { toast('❌ ' + res.text); return; }
   try {
-    const ref = JSON.parse(res.text.replace(/```json|```/g, '').trim());
+    let _rawRef = res.text.trim().replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
+    const _fRef = _rawRef.indexOf('['), _lRef = _rawRef.lastIndexOf(']');
+    if (_fRef!==-1 && _lRef>_fRef) _rawRef = _rawRef.substring(_fRef,_lRef+1);
+    _rawRef = _rawRef.replace(/,\s*}/g,'}').replace(/,\s*]/g,']');
+    let ref;
+    try { ref = JSON.parse(_rawRef); } catch(e) { ref = []; }
+    if (!Array.isArray(ref)) ref = Object.values(ref)[0] || [];
     await window.api.saveRequirement({ ...r, ...ref });
     toast('✅ Anforderung verfeinert');
     await refreshReqPane();
@@ -197,7 +203,13 @@ async function extractFromConversation() {
 
   if (!res.ok) { toast('❌ ' + res.text); return; }
   try {
-    const reqs = JSON.parse(res.text.replace(/```json|```/g, '').trim());
+    let _rawReqs = res.text.trim().replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
+    const _fReqs = _rawReqs.indexOf('['), _lReqs = _rawReqs.lastIndexOf(']');
+    if (_fReqs!==-1 && _lReqs>_fReqs) _rawReqs = _rawReqs.substring(_fReqs,_lReqs+1);
+    _rawReqs = _rawReqs.replace(/,\s*}/g,'}').replace(/,\s*]/g,']');
+    let reqs;
+    try { reqs = JSON.parse(_rawReqs); } catch(e) { const _m = res.text.match(/\[\s*\{[\s\S]*?\}\s*\]/); reqs = _m ? JSON.parse(_m[0]) : []; }
+    if (!Array.isArray(reqs)) reqs = Object.values(reqs)[0] || [];
     if (!reqs.length) { toast('ℹ Keine neuen Anforderungen gefunden'); return; }
     for (const r of reqs) {
       await window.api.saveRequirement({

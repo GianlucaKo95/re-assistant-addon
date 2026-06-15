@@ -299,7 +299,13 @@ async function rebuildContextCache(systemId, force = false) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ force }),
     });
-    toast('⚡ Kontext wird aufgebaut — kann je nach Anzahl Dokumente 5-15 Minuten dauern');
+    // Hinweis wenn Groq aktiv → schlechtere Code-Analyse
+    const provider = S.settings?.provider || 'anthropic';
+    if (provider === 'groq') {
+      toast('⚡ Kontext wird mit Groq/Llama aufgebaut. Tipp: Anthropic-Key hinterlegen für deutlich bessere Code-Analyse-Qualität. Dauer: 15-30 Min');
+    } else {
+      toast('⚡ Kontext wird aufgebaut — kann je nach Anzahl Dokumente 15-30 Minuten dauern');
+    }
 
     // Sofort zurücksetzen damit kein alter Fortschritt sichtbar ist
     if (btn) btn.innerHTML = '<span class="spin"></span> 0/…';
