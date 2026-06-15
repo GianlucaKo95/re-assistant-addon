@@ -21,7 +21,11 @@ async function openReqDetail(reqId) {
 
 function renderReqDetailPanel(req) {
   const isWatching = (req.watchers || []).includes(S.user?.id);
-  const sys = S.systems?.find(s => s.id === req.systemId);
+  const sys = req?.systemId
+    ? (S.systems || []).find(s => s.id === req.systemId)
+    : null;
+  // systemId aus aktiver Selektion befüllen falls fehlt
+  if (!req.systemId && S.activeSystemId) req.systemId = S.activeSystemId;
 
   // Slide-in Panel
   let panel = document.getElementById('req-detail-panel');
@@ -160,7 +164,7 @@ function renderDetailsTab(req) {
       <div class="frow" style="margin-bottom:12px">
         <label>✓ Akzeptanzkriterien</label>
         <ul style="margin:0;padding-left:16px">
-          ${req.acceptanceCriteria.map(ac =>
+          ${(req.acceptanceCriteria||[]).map(ac =>
             `<li style="font-size:12px;color:var(--t2);margin-bottom:3px">${esc(ac)}</li>`
           ).join('')}
         </ul>
