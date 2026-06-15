@@ -2,7 +2,7 @@
   "name": "RE-Assistent",
   "version": "4.3.0",
   "slug": "re_assistant",
-  "description": "KI-gest\u00fctztes Requirements Engineering \u2014 PostgreSQL, WebSockets, Enterprise-ready.",
+  "description": "KI-gestütztes Requirements Engineering — PostgreSQL, WebSockets, Enterprise-ready.",
   "url": "https://github.com/GianlucaKo95/re-assistant-addon",
   "arch": [
     "aarch64",
@@ -14,14 +14,12 @@
   "homeassistant_api": false,
   "hassio_api": false,
   "options": {
-    "anthropic_api_key": "",
     "admin_password": "admin123",
     "language": "de",
     "log_level": "info",
     "database_url": ""
   },
   "schema": {
-    "anthropic_api_key": "str",
     "admin_password": "str",
     "language": "list(de|en)",
     "log_level": "list(trace|debug|info|notice|warning|error|fatal)",
@@ -31,7 +29,6 @@
     "data:rw"
   ],
   "environment": {
-    "ANTHROPIC_API_KEY": "{{anthropic_api_key}}",
     "ADMIN_PASSWORD": "{{admin_password}}",
     "LANGUAGE": "{{language}}",
     "LOG_LEVEL": "{{log_level}}",

@@ -167,11 +167,23 @@ const API = {
 
   // ── EINSTELLUNGEN (localStorage) ─────────────────────────
   async loadSettings() {
-    try { return JSON.parse(localStorage.getItem('re-settings') || 'null') || defaultSettings(); }
+    try {
+      const s = JSON.parse(localStorage.getItem('re-settings') || 'null') || defaultSettings();
+      // Sicherheit: Keys niemals aus localStorage zurückgeben
+      delete s.apiKey;
+      delete s.grokApiKey;
+      delete s.groqApiKey;
+      return s;
+    }
     catch(e) { return defaultSettings(); }
   },
   async saveSettings(s) {
-    localStorage.setItem('re-settings', JSON.stringify(s));
+    // Keys NIEMALS in localStorage speichern
+    const safeSettings = { ...s };
+    delete safeSettings.apiKey;
+    delete safeSettings.grokApiKey;
+    delete safeSettings.groqApiKey;
+    localStorage.setItem('re-settings', JSON.stringify(safeSettings));
     return true;
   },
 
@@ -205,7 +217,8 @@ const API = {
 };
 
 function defaultSettings() {
-  return { provider:'anthropic', model:'claude-sonnet-4-6', grokApiKey:'', grokModel:'grok-3-mini', groqApiKey:'', groqModel:'llama-3.3-70b-versatile', language:'de', detail:'standard', voiceURI:'', persona:'professional', jiraUrl:'', jiraEmail:'', jiraToken:'' };
+  // API-Keys werden NICHT in localStorage gespeichert — nur in der DB (app_settings)
+  return { provider:'anthropic', model:'claude-sonnet-4-6', grokModel:'grok-3-mini', groqModel:'llama-3.3-70b-versatile', language:'de', detail:'standard', voiceURI:'', persona:'professional', jiraUrl:'', jiraEmail:'', jiraToken:'' };
 }
 
 async function get(url) {

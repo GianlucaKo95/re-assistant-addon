@@ -119,11 +119,11 @@ async function initApp() {
 function applySettingsToForm() {
   const provider = S.settings.provider || 'anthropic';
   setVal('cfg-provider',   provider);
-  setVal('cfg-apikey',     S.settings.apiKey    || '');
+  // Key nicht aus S.settings — wird vom Backend über /api/apikey/global geliefert (Sterne-Anzeige)
   setVal('cfg-model',      S.settings.model);
-  setVal('cfg-grok-apikey',  S.settings.grokApiKey  || '');
+  // Grok/Groq Keys nicht aus localStorage
   setVal('cfg-grok-model',   S.settings.grokModel   || 'grok-3-mini');
-  setVal('cfg-groq-apikey',  S.settings.groqApiKey  || '');
+  // Groq Key nicht aus localStorage
   setVal('cfg-groq-model',   S.settings.groqModel   || 'llama-3.3-70b-versatile');
   const isGrok = provider === 'grok';
   const isGroq = provider === 'groq';
@@ -149,13 +149,15 @@ async function saveCfg() {
   const grokApiKey  = $('cfg-grok-apikey')?.value.trim() || '';
   const groqApiKey  = $('cfg-groq-apikey')?.value.trim() || '';
 
-  S.settings.provider   = provider;
-  S.settings.apiKey     = apiKey;
-  S.settings.model      = $('cfg-model')?.value      || 'claude-sonnet-4-6';
-  S.settings.grokApiKey = grokApiKey;
-  S.settings.grokModel  = $('cfg-grok-model')?.value  || 'grok-3-mini';
-  S.settings.groqApiKey = groqApiKey;
-  S.settings.groqModel  = $('cfg-groq-model')?.value  || 'llama-3.3-70b-versatile';
+  // Provider + Modelle in S.settings — KEINE Keys
+  S.settings.provider  = provider;
+  S.settings.model     = $('cfg-model')?.value      || 'claude-sonnet-4-6';
+  S.settings.grokModel = $('cfg-grok-model')?.value  || 'grok-3-mini';
+  S.settings.groqModel = $('cfg-groq-model')?.value  || 'llama-3.3-70b-versatile';
+  // Explizit sicherstellen dass keine Keys in S.settings landen
+  delete S.settings.apiKey;
+  delete S.settings.grokApiKey;
+  delete S.settings.groqApiKey;
 
   // Key ans Backend senden
   const keyBody = { provider };

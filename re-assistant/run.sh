@@ -4,7 +4,8 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 log "RE-Assistent v4.3.0 startet …"
 
 # ── Konfiguration ──────────────────────────────────────────────
-export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+# API-Keys werden NUR in der Datenbank gespeichert (app_settings)
+# Kein ANTHROPIC_API_KEY / GROK_API_KEY / GROQ_API_KEY aus Umgebung
 export ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin123}"
 export LANGUAGE="${LANGUAGE:-de}"
 export DATABASE_URL="${DATABASE_URL:-}"

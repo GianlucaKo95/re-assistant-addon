@@ -115,7 +115,8 @@ async function resolveApiConfig(userId) {
   // Globaler Modus
   const globalProv   = (await queryOne("SELECT value FROM app_settings WHERE key='global_ai_provider'"))?.value || 'anthropic';
   const globalGrok   = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value;
-  const globalAnth   = process.env.ANTHROPIC_API_KEY || (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value;
+  // Key NUR aus DB — kein Fallback auf Umgebungsvariable
+  const globalAnth   = (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value || null;
 
   const globalGroq = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value;
 
@@ -1365,7 +1366,7 @@ app.post('/api/apikey/mode', requireAuth, requireAdmin, async (req, res) => {
 // Globaler Key — Anthropic oder Grok
 app.get('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
   const provider   = (await queryOne("SELECT value FROM app_settings WHERE key='global_ai_provider'"))?.value || 'anthropic';
-  const hasAnthKey = !!(process.env.ANTHROPIC_API_KEY || (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value);
+  const hasAnthKey = !!(await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value;
   const hasGrokKey = !!(await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value;
   const hasGroqKey = !!(await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value;
   res.json({ provider, hasAnthKey, hasGrokKey, hasGroqKey });
@@ -1443,7 +1444,7 @@ app.delete('/api/apikey/user/:userId', requireAuth, requireAdmin, async (req, re
 app.get('/api/apikey/user/status', requireAuth, async (req, res) => {
   const mode         = (await queryOne("SELECT value FROM app_settings WHERE key='api_key_mode'"))?.value||'global';
   const user         = await queryOne('SELECT api_key, ai_provider FROM users WHERE id=$1', [req.session.userId]);
-  const globalKey    = process.env.ANTHROPIC_API_KEY || (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value;
+  const globalKey    = (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value || null;
   const globalGrok   = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value;
   const globalGroq   = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value;
   const globalProv   = (await queryOne("SELECT value FROM app_settings WHERE key='global_ai_provider'"))?.value || 'anthropic';
