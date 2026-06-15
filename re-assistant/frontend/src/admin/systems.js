@@ -299,11 +299,14 @@ async function rebuildContextCache(systemId, force = false) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ force }),
     });
-    toast('⚡ Kontext wird aufgebaut — kann je nach Anzahl Dokumente 1-2 Minuten dauern');
+    toast('⚡ Kontext wird aufgebaut — kann je nach Anzahl Dokumente 5-15 Minuten dauern');
+
+    // Sofort zurücksetzen damit kein alter Fortschritt sichtbar ist
+    if (btn) btn.innerHTML = '<span class="spin"></span> 0/…';
 
     // Echtes Polling — Spinner bleibt bis build_status='ready' oder 'error'/'empty'
-    const POLL_INTERVAL = 4000;
-    const MAX_POLLS     = 90; // ~6 Minuten Obergrenze (große Systeme mit 100+ Docs)
+    const POLL_INTERVAL = 3000;
+    const MAX_POLLS     = 300; // ~15 Minuten Obergrenze (161 Dateien × KI-Analyse)
     let polls = 0;
 
     const poll = async () => {

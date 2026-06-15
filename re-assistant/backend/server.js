@@ -363,13 +363,14 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
       const vals   = [u.id, u.name, u.email, u.role||'business', JSON.stringify(u.systems||[]), JSON.stringify(u.subcategories||[])];
       if (u.password) { fields.push(`password=$${vals.length+1}`); vals.push(bcrypt.hashSync(u.password,10)); }
       // SQL-Injection-Schutz: nur Whitelist-Felder erlaubt
-    const ALLOWED_USER_FIELDS = ['name','email','role','systems','subcategories','settings','password_hash'];
-    const safeFields = fields.filter(f => ALLOWED_USER_FIELDS.some(af => f.trim().startsWith(af)));
-    if (safeFields.length !== fields.length) {
-      log('warning', `Ungültige User-Update-Felder abgeblockt: ${fields.filter(f => !safeFields.includes(f))}`);
-    }
-    if (!safeFields.length) throw new Error('Keine gültigen Felder zum Aktualisieren');
-    await query(`UPDATE users SET ${safeFields.join(',')} WHERE id=$1`, vals);
+      // 'password' ist erlaubt — wird VOR der Prüfung bereits als bcrypt-Hash eingetragen
+      const ALLOWED_USER_FIELDS = ['name','email','role','systems','subcategories','settings','password_hash','password'];
+      const safeFields = fields.filter(f => ALLOWED_USER_FIELDS.some(af => f.trim().startsWith(af)));
+      if (safeFields.length !== fields.length) {
+        log('warning', `Ungültige User-Update-Felder abgeblockt: ${fields.filter(f => !safeFields.includes(f))}`);
+      }
+      if (!safeFields.length) throw new Error('Keine gültigen Felder zum Aktualisieren');
+      await query('UPDATE users SET ' + safeFields.join(',') + ' WHERE id=$1', vals);
     } else {
       const pw = bcrypt.hashSync(u.password || 'changeme', 10);
       await query('INSERT INTO users (id,name,email,role,password,systems,subcategories) VALUES ($1,$2,$3,$4,$5,$6,$7)',
@@ -1398,7 +1399,11 @@ app.post('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
     if (staleSystems.rows.length) {
       log('info', `API-Key gespeichert — baue ${staleSystems.rows.length} Cache(s) ohne KI-Inhalt neu auf`);
       for (const row of staleSystems.rows) {
-        // doc_summaries löschen damit Phase 1 mit KI neu durchläuft
+        // Fortschritt zurücksetzen + doc_summaries löschen
+        await query(
+          "UPDATE system_context_cache SET build_status='outdated', docs_processed=0, summary='' WHERE system_id=$1",
+          [row.system_id]
+        ).catch(() => {});
         await query('DELETE FROM doc_summaries WHERE system_id=$1', [row.system_id]).catch(() => {});
         setImmediate(() => buildSystemContextCache(row.system_id));
       }
@@ -2426,7 +2431,15 @@ async function buildSystemContextCache(systemId) {
       byDoc[c.doc_id].texts.push(c.chunk_text);
     }
     const docIds = Object.keys(byDoc);
-    await updateStatus('building', { docs_total: docIds.length, build_phase: 'files', groups_total: 0, groups_done: 0 });
+    // Fortschritt zurücksetzen — verhindert dass Frontend alte Werte vom ready_no_ai-Build zeigt
+    await updateStatus('building', {
+      docs_total:     docIds.length,
+      docs_processed: 0,
+      build_phase:    'files',
+      groups_total:   0,
+      groups_done:    0,
+      summary:        '',
+    });
 
     const apiCfg = await resolveApiConfig(null);
 
@@ -2438,8 +2451,11 @@ async function buildSystemContextCache(systemId) {
         .substring(0, 50000);
       // 'ready_no_ai' statt 'ready' — wird automatisch neu gebaut sobald ein Key vorhanden ist
       await updateStatus('ready_no_ai', {
-        summary: simpleContext, doc_names: JSON.stringify(Object.values(byDoc).map(d=>d.name)),
-        token_count: simpleContext.length, docs_processed: docIds.length,
+        summary:        simpleContext,
+        doc_names:      JSON.stringify(Object.values(byDoc).map(d=>d.name)),
+        token_count:    simpleContext.length,
+        docs_processed: 0,   // Nicht setzen — sonst zeigt KI-Build sofort 161/161
+        docs_total:     docIds.length,
       });
       log('info', `Cache: Einfacher Kontext gespeichert (kein API-Key) — Status 'ready_no_ai'`);
       return;
@@ -2466,11 +2482,23 @@ async function buildSystemContextCache(systemId) {
       const batch = toProcess.slice(i, i + BATCH_SIZE);
       await Promise.all(batch.map(async (docId) => {
         const doc = byDoc[docId];
-        const content = doc.texts.join(' ').substring(0, 4000);
-        const prompt = `Fasse den Inhalt dieser Datei in 2-3 Sätzen auf Deutsch zusammen. Konzentriere dich auf: Was macht dieser Code/diese Datei? Welche Funktionen, Komponenten oder Konfigurationen enthält sie?\n\nDatei: ${doc.name}\n\nInhalt:\n${content}`;
+        // Mehr Kontext: alle Chunks zusammenführen, bis 8000 Zeichen
+        const content = doc.texts.join('\n').substring(0, 8000);
+        const isCode = /\.(tsx?|jsx?|py|java|cs|go|rs|sql|sh)$/i.test(doc.name);
+        const isCfg  = /\.(json|yaml|yml|toml|env|dockerfile)$/i.test(doc.name.toLowerCase());
+
+        const prompt = 'Du bist ein erfahrener Software-Architekt. Analysiere diese Datei präzise.'
+          + '\n\nDatei: ' + doc.name
+          + '\nTyp: ' + (isCode ? 'Quellcode' : isCfg ? 'Konfiguration' : 'Dokumentation')
+          + '\n\nBeantworte KONKRET (keine Floskeln):'
+          + '\n1. Hauptzweck dieser Datei (1 Satz)'
+          + '\n2. Wichtigste Funktionen/Komponenten/Klassen (mit Namen)'
+          + '\n3. Externe Abhängigkeiten/Imports (Libraries, APIs, andere Module)'
+          + '\n4. Besonderheiten (z.B. CalDAV-Sync, Push-Notifications, Auth-Flow)'
+          + '\n\nInhalt:\n' + content;
 
         try {
-          const summary = await aiCallUnified(apiCfg, prompt, 200, 'fast', 30000, 1);
+          const summary = await aiCallUnified(apiCfg, prompt, 400, 'fast', 35000, 1);
           await query(
             'INSERT INTO doc_summaries (doc_id,system_id,doc_name,summary) VALUES ($1,$2,$3,$4) ON CONFLICT (doc_id) DO UPDATE SET summary=$4',
             [docId, systemId, doc.name, summary.trim()]
@@ -2530,10 +2558,16 @@ async function buildSystemContextCache(systemId) {
           groupSummaries[groupName] = files.map(f => `${f.doc_name}: ${f.summary}`).join(' ');
           return;
         }
-        const fileList = files.map(f => `- ${f.doc_name}: ${f.summary}`).join('\n');
-        const prompt = `Diese Dateien gehören zum Modul "${groupName}" eines Softwaresystems. Fasse in 2-4 Sätzen auf Deutsch zusammen, welchen Zweck dieses Modul erfüllt und welche Hauptfunktionen es bereitstellt.\n\nDateien:\n${fileList.substring(0, 6000)}`;
+        const fileList = files.map(f => '- ' + f.doc_name + ': ' + f.summary).join('\n');
+        const prompt = 'Analysiere diese Dateien des Moduls "' + groupName + '" präzise.'
+          + '\n\nErstelle eine technische Modul-Beschreibung mit:'
+          + '\n1. Modulzweck (konkret, mit Technologien/Bibliotheken)'
+          + '\n2. Alle Hauptfunktionen (mit echten Funktionsnamen aus den Zusammenfassungen)'
+          + '\n3. Externe Integrationen (APIs, Services, Protokolle wie CalDAV, Bring!, etc.)'
+          + '\n4. Datenfluss: was kommt rein, was geht raus'
+          + '\n\nDateien:\n' + fileList.substring(0, 8000);
         try {
-          groupSummaries[groupName] = await aiCallUnified(apiCfg, prompt, 300, 'fast', 30000, 1);
+          groupSummaries[groupName] = await aiCallUnified(apiCfg, prompt, 600, 'fast', 35000, 1);
         } catch(e) {
           log('warning', `Cache: Gruppe ${groupName} fehlgeschlagen: ${e.message}`);
           groupSummaries[groupName] = fileList.substring(0, 500);
@@ -2549,40 +2583,38 @@ async function buildSystemContextCache(systemId) {
       .map(g => `### ${g}\n${groupSummaries[g]}`)
       .join('\n\n');
 
-    const finalPrompt = `Du bist ein erfahrener Software-Architekt. Analysiere die folgenden Modul-Zusammenfassungen eines Softwaresystems (${allSummaries.length} Dateien in ${groupNames.length} Modulen) und erstelle eine vollständige, fachlich hochwertige Systemdokumentation auf Deutsch.
-
-Die Dokumentation MUSS folgende Abschnitte enthalten:
-
-## 1. Systemüberblick
-Was ist das System? Welchen Zweck erfüllt es? Für wen ist es gedacht? (5-8 Sätze, konkret und präzise)
-
-## 2. Architektur & Technologien
-- Frontend-Technologien und Frameworks (mit Versionen wenn erkennbar)
-- Backend-Technologien und Frameworks
-- Datenbankschicht
-- Externe Dienste und APIs
-- Deployment/Infrastruktur
-
-## 3. Module und Komponenten
-Für JEDES erkannte Modul:
-- **Modulname** (Pfad/Ordner): Kurzbeschreibung, Hauptfunktionen, wichtige Dateien
-
-## 4. Hauptfunktionen
-Vollständige Liste ALLER Funktionen des Systems — keine Auslassungen. Gruppiert nach Funktionsbereich.
-
-## 5. Datenflüsse und Prozesse
-Wichtige Abläufe: Wie interagieren die Module? Welche Daten fließen wohin?
-
-## 6. Schnittstellen und APIs
-Alle erkennbaren Endpunkte, externe Integrationen, Protokolle.
-
-## 7. Bekannte Besonderheiten / Auffälligkeiten
-Besondere Implementierungen, Muster, Abhängigkeiten oder potenzielle Problembereiche.
-
-Modul-Zusammenfassungen:
-${groupsCombined.substring(0, 30000)}
-
-WICHTIG: Sei so konkret und vollständig wie möglich. Nenne echte Dateinamen, Funktionsnamen und technische Details aus den Zusammenfassungen. Keine Floskeln.`;
+    const finalPrompt = 'Du bist ein erfahrener Software-Architekt und Senior-Entwickler mit 20 Jahren Erfahrung.'
+      + ' Erstelle eine präzise, technisch tiefgehende Systemdokumentation auf Deutsch.'
+      + ' Nutze AUSSCHLIESSLICH Informationen aus den Modul-Zusammenfassungen — keine Vermutungen.'
+      + ' Nenne IMMER echte Dateinamen, Funktionsnamen, Bibliotheken und API-Endpunkte aus den Zusammenfassungen.'
+      + '\n\nSystem: ' + allSummaries.length + ' Dateien in ' + groupNames.length + ' Modulen.'
+      + '\n\n## 1. Systemüberblick'
+      + '\nWas ist das System KONKRET? Technologie-Stack, Zielgruppe, Hauptzweck. (5-8 Sätze)'
+      + ' Nenne die wichtigsten verwendeten Technologien und Frameworks.'
+      + '\n\n## 2. Technologie-Stack (vollständig)'
+      + '\n- **Frontend**: alle erkannten Frameworks, Libraries, Build-Tools (mit Versionen)'
+      + '\n- **Backend**: Server-Framework, Runtime, Sprache'
+      + '\n- **Datenbank**: ORM, Datenbank-Engine, Schema'
+      + '\n- **Externe Integrationen**: ALLE erkannten APIs, Protokolle, Services (CalDAV, Bring!, Push, OAuth, etc.)'
+      + '\n- **Deployment**: Docker, PWA, TWA, CI/CD, Hosting'
+      + '\n\n## 3. Module & Komponenten (für jedes Modul)'
+      + '\nFormat: **Modulname** (Pfad): Zweck | Hauptfunktionen (mit echten Funktionsnamen) | Abhängigkeiten'
+      + '\n\n## 4. Vollständige Funktionsliste'
+      + '\nALLE Funktionen gruppiert nach Bereich — keine Auslassungen.'
+      + ' Jede Funktion mit: Name, Dateipfad, kurze Beschreibung.'
+      + '\n\n## 5. Datenflüsse & End-to-End-Prozesse'
+      + '\nMindestens 5 konkrete Flows: z.B. "Kalendereintrag erstellen: Component → API → DB → CalDAV-Sync"'
+      + ' Mit echten Dateinamen und Funktionsnamen.'
+      + '\n\n## 6. API-Endpunkte & Schnittstellen'
+      + '\nAlle erkannten API-Routen, externe Protokolle (CalDAV, REST, WebSocket), Auth-Mechanismen.'
+      + '\n\n## 7. Abhängigkeitsketten'
+      + '\nWelche Module importieren welche? Kritische Abhängigkeiten.'
+      + '\n\n## 8. Besonderheiten & technische Highlights'
+      + '\nBesondere Implementierungen, Optimierungen, bekannte Eigenheiten.'
+      + '\n\nModul-Zusammenfassungen:\n'
+      + groupsCombined.substring(0, 35000)
+      + '\n\nWICHTIG: Nutze AUSSCHLIESSLICH Informationen aus den Zusammenfassungen.'
+      + ' Nenne echte Dateinamen, Funktionsnamen, Library-Namen. Keine Platzhalter. Keine Floskeln.';
 
     await updateStatus('building', { build_phase: 'final' });
 
