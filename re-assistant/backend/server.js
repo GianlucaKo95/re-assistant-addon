@@ -2469,7 +2469,7 @@ async function buildSystemContextCache(systemId) {
     const existingMap = {};
     for (const e of existing) existingMap[e.doc_id] = e.summary;
 
-    const BATCH_SIZE = 5; // parallel
+    const BATCH_SIZE = 3; // parallel — balanced-Modell braucht mehr Zeit
     let processed = Object.keys(existingMap).length;
 
     const toProcess = docIds.filter(id => !existingMap[id]);
@@ -2498,7 +2498,8 @@ async function buildSystemContextCache(systemId) {
           + '\n\nInhalt:\n' + content;
 
         try {
-          const summary = await aiCallUnified(apiCfg, prompt, 400, 'fast', 35000, 1);
+          // balanced statt fast: Sonnet/Llama-70B für präzise Code-Analyse
+          const summary = await aiCallUnified(apiCfg, prompt, 600, 'balanced', 90000, 2);
           await query(
             'INSERT INTO doc_summaries (doc_id,system_id,doc_name,summary) VALUES ($1,$2,$3,$4) ON CONFLICT (doc_id) DO UPDATE SET summary=$4',
             [docId, systemId, doc.name, summary.trim()]
@@ -2567,7 +2568,7 @@ async function buildSystemContextCache(systemId) {
           + '\n4. Datenfluss: was kommt rein, was geht raus'
           + '\n\nDateien:\n' + fileList.substring(0, 8000);
         try {
-          groupSummaries[groupName] = await aiCallUnified(apiCfg, prompt, 600, 'fast', 35000, 1);
+          groupSummaries[groupName] = await aiCallUnified(apiCfg, prompt, 800, 'balanced', 60000, 1);
         } catch(e) {
           log('warning', `Cache: Gruppe ${groupName} fehlgeschlagen: ${e.message}`);
           groupSummaries[groupName] = fileList.substring(0, 500);
@@ -2620,7 +2621,7 @@ async function buildSystemContextCache(systemId) {
 
     let finalSummary;
     try {
-      finalSummary = await aiCallUnified(apiCfg, finalPrompt, 6000, 'balanced', 90000, 1);
+      finalSummary = await aiCallUnified(apiCfg, finalPrompt, 8000, 'balanced', 120000, 1);
     } catch(e) {
       log('warning', `Cache: Finale Zusammenfassung fehlgeschlagen, nutze Modul-Zusammenfassungen: ${e.message}`);
       finalSummary = `Systemübersicht (automatisch zusammengestellt aus ${allSummaries.length} Dateien in ${groupNames.length} Modulen):\n\n${groupsCombined.substring(0, 35000)}`;
