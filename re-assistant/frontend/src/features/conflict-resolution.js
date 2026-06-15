@@ -131,21 +131,39 @@ function resolveConflict(conflictData) {
 }
 
 async function mergeWithAI(serverVersion, clientVersion) {
-  const res = await callAPI([{ role:'user', content:
-    `Führe zwei Versionen einer Anforderung zusammen. ${langNote()}
-Behalte die wichtigsten Informationen aus beiden Versionen.
-Antworte NUR mit JSON ohne Backticks:
-{"title":"...","description":"...","priority":"medium","category":"...","rationale":"..."}
+  // RAG-Kontext für bessere Zusammenführung (kennt den tatsächlichen Code)
+  let ragCtx = '';
+  try {
+    if (typeof getRAGContextForQuery === 'function' && S.activeSystemId) {
+      ragCtx = await getRAGContextForQuery(
+        S.activeSystemId,
+        serverVersion.title + ' ' + (serverVersion.description || ''),
+        { role: 'normal' }
+      );
+    }
+  } catch(e) {}
 
-Server-Version:
-Titel: ${serverVersion.title}
-Beschreibung: ${serverVersion.description || ''}
-Priorität: ${serverVersion.priority}
+  const schema = '{"title":"...","description":"vollständig und messbar","priority":"high|medium|low","category":"...","rationale":"...","acceptance_criteria_text":"Gegeben...Wenn...Dann..."}';
 
-Eigene Version:
-Titel: ${clientVersion.title}
-Beschreibung: ${clientVersion.description || ''}
-Priorität: ${clientVersion.priority}` }], langNote(), 600);
+  const prompt = 'Du bist CPRE-zertifizierter Requirements Engineer. '
+    + 'Führe zwei Versionen einer Anforderung zusammen nach IEEE-830. '
+    + langNote() + '\n\n'
+    + 'REGELN: Behalte die präzisere Formulierung, merge Akzeptanzkriterien, keine Information verlieren.\n\n'
+    + (ragCtx ? 'IMPLEMENTIERUNGSKONTEXT (für inhaltliche Genauigkeit):\n' + ragCtx.substring(0, 3000) + '\n\n' : '')
+    + 'SERVER-VERSION:\n'
+    + 'Titel: ' + serverVersion.title + '\n'
+    + 'Beschreibung: ' + (serverVersion.description || '') + '\n'
+    + 'Akzeptanzkriterien: ' + (serverVersion.acceptance_criteria_text || '') + '\n'
+    + 'Priorität: ' + serverVersion.priority + '\n\n'
+    + 'EIGENE VERSION:\n'
+    + 'Titel: ' + clientVersion.title + '\n'
+    + 'Beschreibung: ' + (clientVersion.description || '') + '\n'
+    + 'Akzeptanzkriterien: ' + (clientVersion.acceptance_criteria_text || '') + '\n'
+    + 'Priorität: ' + clientVersion.priority + '\n\n'
+    + 'Antworte NUR mit JSON ohne Backticks:\n' + schema;
+
+  const res = await callAPI([{ role:'user', content: prompt }],
+    'Du bist CPRE-zertifizierter Requirements Engineer.', 1500);
 
   if (!res.ok) throw new Error(res.text);
   const merged = JSON.parse(res.text.replace(/```json|```/g,'').trim());

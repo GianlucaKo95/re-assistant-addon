@@ -67,16 +67,14 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
         'X-RE-System':   sysId || '',
       },
       body: JSON.stringify({
-        // Modellname optional — Backend wählt bei fehlendem Wert automatisch
-        // das Default-Modell des serverseitig konfigurierten Providers.
-        model: S.settings?.model || undefined,
-        max_tokens: maxTokens,
-        system:     system || undefined,
+        model:        S.settings?.model || undefined,
+        max_tokens:   maxTokens,
+        system:       system || undefined,
         messages,
-        _feature:   feat,
-        _systemId:  sysId,
-        // Provider/Keys werden NICHT mehr client-seitig gesendet —
-        // die serverseitige Konfiguration (app_settings) ist die einzige Quelle.
+        _feature:     feat,
+        _systemId:    sysId,
+        // Anhänge (Bilder/Dateien) aus dem Chat
+        _attachments: window._pendingAttachments || undefined,
       }),
     });
 
@@ -152,3 +150,39 @@ window.abortCurrentRequest = abortCurrentRequest;
 window.abortCurrentRequest = abortCurrentRequest;
 window.setAPIContext = setAPIContext;
 window.toggleChatMic = toggleChatMic;
+
+// ── Context-History-Komprimierung ────────────────────────────
+// Fasst ältere Nachrichten zusammen statt sie zu löschen
+async function compressHistory(chatType = 'bc') {
+  const hist = S.chatHistory[chatType] || [];
+  if (hist.length < 30) return;
+
+  // Behalte die letzten 20 Nachrichten unverändert
+  const recent  = hist.slice(-20);
+  const older   = hist.slice(0, -20);
+  if (!older.length) return;
+
+  const summary = await callAPIDirect(
+    [{
+      role: 'user',
+      content: 'Fasse diesen Gesprächsverlauf kompakt zusammen (max 300 Wörter). '
+        + 'Behalte alle wichtigen Entscheidungen, Anforderungen und Erkenntnisse.\n\n'
+        + older.map(m => (m.role === 'user' ? 'Nutzer' : 'KI') + ': ' + (m.content||'').substring(0, 300)).join('\n')
+    }],
+    'Komprimiere den Gesprächsverlauf.',
+    500, '', null
+  );
+
+  if (summary.ok && summary.text) {
+    S.chatHistory[chatType] = [
+      { role: 'user',      content: '[Zusammenfassung früherer Gesprächsverlauf]' },
+      { role: 'assistant', content: summary.text },
+      ...recent,
+    ];
+  } else {
+    // Fallback: einfach abschneiden
+    S.chatHistory[chatType] = recent;
+  }
+}
+
+window.compressHistory = compressHistory;

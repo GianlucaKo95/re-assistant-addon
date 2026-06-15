@@ -1,237 +1,295 @@
 'use strict';
-const $ = window.$ || (id => document.getElementById(id));
 /**
- * features/review-workflow.js
- * Nr. 1: Review-Workflow — Business schreibt, BA reviewed, PM genehmigt.
- * Status-Maschine: draft → in_review → approved | rejected → revision
+ * review-workflow.js
+ * #9 Review-Workflow: Draft → In Review → Approved/Rejected
+ * #11 Bulk-Operationen: Mehrfachauswahl + Massenaktionen
+ * #12 Freeze: Anforderungen einfrieren/freigeben
  */
 
-// Review-Stati (ergänzen die normalen Req-Stati)
-const REVIEW_STATES = {
-  draft:      { label:'Entwurf',      icon:'✏',  color:'var(--t3)',   next:['in_review'] },
-  in_review:  { label:'In Review',    icon:'🔍', color:'var(--blue)', next:['approved','rejected'] },
-  approved:   { label:'Freigegeben',  icon:'✅', color:'var(--grn)',  next:['revision'] },
-  rejected:   { label:'Abgelehnt',    icon:'❌', color:'var(--red)',  next:['revision','in_review'] },
-  revision:   { label:'Überarbeitung',icon:'🔄', color:'var(--amb)',  next:['in_review'] },
+// ── Review-Status Labels & Farben ─────────────────────────────
+const REVIEW_CONFIG = {
+  draft:       { label: 'Entwurf',   color: 'var(--t3)',  icon: '✏' },
+  in_review:   { label: 'In Review', color: 'var(--amb)', icon: '👁' },
+  approved:    { label: 'Genehmigt', color: 'var(--grn)', icon: '✅' },
+  rejected:    { label: 'Abgelehnt', color: 'var(--red)',  icon: '❌' },
 };
 
-// Wer darf welche Transition auslösen
-const REVIEW_PERMISSIONS = {
-  draft_to_in_review:    ['business','businessanalyst','admin'],
-  in_review_to_approved: ['businessanalyst','projectmanager','admin'],
-  in_review_to_rejected: ['businessanalyst','projectmanager','admin'],
-  approved_to_revision:  ['projectmanager','admin'],
-  rejected_to_revision:  ['business','businessanalyst','admin'],
-  revision_to_in_review: ['business','businessanalyst','admin'],
-};
-
-function canTransition(from, to, role) {
-  const key = `${from}_to_${to}`;
-  return (REVIEW_PERMISSIONS[key] || []).includes(role);
+function reviewBadge(status, frozen) {
+  const cfg = REVIEW_CONFIG[status] || REVIEW_CONFIG.draft;
+  const frozenBadge = frozen
+    ? `<span style="font-size:9px;background:rgba(99,102,241,.15);color:var(--aa);
+        padding:1px 6px;border-radius:99px;margin-left:4px">🔒 Eingefroren</span>`
+    : '';
+  return `<span style="font-size:10px;padding:2px 7px;border-radius:99px;
+    background:${cfg.color}22;color:${cfg.color}">${cfg.icon} ${cfg.label}</span>${frozenBadge}`;
 }
 
-// ── View ──────────────────────────────────────────────────────
-async function loadReviewDashboard() {
-  S.systems = await window.api.getSystems();
-  const allReqs = await window.api.getRequirements({});
+// ── Review-Aktions-Buttons in Req-Card ────────────────────────
+function renderReviewActions(req) {
+  const user = S.user;
+  const isFrozen = req.frozen;
+  const status = req.review_status || 'draft';
 
-  // Nur Anforderungen mit reviewStatus
-  const reviewReqs = allReqs.filter(r => r.reviewStatus);
-  const pending    = reviewReqs.filter(r => r.reviewStatus === 'in_review');
-  const approved   = reviewReqs.filter(r => r.reviewStatus === 'approved');
-  const draft      = allReqs.filter(r => !r.reviewStatus || r.reviewStatus === 'draft');
+  const canSubmit  = !isFrozen && status === 'draft' && ['business','businessanalyst'].includes(user.role);
+  const canDecide  = status === 'in_review' && ['admin','businessanalyst'].includes(user.role);
+  const canFreeze  = status === 'approved'  && ['admin','businessanalyst'].includes(user.role);
 
-  const wrap = $('review-dashboard-wrap');
-  if (!wrap) return;
+  const btns = [];
 
-  wrap.innerHTML = `
-    <!-- Stats -->
-    <div class="stats-row">
-      <div class="stat-card"><span class="stat-n">${draft.length}</span><span class="stat-l">Entwürfe</span></div>
-      <div class="stat-card accent"><span class="stat-n" style="color:var(--blue)">${pending.length}</span><span class="stat-l">In Review</span></div>
-      <div class="stat-card"><span class="stat-n" style="color:var(--grn)">${approved.length}</span><span class="stat-l">Freigegeben</span></div>
-      <div class="stat-card"><span class="stat-n" style="color:var(--red)">${reviewReqs.filter(r=>r.reviewStatus==='rejected').length}</span><span class="stat-l">Abgelehnt</span></div>
-    </div>
+  if (canSubmit) btns.push(
+    `<button class="btn-secondary" style="font-size:10px;padding:3px 8px"
+      onclick="submitForReview('${req.id}')">📤 Zur Review</button>`
+  );
+  if (canDecide) btns.push(
+    `<button class="btn-primary" style="font-size:10px;padding:3px 8px;background:var(--grn)"
+      onclick="approveReq('${req.id}')">✅ Genehmigen</button>`,
+    `<button class="btn-secondary" style="font-size:10px;padding:3px 8px;color:var(--red)"
+      onclick="rejectReq('${req.id}')">❌ Ablehnen</button>`
+  );
+  if (canFreeze && !isFrozen) btns.push(
+    `<button class="btn-secondary" style="font-size:10px;padding:3px 8px"
+      onclick="freezeReq('${req.id}')">🔒 Einfrieren</button>`
+  );
+  if (isFrozen && ['admin','businessanalyst'].includes(user.role)) btns.push(
+    `<button class="btn-secondary" style="font-size:10px;padding:3px 8px"
+      onclick="unfreezeReq('${req.id}')">🔓 Freigeben</button>`
+  );
 
-    <!-- Kanban-Board -->
-    <div id="review-board">
-      ${['draft','in_review','approved','rejected','revision'].map(state => {
-        const rs    = REVIEW_STATES[state];
-        const reqs  = state === 'draft'
-          ? allReqs.filter(r => !r.reviewStatus || r.reviewStatus === 'draft')
-          : allReqs.filter(r => r.reviewStatus === state);
-        return `
-          <div class="review-col">
-            <div class="review-col-head">
-              <span>${rs.icon} ${rs.label}</span>
-              <span class="review-count">${reqs.length}</span>
-            </div>
-            <div class="review-col-body" id="review-col-${state}">
-              ${reqs.slice(0, 20).map(r => renderReviewCard(r, state)).join('')}
-              ${reqs.length > 20 ? `<div style="font-size:11px;color:var(--t3);padding:8px;text-align:center">… ${reqs.length-20} weitere</div>` : ''}
-            </div>
-          </div>`;
-      }).join('')}
-    </div>`;
-
-  injectReviewStyles();
+  return btns.length
+    ? `<div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">${btns.join('')}</div>`
+    : '';
 }
 
-function renderReviewCard(r, state) {
-  const rs   = REVIEW_STATES[state] || REVIEW_STATES.draft;
-  const sys  = S.systems.find(s => s.id === r.systemId);
-  const nextStates = rs.next.filter(ns => canTransition(state, ns, S.user.role));
-  const acCount = (r.acceptanceCriteria || []).length;
-  const acDone  = (r.acceptanceCriteria || []).filter(a => a.done).length;
-
-  return `
-    <div class="review-card" id="rcard-${r.id}">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:6px">
-        <div style="flex:1;min-width:0">
-          <div class="req-id">${esc(r.id)}</div>
-          <div style="font-size:12px;font-weight:600;margin-top:2px;line-height:1.4">${esc(r.title)}</div>
-        </div>
-        <span class="sbadge p-${r.priority}" style="font-size:9px;flex-shrink:0">${priLabel(r.priority)}</span>
-      </div>
-      ${sys ? `<div style="font-size:10px;color:var(--t3);margin-bottom:6px">${esc(sys.name)}</div>` : ''}
-      ${acCount ? `<div style="font-size:10px;color:var(--t3);margin-bottom:4px">AC: ${acDone}/${acCount}</div>` : ''}
-      ${r.reviewComment ? `<div style="font-size:11px;color:var(--amb);padding:5px 8px;background:var(--ambbg);border-radius:5px;margin-bottom:6px">"${esc(r.reviewComment.substring(0,80))}"</div>` : ''}
-      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">
-        ${nextStates.map(ns => {
-          const ns_state = REVIEW_STATES[ns];
-          const isApprove = ns === 'approved';
-          const isReject  = ns === 'rejected';
-          return `<button
-            class="${isApprove ? 'btn-primary' : 'btn-secondary'}"
-            style="font-size:10px;padding:3px 9px;${isReject ? 'color:var(--red);border-color:rgba(248,113,113,.3)' : ''}"
-            onclick="transitionReview('${r.id}','${state}','${ns}')">
-            ${ns_state.icon} ${ns_state.label}
-          </button>`;
-        }).join('')}
-        <button class="btn-secondary" style="font-size:10px;padding:3px 9px"
-          onclick="openReviewDetail('${r.id}')">Detail</button>
-      </div>
-    </div>`;
-}
-
-async function transitionReview(reqId, fromState, toState) {
-  // Bei Ablehnung → Kommentar anfordern
-  if (toState === 'rejected' || toState === 'revision') {
-    const comment = window.prompt(
-      toState === 'rejected'
-        ? 'Ablehnungsgrund eingeben (Pflicht):'
-        : 'Überarbeitungshinweis eingeben (optional):'
-    );
-    if (toState === 'rejected' && !comment?.trim()) {
-      toast('⚠ Ablehnungsgrund ist erforderlich');
-      return;
-    }
-    await _doTransition(reqId, toState, comment?.trim());
-  } else {
-    await _doTransition(reqId, toState, null);
-  }
-}
-
-async function _doTransition(reqId, newState, comment) {
-  const allReqs = await window.api.getRequirements({});
-  const req     = allReqs.find(r => r.id === reqId);
-  if (!req) return;
-
-  const rs = REVIEW_STATES[newState];
-  await window.api.saveRequirement({
-    ...req,
-    reviewStatus:  newState,
-    reviewComment: comment || null,
-    reviewedBy:    S.user.id,
-    reviewedByName:S.user.name,
-    reviewedAt:    Date.now(),
+// ── Review-Aktionen ────────────────────────────────────────────
+async function submitForReview(reqId) {
+  const res = await fetch(`api/requirements/${reqId}/submit-review`, {
+    method: 'POST', credentials: 'include',
   });
-
-  // Benachrichtigung
-  if (typeof addNotif === 'function') {
-    addNotif(rs.icon, `Anforderung ${rs.label}`, req.title,
-      () => { switchView('review-workflow'); });
-  }
-
-  toast(`${rs.icon} "${req.title}" → ${rs.label}`);
-  await loadReviewDashboard();
+  const data = await res.json();
+  if (data.ok) { toast('📤 Zur Review eingereicht'); refreshReqPane?.(); }
+  else toast('❌ ' + data.error);
 }
 
-async function openReviewDetail(reqId) {
-  const allReqs = await window.api.getRequirements({});
-  const req     = allReqs.find(r => r.id === reqId);
-  if (!req) return;
-  const rs = REVIEW_STATES[req.reviewStatus || 'draft'];
-
-  openModal(`Review: ${req.title}`, `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-      <span style="font-size:20px">${rs.icon}</span>
-      <span style="font-size:14px;font-weight:600;color:${rs.color}">${rs.label}</span>
-      ${req.reviewedByName ? `<span style="font-size:11px;color:var(--t3)">von ${esc(req.reviewedByName)}</span>` : ''}
-      ${req.reviewedAt ? `<span style="font-size:11px;color:var(--t3)">· ${new Date(req.reviewedAt).toLocaleString('de-DE')}</span>` : ''}
-    </div>
-    ${req.reviewComment ? `
-      <div style="background:var(--ambbg);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px">
-        <strong>Kommentar:</strong> ${esc(req.reviewComment)}
-      </div>` : ''}
-    <div class="frow"><label>Beschreibung</label>
-      <div style="font-size:13px;color:var(--t2);line-height:1.6;padding:8px 0">${esc(req.description||'—')}</div>
-    </div>
-    <div class="frow"><label>Akzeptanzkriterien (${(req.acceptanceCriteria||[]).length})</label>
-      <div>
-        ${(req.acceptanceCriteria||[]).map(ac => `
-          <div style="display:flex;align-items:center;gap:7px;padding:4px 0;font-size:12px">
-            <span style="color:${ac.done?'var(--grn)':'var(--t3)'}">${ac.done?'✓':'○'}</span>
-            <span style="color:${ac.done?'var(--grn)':'var(--t2)'}">${esc(ac.text)}</span>
-          </div>`).join('') || '<span style="font-size:12px;color:var(--t3)">Keine AC definiert</span>'}
-        <button class="btn-secondary" style="font-size:11px;padding:4px 10px;margin-top:6px"
-          onclick="closeModal();openACGenerator('${reqId}')">✦ AC generieren</button>
-      </div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:14px">
-      ${(rs.next||[]).filter(ns => canTransition(req.reviewStatus||'draft', ns, S.user.role)).map(ns => {
-        const ns_state = REVIEW_STATES[ns];
-        return `<button class="${ns==='approved'?'btn-primary':'btn-secondary'}"
-          onclick="closeModal();transitionReview('${reqId}','${req.reviewStatus||'draft'}','${ns}')">
-          ${ns_state.icon} ${ns_state.label}
-        </button>`;
-      }).join('')}
-      <button class="btn-secondary" onclick="closeModal()">Schließen</button>
+async function approveReq(reqId) {
+  openModal('Anforderung genehmigen', `
+    <p style="font-size:13px;margin-bottom:12px">Kommentar (optional):</p>
+    <textarea id="review-comment" rows="3" style="width:100%"
+      placeholder="Genehmigt — Akzeptanzkriterien vollständig..."></textarea>
+    <div class="modal-footer-actions">
+      <button class="btn-primary" style="background:var(--grn)"
+        onclick="submitDecision('${reqId}','approved')">✅ Genehmigen</button>
+      <button class="btn-secondary" onclick="closeModal()">Abbrechen</button>
     </div>`);
 }
 
-// Massen-Review: alle Anforderungen eines Systems in Review schicken
-async function submitSystemForReview(systemId) {
-  const reqs = await window.api.getRequirements({ systemId });
-  const drafts = reqs.filter(r => !r.reviewStatus || r.reviewStatus === 'draft');
-  if (!drafts.length) { toast('ℹ Keine Entwürfe vorhanden'); return; }
-  if (!confirm(`${drafts.length} Anforderungen in Review schicken?`)) return;
-  for (const r of drafts)
-    await window.api.saveRequirement({ ...r, reviewStatus:'in_review', reviewedBy:S.user.id, reviewedByName:S.user.name, reviewedAt:Date.now() });
-  toast(`✅ ${drafts.length} Anforderungen in Review`);
-  if (typeof addNotif === 'function')
-    addNotif('🔍', 'Review angefordert', `${drafts.length} Anforderungen warten auf Review`);
-  await loadReviewDashboard();
+async function rejectReq(reqId) {
+  openModal('Anforderung ablehnen', `
+    <p style="font-size:13px;margin-bottom:12px">Ablehnungsgrund (Pflicht):</p>
+    <textarea id="review-comment" rows="3" style="width:100%"
+      placeholder="Beschreibung zu ungenau — bitte Akzeptanzkriterien ergänzen..."></textarea>
+    <div class="modal-footer-actions">
+      <button class="btn-primary" style="background:var(--red)"
+        onclick="submitDecision('${reqId}','rejected')">❌ Ablehnen</button>
+      <button class="btn-secondary" onclick="closeModal()">Abbrechen</button>
+    </div>`);
 }
 
-function injectReviewStyles() {
-  if (document.getElementById('review-styles')) return;
-  const s = document.createElement('style');
-  s.id = 'review-styles';
-  s.textContent = `
-    #review-board{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;padding:16px 20px;flex:1;overflow:auto;min-width:900px}
-    .review-col{background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);display:flex;flex-direction:column;max-height:calc(100vh - 200px)}
-    .review-col-head{padding:10px 12px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:600;flex-shrink:0}
-    .review-count{background:var(--s2);border-radius:99px;padding:1px 8px;font-size:10px;color:var(--t3)}
-    .review-col-body{overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:7px;flex:1}
-    .review-card{background:var(--bg);border:1px solid var(--b1);border-radius:var(--r);padding:10px 11px;transition:border-color .15s}
-    .review-card:hover{border-color:var(--b2);background:var(--s1)}
-    @media(max-width:900px){#review-board{grid-template-columns:1fr;min-width:unset}}`;
-  document.head.appendChild(s);
+async function submitDecision(reqId, decision) {
+  const comment = document.getElementById('review-comment')?.value.trim();
+  if (decision === 'rejected' && !comment) { toast('⚠ Bitte Ablehnungsgrund angeben'); return; }
+  const res = await fetch(`api/requirements/${reqId}/review-decision`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision, comment }),
+  });
+  const data = await res.json();
+  closeModal();
+  if (data.ok) {
+    toast(decision === 'approved' ? '✅ Genehmigt' : '❌ Abgelehnt');
+    refreshReqPane?.();
+  } else toast('❌ ' + data.error);
 }
 
-window.loadReviewDashboard    = loadReviewDashboard;
-window.transitionReview       = transitionReview;
-window.openReviewDetail       = openReviewDetail;
-window.submitSystemForReview  = submitSystemForReview;
-window.REVIEW_STATES          = REVIEW_STATES;
+// ── Freeze / Unfreeze ─────────────────────────────────────────
+async function freezeReq(reqId) {
+  if (!confirm('Anforderung einfrieren? Sie kann danach nicht mehr bearbeitet werden.')) return;
+  const res = await fetch(`api/requirements/${reqId}/freeze`, { method:'POST', credentials:'include' });
+  const data = await res.json();
+  if (data.ok) { toast('🔒 Eingefroren'); refreshReqPane?.(); }
+  else toast('❌ ' + data.error);
+}
+
+async function unfreezeReq(reqId) {
+  if (!confirm('Anforderung freigeben? Sie kann dann wieder bearbeitet werden.')) return;
+  const res = await fetch(`api/requirements/${reqId}/unfreeze`, { method:'POST', credentials:'include' });
+  const data = await res.json();
+  if (data.ok) { toast('🔓 Freigegeben'); refreshReqPane?.(); }
+  else toast('❌ ' + data.error);
+}
+
+// ── Review-Queue (BA-Dashboard-Widget) ───────────────────────
+async function loadReviewQueue(containerId = 'review-queue-list') {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+
+  try {
+    const params = S.activeSystemId ? '?systemId=' + S.activeSystemId : '';
+    const reqs = await fetch('api/review-queue' + params, { credentials: 'include' }).then(r => r.json());
+
+    if (!reqs.length) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--t3);padding:8px">Keine Anforderungen in Review</div>';
+      return;
+    }
+
+    el.innerHTML = reqs.map(r => `
+      <div style="background:var(--s2);border:1px solid var(--amb);border-left:3px solid var(--amb);
+        border-radius:var(--r);padding:10px 12px;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <span class="req-id">${esc(r.id)}</span>
+            <span style="font-size:11px;color:var(--t3);margin-left:6px">${esc(r.system_name||'')}</span>
+            <div style="font-size:13px;font-weight:600;margin-top:2px">${esc(r.title)}</div>
+          </div>
+          <div style="display:flex;gap:5px;flex-shrink:0">
+            <button class="btn-primary" style="font-size:10px;padding:3px 8px;background:var(--grn)"
+              onclick="approveReq('${r.id}')">✅</button>
+            <button class="btn-secondary" style="font-size:10px;padding:3px 8px;color:var(--red)"
+              onclick="rejectReq('${r.id}')">❌</button>
+          </div>
+        </div>
+        ${r.description ? `<div style="font-size:11px;color:var(--t2);margin-top:4px">${esc(r.description.substring(0,120))}…</div>` : ''}
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:11px;color:var(--red)">Fehler: ${esc(e.message)}</div>`;
+  }
+}
+
+// ── Bulk-Selektion & Operationen ──────────────────────────────
+let _selectedReqIds = new Set();
+
+function toggleBulkMode() {
+  const active = document.body.classList.toggle('bulk-mode');
+  if (!active) {
+    _selectedReqIds.clear();
+    document.querySelectorAll('.req-checkbox').forEach(cb => cb.checked = false);
+    renderBulkBar();
+  }
+  renderBulkBar();
+}
+
+function toggleReqSelect(reqId) {
+  if (_selectedReqIds.has(reqId)) {
+    _selectedReqIds.delete(reqId);
+  } else {
+    _selectedReqIds.add(reqId);
+  }
+  renderBulkBar();
+}
+
+function selectAllReqs() {
+  document.querySelectorAll('[data-req-id]').forEach(el => {
+    const id = el.dataset.reqId;
+    if (id) _selectedReqIds.add(id);
+    const cb = el.querySelector('.req-checkbox');
+    if (cb) cb.checked = true;
+  });
+  renderBulkBar();
+}
+
+function clearReqSelection() {
+  _selectedReqIds.clear();
+  document.querySelectorAll('.req-checkbox').forEach(cb => cb.checked = false);
+  renderBulkBar();
+}
+
+function renderBulkBar() {
+  const bar = document.getElementById('bulk-action-bar');
+  if (!bar) return;
+
+  const count = _selectedReqIds.size;
+  if (!count) {
+    bar.style.display = 'none';
+    return;
+  }
+
+  bar.style.display = 'flex';
+  bar.innerHTML = `
+    <div style="font-size:12px;font-weight:600;color:var(--aa)">${count} ausgewählt</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <select id="bulk-op" style="font-size:11px;padding:4px 8px;border-radius:6px">
+        <option value="">Aktion wählen …</option>
+        <optgroup label="Priorität">
+          <option value="set_priority:high">↑ Hohe Priorität</option>
+          <option value="set_priority:medium">→ Mittlere Priorität</option>
+          <option value="set_priority:low">↓ Niedrige Priorität</option>
+        </optgroup>
+        <optgroup label="Status">
+          <option value="set_status:open">Status: Offen</option>
+          <option value="set_status:in-progress">Status: In Bearbeitung</option>
+          <option value="set_status:done">Status: Erledigt</option>
+        </optgroup>
+        <optgroup label="Review & Freeze">
+          <option value="submit_review:">📤 Zur Review einreichen</option>
+          <option value="freeze:">🔒 Einfrieren</option>
+          <option value="unfreeze:">🔓 Freigeben</option>
+        </optgroup>
+        <optgroup label="Sonstiges">
+          <option value="archive:">🗄 Archivieren</option>
+          <option value="delete:">🗑 Löschen</option>
+        </optgroup>
+      </select>
+      <button class="btn-primary" style="font-size:11px;padding:5px 12px"
+        onclick="executeBulkOp()">Ausführen</button>
+      <button class="btn-secondary" style="font-size:11px;padding:5px 10px"
+        onclick="selectAllReqs()">Alle</button>
+      <button class="btn-secondary" style="font-size:11px;padding:5px 10px"
+        onclick="clearReqSelection()">✕</button>
+    </div>`;
+}
+
+async function executeBulkOp() {
+  const sel = document.getElementById('bulk-op')?.value;
+  if (!sel) { toast('⚠ Aktion auswählen'); return; }
+
+  const [operation, value] = sel.split(':');
+  const ids = [..._selectedReqIds];
+
+  if (!ids.length) { toast('⚠ Anforderungen auswählen'); return; }
+
+  if (operation === 'delete') {
+    if (!confirm(`${ids.length} Anforderungen löschen? Dies kann nicht rückgängig gemacht werden.`)) return;
+  }
+
+  const res = await fetch('api/requirements/bulk', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, operation, value: value || undefined }),
+  });
+  const data = await res.json();
+
+  if (data.ok) {
+    toast(`✅ ${data.updated} Anforderungen aktualisiert${data.skipped ? ` (${data.skipped} übersprungen)` : ''}`);
+    clearReqSelection();
+    document.body.classList.remove('bulk-mode');
+    refreshReqPane?.();
+  } else {
+    toast('❌ ' + data.error);
+  }
+}
+
+// Exports
+window.reviewBadge       = reviewBadge;
+window.renderReviewActions = renderReviewActions;
+window.submitForReview   = submitForReview;
+window.approveReq        = approveReq;
+window.rejectReq         = rejectReq;
+window.submitDecision    = submitDecision;
+window.freezeReq         = freezeReq;
+window.unfreezeReq       = unfreezeReq;
+window.loadReviewQueue   = loadReviewQueue;
+window.toggleBulkMode    = toggleBulkMode;
+window.toggleReqSelect   = toggleReqSelect;
+window.selectAllReqs     = selectAllReqs;
+window.clearReqSelection = clearReqSelection;
+window.executeBulkOp     = executeBulkOp;
+window.renderBulkBar     = renderBulkBar;

@@ -127,3 +127,6 @@ async function loadBaDashboard() {
 }
 
 window.loadBaDashboard = loadBaDashboard;
+
+// Review-Queue beim BA-Dashboard-Laden
+if (typeof loadReviewQueue === 'function') loadReviewQueue();

@@ -38,14 +38,138 @@ function roleLabel(r) {
 
 // ── Markdown-Renderer (einfach, sicher) ───────────────────────
 function renderMD(t) {
-  return esc(t)
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g,     '<em>$1</em>')
-    .replace(/`(.*?)`/g,       '<code>$1</code>')
-    .replace(/^#{1,3} (.+)/gm, '<strong style="font-size:14px">$1</strong>')
-    .replace(/^- (.+)/gm,      '<li style="margin:2px 0 2px 14px">$1</li>')
-    .replace(/\n\n/g, '<br><br>')
-    .replace(/\n/g,   '<br>');
+  if (!t) return '';
+
+  // Code-Blöcke ZUERST extrahieren (vor dem Escaping)
+  const codeBlocks = [];
+  t = t.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push({ lang: lang || '', code });
+    return `\x00CODE${idx}\x00`;
+  });
+
+  // Inline-Code extrahieren
+  const inlineCodes = [];
+  t = t.replace(/`([^`]+)`/g, (_, code) => {
+    const idx = inlineCodes.length;
+    inlineCodes.push(code);
+    return `\x00INLINE${idx}\x00`;
+  });
+
+  // Jetzt escapen
+  t = t
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+
+  // Block-Elemente (Zeilen-basiert)
+  const lines = t.split('\n');
+  const out = [];
+  let inList = false;
+  let inTable = false;
+  let tableRows = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+
+    // Überschriften
+    const hMatch = line.match(/^(#{1,4})\s+(.+)/);
+    if (hMatch) {
+      if (inList) { out.push('</ul>'); inList = false; }
+      const level = hMatch[1].length;
+      const sizes = ['18px','16px','14px','13px'];
+      out.push(`<div style="font-size:${sizes[level-1]||'13px'};font-weight:700;margin:10px 0 4px;color:var(--t1)">${hMatch[2]}</div>`);
+      continue;
+    }
+
+    // Tabellen
+    if (line.includes('|') && line.trim().startsWith('|')) {
+      if (!inTable) { inTable = true; tableRows = []; }
+      tableRows.push(line);
+      continue;
+    } else if (inTable) {
+      // Tabelle rendern
+      const validRows = tableRows.filter(r => !r.match(/^\s*\|[-:\s|]+\|\s*$/));
+      if (validRows.length) {
+        out.push('<div style="overflow-x:auto;margin:8px 0"><table style="border-collapse:collapse;font-size:12px;width:100%">');
+        validRows.forEach((row, ri) => {
+          const cells = row.split('|').filter((_, ci) => ci > 0 && ci < row.split('|').length - 1);
+          const tag = ri === 0 ? 'th' : 'td';
+          const style = ri === 0
+            ? 'padding:6px 10px;background:var(--s3);font-weight:600;border:1px solid var(--b1);text-align:left'
+            : 'padding:5px 10px;border:1px solid var(--b1);vertical-align:top';
+          out.push('<tr>' + cells.map(c => `<${tag} style="${style}">${c.trim()}</${tag}>`).join('') + '</tr>');
+        });
+        out.push('</table></div>');
+      }
+      inTable = false; tableRows = [];
+    }
+
+    // Listen
+    const liMatch = line.match(/^(\s*)([-*+]|\d+\.)\s+(.+)/);
+    if (liMatch) {
+      if (!inList) { out.push('<ul style="margin:4px 0;padding-left:20px">'); inList = true; }
+      out.push(`<li style="margin:2px 0">${liMatch[3]}</li>`);
+      continue;
+    } else if (inList) {
+      out.push('</ul>');
+      inList = false;
+    }
+
+    // Horizontale Linie
+    if (line.match(/^(---+|===+|\*\*\*+)$/)) {
+      out.push('<hr style="border:none;border-top:1px solid var(--b1);margin:10px 0"/>');
+      continue;
+    }
+
+    // Blockquote
+    if (line.startsWith('&gt;')) {
+      out.push(`<blockquote style="border-left:3px solid var(--aa);margin:4px 0;padding:4px 10px;color:var(--t2);font-style:italic">${line.slice(4).trim()}</blockquote>`);
+      continue;
+    }
+
+    // Leere Zeile
+    if (!line.trim()) {
+      if (inList) { out.push('</ul>'); inList = false; }
+      out.push('<br>');
+      continue;
+    }
+
+    out.push(line);
+  }
+
+  if (inList) out.push('</ul>');
+  if (inTable && tableRows.length) out.push('');
+
+  t = out.join('\n');
+
+  // Inline-Formatierung
+  t = t
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g,   '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,        '<em>$1</em>')
+    .replace(/~~(.+?)~~/g,          '<del>$1</del>')
+    .replace(/\n/g, '<br>');
+
+  // Inline-Code wiederherstellen
+  t = t.replace(/\x00INLINE(\d+)\x00/g, (_, idx) =>
+    `<code style="background:var(--s3);padding:1px 5px;border-radius:4px;font-family:var(--mono);font-size:12px">${esc(inlineCodes[+idx])}</code>`
+  );
+
+  // Code-Blöcke wiederherstellen
+  t = t.replace(/\x00CODE(\d+)\x00(<br>)?/g, (_, idx) => {
+    const { lang, code } = codeBlocks[+idx];
+    return `<div style="position:relative;margin:8px 0">` +
+      (lang ? `<div style="font-size:10px;color:var(--t3);background:var(--s3);padding:3px 10px;border-radius:6px 6px 0 0;border:1px solid var(--b1);border-bottom:none">${esc(lang)}</div>` : '') +
+      `<pre style="background:var(--s3);border:1px solid var(--b1);border-radius:${lang?'0 0 6px 6px':'6px'};` +
+      `padding:10px 12px;overflow-x:auto;font-size:12px;font-family:var(--mono);margin:0;line-height:1.5">` +
+      `<code>${esc(code).trimEnd()}</code></pre>` +
+      `<button onclick="navigator.clipboard.writeText(${JSON.stringify(code)})" ` +
+      `style="position:absolute;top:${lang?'28':'6'}px;right:6px;background:var(--s2);border:1px solid var(--b1);` +
+      `border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;color:var(--t3)" title="Kopieren">⎘</button>` +
+      `</div>`;
+  });
+
+  return t;
 }
 
 // ── Toast ─────────────────────────────────────────────────────

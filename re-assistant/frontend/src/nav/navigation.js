@@ -53,6 +53,7 @@ const NAV = {
   ],
   businessanalyst: [
     { id:'ba-dashboard',   icon:ICONS.dash,     label:'Dashboard'         },
+    { id:'req-analysis',   icon:ICONS.check,    label:'RE-Analyse'        },
     { id:'ba-quality',      icon:ICONS.check,    label:'QS (ISO 29148)'    },
     { id:'ba-docanalysis',  icon:ICONS.doc,      label:'Dokumentenanalyse' },
     { id:'ba-diagrams',     icon:ICONS.diagram,  label:'Diagramme'         },
@@ -61,6 +62,7 @@ const NAV = {
     { id:'templates',       icon:ICONS.tmpl,     label:'Vorlagen'          },
     { id:'review-workflow',   icon:ICONS.check,    label:'Review'            },
     { id:'business-chat',     icon:ICONS.chat,     label:'Chat & Prozesse'   },
+    { id:'req-analysis',     icon:ICONS.check,    label:'RE-Analyse'        },
   ],
   projectmanager: [
     { id:'pm-dashboard',    icon:ICONS.dash,    label:'Dashboard'       },
@@ -117,6 +119,12 @@ const VIEW_LOADERS = {
   'templates':        () => typeof loadTemplates === 'function' && loadTemplates(),
   'dev-work':         () => typeof loadDevWork === 'function' && loadDevWork(),
   'voice':            () => { buildVoice && buildVoice(); populateVoices && populateVoices(); },
+  'req-analysis':  () => { typeof loadReqAnalysis === "function" && loadReqAnalysis(); },
+  'qs-trends':  () => { typeof loadQSTrends === "function" && loadQSTrends(); },
+  'sprint-planning':  () => { typeof loadSprintPlanning === "function" && loadSprintPlanning(); },
+  'pm-jira':  () => { typeof loadPMJira === "function" && loadPMJira(); },
+  'notification-settings':  () => { typeof loadNotificationSettings === "function" && loadNotificationSettings(); },
+  'token-dashboard':  () => { typeof loadTokenDashboard === "function" && loadTokenDashboard(); },
   'settings':         () => { typeof applyApiSectionVisibility === 'function' && applyApiSectionVisibility(); typeof loadDbStatus === 'function' && loadDbStatus(); },
 };
 

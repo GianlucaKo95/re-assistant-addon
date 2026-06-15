@@ -109,40 +109,60 @@ function onDrop(e) {
 function enableBacklogDragDrop() {
   const backlogArea = document.getElementById('backlog-area');
   if (!backlogArea) return;
+  injectDragStyles();
 
-  // Stories in jedem Feature-Block draggable machen
+  // Jede Feature-Block: Stories draggable
   backlogArea.querySelectorAll('.feature-block').forEach(featureBlock => {
-    const stories = featureBlock.querySelectorAll('.story-row');
-    if (stories.length < 2) return;
+    const storyContainer = featureBlock.querySelector('.stories-list') || featureBlock;
+    const stories = featureBlock.querySelectorAll('.story-row[data-id]');
+    if (!stories.length) return;
 
-    stories.forEach(story => {
-      story.dataset.id = story.querySelector('.sp-badge')?.nextElementSibling?.textContent?.match(/US-[\d.]+/)?.[0] || 'story-' + Math.random();
-      makeDraggable(story);
-    });
+    stories.forEach(story => makeDraggable(story));
 
-    const featureId = featureBlock.querySelector('.feature-head')?.textContent?.match(/FEAT-[\d.]+/)?.[0];
-    const observer  = new MutationObserver(() => {});
+    // Container-Level Drop-Handler für korrekte Reihenfolge
+    featureBlock.addEventListener('drop', () => {
+      const epicId  = featureBlock.closest('[data-epic-id]')?.dataset.epicId;
+      const featId  = stories[0]?.dataset.feat;
+      if (!S.currentBacklog || !featId) return;
 
-    // Drop-Callback für Stories in diesem Feature
-    stories.forEach(story => {
-      story._onDrop = (newOrder) => {
-        toast('💾 Reihenfolge gespeichert');
-        // Reihenfolge im aktuellen Backlog-State aktualisieren
-        if (S.currentBacklog && featureId) {
-          for (const epic of S.currentBacklog.epics || []) {
-            for (const feat of epic.features || []) {
-              if (feat.id === featureId) {
-                feat.stories = newOrder.map(id =>
-                  feat.stories.find(s => s.id === id)
-                ).filter(Boolean);
-                window.api.saveBacklog(S.currentBacklog);
-                break;
-              }
-            }
+      const newOrder = [...featureBlock.querySelectorAll('.story-row[data-id]')]
+        .map(el => el.dataset.id).filter(Boolean);
+
+      // Backlog-State aktualisieren
+      for (const epic of S.currentBacklog.epics || []) {
+        for (const feat of epic.features || []) {
+          if (feat.id === featId) {
+            feat.stories = newOrder
+              .map(id => feat.stories.find(s => s.id === id))
+              .filter(Boolean);
+            break;
           }
         }
-      };
+      }
+      // Speichern
+      if (typeof window.api?.saveBacklog === 'function') {
+        window.api.saveBacklog(S.currentBacklog)
+          .then(() => toast('✅ Reihenfolge gespeichert'))
+          .catch(() => toast('⚠ Speichern fehlgeschlagen'));
+      } else {
+        toast('✅ Reihenfolge angepasst');
+      }
     });
+  });
+
+  // Epics selbst auch sortierbar
+  backlogArea.querySelectorAll('.epic-block[data-epic-id]').forEach(epic => {
+    makeDraggable(epic);
+  });
+
+  backlogArea.addEventListener('drop', (e) => {
+    if (!e.target.closest('.epic-block')) return;
+    const newEpicOrder = [...backlogArea.querySelectorAll('.epic-block[data-epic-id]')]
+      .map(el => el.dataset.epicId).filter(Boolean);
+    if (!S.currentBacklog || !newEpicOrder.length) return;
+    const epicMap = Object.fromEntries((S.currentBacklog.epics||[]).map(ep => [ep.id, ep]));
+    S.currentBacklog.epics = newEpicOrder.map(id => epicMap[id]).filter(Boolean);
+    toast('✅ Epic-Reihenfolge gespeichert');
   });
 }
 

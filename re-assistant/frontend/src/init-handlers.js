@@ -86,3 +86,15 @@ document.addEventListener('DOMContentLoaded', function() {
   if (settingsBtn) settingsBtn.onclick = () => window.switchView && window.switchView('settings');
 
 });
+
+async function rechunkDocs() {
+  if (!S.activeSystemId) { toast('⚠ System auswählen'); return; }
+  if (!confirm('Alle Dokumente mit dem neuen Chunking-Algorithmus neu indexieren? Das kann einige Minuten dauern.')) return;
+  const res = await fetch('api/systems/' + S.activeSystemId + '/rechunk', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const data = await res.json();
+  toast(data.ok ? '✅ ' + data.message : '❌ ' + data.error);
+}
+window.rechunkDocs = rechunkDocs;

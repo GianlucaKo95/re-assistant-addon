@@ -113,7 +113,7 @@ function openUserModal(uid) {
 
     <div class="frow"><label>${uid ? 'Neues Passwort (leer = unverändert)' : 'Passwort'}</label>
       <input type="password" id="um-pass" placeholder="${uid ? 'leer lassen …' : 'Passwort …'}"/></div>
-    <div style="display:flex;gap:8px;margin-top:6px">
+    <div class="modal-footer-actions">
       <button class="btn-primary" onclick="saveUserModal('${uid||''}')">💾 Speichern</button>
       <button class="btn-secondary" onclick="closeModal()">Abbrechen</button>
     </div>`);

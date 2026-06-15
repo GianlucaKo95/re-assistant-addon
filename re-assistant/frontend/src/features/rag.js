@@ -143,6 +143,70 @@ async function buildRAGContext(systemId, userQuery, signal) {
   const chunksPerDoc = isDeepQuery ? detail.deepChunksPerDoc : detail.chunksPerDoc;
   const cacheChars   = isDeepQuery ? detail.deepCacheChars   : detail.cacheChars;
 
+  if (isDeepQuery) {
+    // DEEP-QUERY STRATEGIE:
+    // 1. Semantische Suche — findet relevante Dateien
+    // 2. ALLE Chunks der relevanten Dateien laden (nicht nur N pro Datei)
+    // 3. Cache nur als kurzer Rahmen (1000 Zeichen)
+    // → Echten Code sehen, nicht nur Zusammenfassung
+
+    const searchResults = await semanticSearch(systemId, userQuery, topK, signal);
+    const relevant = searchResults.filter(r => r.score > 0.03);
+
+    if (!relevant.length) return await buildFullContext(systemId, detail.cacheChars + 6000, signal);
+
+    // Top-3 relevante Dateien komplett laden (alle Chunks)
+    const topDocs = [...new Set(relevant.slice(0, 6).map(r => r.docName))].slice(0, 3);
+
+    // Alle Chunks dieser Dateien via API holen
+    const fullDocChunks = await Promise.all(topDocs.map(async docName => {
+      try {
+        const res = await fetch('api/embeddings/doc-chunks?' + new URLSearchParams({
+          systemId, docName
+        }), { credentials: 'include', signal });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return { docName, chunks: data.chunks || [] };
+      } catch(e) { return null; }
+    }));
+
+    // Weitere Dateien mit Top-N Chunks
+    const otherDocs = relevant.slice(6).reduce((acc, r) => {
+      if (!topDocs.includes(r.docName)) {
+        if (!acc[r.docName]) acc[r.docName] = [];
+        if (acc[r.docName].length < chunksPerDoc) acc[r.docName].push(r.text);
+      }
+      return acc;
+    }, {});
+
+    const parts = [];
+
+    // Kurzer Cache-Rahmen (überspringt die Vollzusammenfassung)
+    const cached = await getCachedContext(systemId, signal);
+    if (cached) {
+      parts.push(`Systemkontext (Überblick):\n${cached.substring(0, 1000)}\n…`);
+    }
+
+    // Vollständige Dateien (Top-3)
+    for (const docResult of fullDocChunks) {
+      if (!docResult) continue;
+      const allText = docResult.chunks.join('\n\n');
+      parts.push(`[${docResult.docName}] (vollständig, ${docResult.chunks.length} Abschnitte):\n${allText}`);
+    }
+
+    // Weitere relevante Chunks
+    if (Object.keys(otherDocs).length) {
+      const otherText = Object.entries(otherDocs)
+        .map(([name, texts]) => `[${name}]\n${texts.join('\n…\n')}`)
+        .join('\n\n---\n\n');
+      parts.push(`Weitere relevante Abschnitte:\n\n${otherText}`);
+    }
+
+    return parts.length ? parts.join('\n\n════════\n\n')
+      : await buildFullContext(systemId, detail.cacheChars + 6000, signal);
+  }
+
+  // NORMAL QUERY: semantische Suche + Cache als Basis
   const [results, cached] = await Promise.all([
     semanticSearch(systemId, userQuery, topK, signal),
     getCachedContext(systemId, signal),
@@ -150,12 +214,10 @@ async function buildRAGContext(systemId, userQuery, signal) {
 
   const parts = [];
 
-  // Gecachte Zusammenfassung als Basis (gekürzt, bei Deep-Queries kompakter)
   if (cached) {
     parts.push(`Systemüberblick:\n${cached.substring(0, cacheChars)}\n…`);
   }
 
-  // Spezifische Chunks obendrauf — bei Deep-Queries mehr Chunks pro Datei
   const relevant = results.filter(r => r.score > 0.05);
   if (relevant.length) {
     const byDoc = {};
@@ -166,7 +228,7 @@ async function buildRAGContext(systemId, userQuery, signal) {
     const specific = Object.entries(byDoc)
       .map(([name, texts]) => `[${name}]\n${texts.slice(0, chunksPerDoc).join('\n…\n')}`)
       .join('\n\n---\n\n');
-    parts.push(`${isDeepQuery ? 'Relevanter Code/Inhalt (detailliert)' : 'Relevante Details'}:\n\n${specific}`);
+    parts.push(`Relevante Details:\n\n${specific}`);
   }
 
   if (!parts.length) return await buildFullContext(systemId, detail.cacheChars + 6000, signal);
@@ -288,6 +350,33 @@ function log_rag(msg) {
 
 // ── Patch: Chat-Funktionen mit RAG-Kontext anreichern ─────────
 // Wird aufgerufen wenn ein System Dokumente hat und Embeddings vorhanden sind
+
+// ── Universeller RAG-Kontext-Helper für alle Rollen ──────────
+// Nutzung: const ctx = await getRAGContextForQuery(systemId, query, { role, signal })
+// role: 'overview' | 'deep' | 'normal' — steuert Strategie automatisch
+async function getRAGContextForQuery(systemId, query, opts = {}) {
+  if (!systemId) return '';
+  const { signal, role } = opts;
+
+  // Frage-Typ bestimmen
+  const q = (query || '').toLowerCase();
+  const isOverview = /überblick|übersicht|zusammenfassung|alles|komplett|gesamt|was kann|was macht|vorstell|worum geht/i.test(q);
+  const isDeep     = /wie funktioniert|erklär.*code|erklär.*funktion|implementier|im detail|genauer|funktionsweise|wie ist.*aufgebaut|wie wird.*umgesetzt|zeig.*code|quellcode|logik von|ablauf von|zeig.*implementier/i.test(q);
+
+  // Für role='deep' immer Deep-Query-Strategie erzwingen
+  const forceDeep     = role === 'deep';
+  const forceOverview = role === 'overview';
+
+  if (forceOverview || isOverview) {
+    const cached = await getCachedContext(systemId, signal);
+    if (cached) return 'Systemzusammenfassung (KI-analysiert):\n\n' + cached;
+    return await buildFullContext(systemId, 15000, signal);
+  }
+
+  return await buildRAGContext(systemId, query, signal);
+}
+
+window.getRAGContextForQuery = getRAGContextForQuery;
 window.buildRAGContext   = buildRAGContext;
 window.getDetailLevel    = getDetailLevel;
 window.buildFullContext  = buildFullContext;

@@ -2,6 +2,10 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <title>RE-Assistent</title>
 <link rel="stylesheet" href="/src/styles.css"/>
@@ -97,7 +101,20 @@
                 <button class="chip" data-p="Welche Verbesserungsmöglichkeiten siehst du?">Verbesserungen</button>
               </div>
               <div class="input-bar">
-                <textarea id="bc-input" class="chat-textarea" placeholder="Prozess beschreiben oder Frage stellen …" rows="1"></textarea>
+                <!-- Datei-Anhänge Vorschau -->
+                <div id="bc-attachments" style="display:none;flex-wrap:wrap;gap:6px;padding:6px 0 0"></div>
+                <div style="display:flex;align-items:flex-end;gap:6px;width:100%">
+                  <label for="bc-file-input" title="Datei/Bild anhängen" style="cursor:pointer;
+                    width:32px;height:32px;border-radius:8px;background:var(--s3);border:1px solid var(--b1);
+                    display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--t2)">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+                    </svg>
+                  </label>
+                  <input type="file" id="bc-file-input" style="display:none" multiple
+                    accept="image/*,.pdf,.txt,.md,.js,.ts,.jsx,.tsx,.py,.java,.cs,.json,.yaml,.yml,.xml,.html,.css,.sql"/>
+                  <textarea id="bc-input" class="chat-textarea" placeholder="Prozess beschreiben oder Frage stellen …" rows="1"></textarea>
+                </div>
                 <button class="mic-btn mic-off" id="bc-mic" title="Spracheingabe"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
                 <button class="send-btn" id="bc-send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
                 <button class="stop-btn" id="bc-stop" style="display:none" onclick="abortCurrentRequest && abortCurrentRequest(); window._chatAbortController && window._chatAbortController.abort(); document.getElementById('bc-stop').style.display='none'; document.getElementById('bc-send').style.display='flex';" title="Antwort abbrechen">
@@ -142,12 +159,21 @@
             Suche
           </button>
         </div>
+        <!-- Review-Queue-Widget -->
+        <div id="review-queue-widget" style="padding:12px 16px;border-bottom:1px solid var(--b1)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="font-size:12px;font-weight:600">👁 Review-Queue</div>
+            <button onclick="loadReviewQueue()" style="background:transparent;border:none;
+              font-size:11px;color:var(--t3);cursor:pointer">↻ Aktualisieren</button>
+          </div>
+          <div id="review-queue-list"></div>
+        </div>
         <div id="ba-dashboard-wrap" class="scroll-body" style="flex:1"></div>
       </div>
 
       <!-- BA: Quality Check -->
       <div class="view" id="view-ba-quality">
-        <div class="view-header"><div><h2>Qualitätssicherung (ISO 29148)</h2><p class="view-sub">KI bewertet Anforderungen auf Ambiguitäten, Vollständigkeit und Testbarkeit</p></div><div style="display:flex;gap:8px;align-items:center"><select id="qs-sys-select" class="filter-select" style="min-width:180px"><option value="">System wählen …</option></select><button class="btn-primary" id="btn-run-qs">▶ QS starten</button></div></div>
+        <div class="view-header"><div><h2>Qualitätssicherung (ISO 29148)</h2><p class="view-sub">KI bewertet Anforderungen auf Ambiguitäten, Vollständigkeit und Testbarkeit</p></div><div style="display:flex;gap:8px;align-items:center"><select id="qs-sys-sel" class="filter-select" style="min-width:180px"><option value="">System wählen …</option></select><button class="btn-primary" id="btn-run-qs">▶ QS starten</button></div></div>
         <div id="qs-results" class="scroll-body"></div>
       </div>
 
@@ -274,7 +300,7 @@
       <!-- PM: Prioritization -->
       <div class="view" id="view-pm-prio">
         <div class="view-header"><div><h2>Priorisierung</h2><p class="view-sub">WSJF, RICE oder MoSCoW — KI liefert nachvollziehbare Begründungen</p></div></div>
-        <div id="prio-bar" class="filter-bar"><select id="prio-sys-sel"><option value="">System wählen …</option></select><select id="prio-method"><option value="moscow">MoSCoW</option><option value="rice">RICE-Score</option><option value="wsjf">WSJF</option></select><button class="btn-primary" id="btn-run-prio">▶ Priorisierung starten</button></div>
+        <div id="prio-bar" class="filter-bar"><select id="prio-sys-sel"><option value="">System wählen …</option></select><select id="prio-method"><option value="moscow">MoSCoW</option><option value="rice">RICE-Score</option><option value="wsjf">WSJF</option><option value="kano">Kano-Modell</option></select><button class="btn-primary" id="btn-run-prio">▶ Priorisierung starten</button></div>
         <div id="prio-results" class="scroll-body" style="flex:1"></div>
       </div>
 
@@ -304,7 +330,19 @@
       </div>
 
       <!-- DEV: My Work -->
-      <div class="view" id="view-dev-work">
+      <div class="view" id="view-req-analysis">
+          <div class="view-header">
+            <div>
+              <h2>Anforderungsanalyse</h2>
+              <p class="view-sub">Stakeholder · Systemgrenzen · Use Cases · Qualitätsziele · SMART-Prüfung</p>
+            </div>
+          </div>
+          <div class="view-body" style="padding:0 0 80px">
+            <div id="req-analysis-content" style="padding:16px 20px"></div>
+          </div>
+        </div>
+
+        <div class="view" id="view-dev-work">
         <div class="view-header"><div><h2>Meine Anforderungen</h2><p class="view-sub" id="dev-sub">Zugewiesene Aufgaben mit Source-Analyse</p></div><div style="display:flex;gap:8px"><select id="dev-filter-status" class="filter-select"><option value="">Alle Status</option><option value="assigned">Zugewiesen</option><option value="in-progress">In Bearbeitung</option><option value="done">Erledigt</option></select><select id="dev-filter-sub" class="filter-select"><option value="">Alle Bereiche</option></select></div></div>
         <div id="dev-req-list" class="scroll-body" style="flex:1"></div>
       </div>

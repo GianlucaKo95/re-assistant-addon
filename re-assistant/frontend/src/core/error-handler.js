@@ -57,11 +57,19 @@ function showApiKeyWarning() {
   `;
   warn.innerHTML = `
     <span>⚠ Kein Anthropic API-Key konfiguriert — KI-Funktionen sind deaktiviert.</span>
-    <button onclick="switchView('settings');document.getElementById('apikey-warning').remove();"
-      style="background:var(--ambbg);border:1px solid rgba(251,191,36,.4);
-      border-radius:6px;color:var(--amb);font-size:11px;padding:3px 10px;cursor:pointer;">
-      Einstellungen öffnen
-    </button>`;
+    <div style="display:flex;gap:6px;align-items:center">
+      <button onclick="switchView('settings');document.getElementById('apikey-warning').remove();"
+        style="background:var(--ambbg);border:1px solid rgba(251,191,36,.4);
+        border-radius:6px;color:var(--amb);font-size:11px;padding:3px 10px;cursor:pointer;">
+        Einstellungen öffnen
+      </button>
+      <button onclick="document.getElementById('apikey-warning').remove();"
+        title="Schließen"
+        style="background:transparent;border:none;color:var(--amb);font-size:16px;
+        line-height:1;padding:2px 6px;cursor:pointer;">
+        ✕
+      </button>
+    </div>`;
   document.body.appendChild(warn);
 }
 

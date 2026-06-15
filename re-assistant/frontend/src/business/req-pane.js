@@ -175,17 +175,22 @@ async function extractFromConversation() {
     .filter(r => r.systemId === S.activeSystemId)
     .map(r => r.title).join(', ');
 
+  const schemaExample = '[{"title":"...","description":"Vollständige Beschreibung mit messbarem Kriterium","category":"Funktional|Nicht-Funktional|Sicherheit|Performance|Schnittstelle|Qualität","priority":"high|medium|low","rationale":"Warum ist diese Anforderung wichtig?","acceptance_criteria_text":"Gegeben... Wenn... Dann...\nGegeben... Wenn... Dann...","stakeholders":"Rolle1, Rolle2","verification_method":"Test|Inspektion|Review|Analyse","iso_category":"Funktionale Eignung|Leistungseffizienz|Sicherheit|Wartbarkeit","risk_level":"hoch|mittel|niedrig","complexity":"hoch|mittel|niedrig","business_value":"1-10","tags":[]}]';
+
   const res = await callAPI([{ role:'user', content:
-    `Extrahiere alle Requirements aus dem Gespräch. NICHT duplizieren: ${existing || '(keine)'}
-    
-    Gespräch:
-    ${hist}
-    
-    JSON-Array ohne Backticks:
-    [{"id":"REQ-${Date.now()}","category":"Funktional","title":"...","description":"...","priority":"medium","rationale":"","tags":[]}]
-    
-    Wenn keine neuen: []` }],
-    langNote(), 2500);
+    'Du bist ein zertifizierter Requirements Engineer (CPRE). Extrahiere alle expliziten und impliziten Anforderungen aus dem Gespräch.\n\n'
+    + 'BEREITS VORHANDEN (nicht duplizieren): ' + (existing || '(keine)') + '\n\n'
+    + 'GESPRÄCH:\n' + hist + '\n\n'
+    + 'REGELN:\n'
+    + '- Jede Anforderung muss eindeutig, vollständig und testbar sein\n'
+    + '- Titel: kurz und prägnant (max 80 Zeichen), beginnt mit Verb\n'
+    + '- Beschreibung: vollständig, messbar, ohne Mehrdeutigkeiten\n'
+    + '- Akzeptanzkriterien: mind. 1-3 Gherkin-Szenarien (Gegeben/Wenn/Dann)\n'
+    + '- Kategorie genau klassifizieren nach IEEE-830\n'
+    + 'Antworte NUR mit JSON-Array (keine Backticks, keine Erklärungen):\n'
+    + schemaExample
+    + '\nWenn keine Anforderungen erkennbar: []'
+  }], langNote(), 3500);
 
   btn.disabled = false;
   btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Extrahieren';

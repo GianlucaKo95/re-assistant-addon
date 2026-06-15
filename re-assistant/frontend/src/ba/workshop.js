@@ -51,8 +51,39 @@ async function sendWsMsg(){
   ws.entries.push({role:'user',name:S.user.name,text,ts:Date.now()});
   await window.api.saveWorkshop(ws);renderWsTranscript(ws);
   S.chatHistory.ws.push({role:'user',content:text});
-  const res=await callAPI(S.chatHistory.ws,
-    `Du bist Workshop-Moderator und Protokollant. ${langNote()}\nWorkshop: ${ws.name}\nZiel: ${ws.goal||''}\n\nFasse zusammen, strukturiere, identifiziere Themen/Entscheidungen/offene Punkte/Anforderungen. Kurze, moderierende Antworten.`,600);
+  // Stakeholder und Systemkontext laden (gecacht pro Workshop)
+  if (!ws._reCtx) {
+    try {
+      const sysId = ws.systemId || S.activeSystemId;
+      const [shs, ucs, qgs] = sysId ? await Promise.all([
+        fetch('api/systems/' + sysId + '/stakeholders', {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+        fetch('api/systems/' + sysId + '/use-cases', {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+        fetch('api/systems/' + sysId + '/quality-goals', {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+      ]) : [[], [], []];
+      ws._reCtx = [
+        shs.length ? 'Stakeholder: ' + shs.map(s => s.name + ' (' + s.role + ')').join(', ') : '',
+        ucs.length ? 'Use Cases: ' + ucs.map(u => u.title).join(', ') : '',
+        qgs.length ? 'Qualitätsziele: ' + qgs.map(g => g.iso_char).join(', ') : '',
+      ].filter(Boolean).join('\n');
+    } catch(e) { ws._reCtx = ''; }
+  }
+
+  const wsSystemPrompt = [
+    'Du bist erfahrener Workshop-Moderator, Requirements Engineer und Protokollant.',
+    langNote(),
+    'Workshop: ' + ws.name,
+    ws.goal ? 'Ziel: ' + ws.goal : '',
+    ws._reCtx,
+    '',
+    'Aufgaben:',
+    '- Moderiere konstruktiv und halte den Fokus auf das Workshop-Ziel',
+    '- Identifiziere Themen, Entscheidungen, offene Punkte und Anforderungen',
+    '- Stelle gezielte Rückfragen um Anforderungen zu konkretisieren',
+    '- Erkenne Widersprüche und fehlende Stakeholder-Perspektiven',
+    'Antworte kurz und moderierend (max 3-4 Sätze).',
+  ].filter(Boolean).join('\n');
+
+  const res=await callAPI(S.chatHistory.ws, wsSystemPrompt, 2000);
   if(!res.ok)return;
   S.chatHistory.ws.push({role:'assistant',content:res.text});
   if(S.chatHistory.ws.length>60)S.chatHistory.ws=S.chatHistory.ws.slice(-60);
@@ -62,7 +93,8 @@ async function sendWsMsg(){
 }
 async function updateWsStructured(ws){
   const allText=ws.entries.filter(e=>e.role==='user').map(e=>e.text).join('\n');
-  const res=await callAPI([{role:'user',content:`Extrahiere strukturiert. JSON ohne Backticks:\n{"themes":["Thema1"],"decisions":["Entscheidung1"],"openPoints":["Offener Punkt1"],"requirements":["Anforderung1"]}\n\nTranskript:\n${allText}`}],langNote(),800);
+  const schema = '{"themes":["Thema"],"decisions":["Entscheidung (inkl. Begründung)"],"openPoints":["Offener Punkt (inkl. Verantwortlicher)"],"requirements":["Das System MUSS/SOLL/KANN..."],"risks":["Erkanntes Risiko"],"assumptions":["Getroffene Annahme"]}';
+  const res=await callAPI([{role:'user',content:'Extrahiere strukturiert aus dem Workshop-Transkript. Anforderungen im Format "Das System MUSS/SOLL/KANN...". JSON ohne Backticks:\n' + schema + '\n\nTranskript:\n' + allText}],langNote(),1200);
   if(!res.ok)return;
   try{ws.structured=JSON.parse(res.text.replace(/```json|```/g,'').trim());}catch(e){}
 }

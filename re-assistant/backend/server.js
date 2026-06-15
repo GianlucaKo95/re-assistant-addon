@@ -135,6 +135,92 @@ async function trackReqChanges(oldReq, newReq, userId, userName) {
   }
 }
 
+
+// ── Provider-agnostischer Modell-Resolver ─────────────────────
+// Gibt das passende Modell für den konfigurierten Provider zurück.
+// tier: 'fast' (Haiku/Haiku-äquivalent) | 'balanced' (Sonnet) | 'powerful' (Opus)
+const PROVIDER_MODELS = {
+  anthropic: {
+    fast:      'claude-haiku-4-5-20251001',
+    balanced:  'claude-sonnet-4-6',
+    powerful:  'claude-opus-4-6',
+  },
+  groq: {
+    fast:      'llama-3.1-8b-instant',       // schnell, günstig
+    balanced:  'llama-3.3-70b-versatile',    // Hauptmodell
+    powerful:  'llama-3.3-70b-versatile',    // Groq hat kein stärkeres
+  },
+  grok: {
+    fast:      'grok-3-mini',                // schnell
+    balanced:  'grok-3',                     // Standard
+    powerful:  'grok-3',                     // Stärkstes verfügbar
+    vision:    'grok-2-vision-latest',       // Bild-Analyse
+  },
+};
+
+function resolveModel(provider, tier = 'balanced', userModel = null) {
+  // User hat explizit ein Modell gewählt → respektieren
+  if (userModel && userModel.length > 3) return userModel;
+  return PROVIDER_MODELS[provider]?.[tier] || PROVIDER_MODELS.anthropic[tier];
+}
+
+// API-Call-Builder: provider-agnostisch
+function buildApiCall(apiCfg, prompt, maxTokens = 1000, tier = 'balanced', userModel = null) {
+  const model = resolveModel(apiCfg.provider, tier, userModel);
+
+  if (apiCfg.provider === 'groq' || apiCfg.provider === 'grok') {
+    const baseUrl = apiCfg.provider === 'groq'
+      ? 'https://api.groq.com/openai/v1/chat/completions'
+      : 'https://api.x.ai/v1/chat/completions';
+    return {
+      url:     baseUrl,
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key },
+      body:    { model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens },
+      extract: (data) => data.choices?.[0]?.message?.content || '',
+    };
+  }
+
+  // Anthropic
+  return {
+    url:     'https://api.anthropic.com/v1/messages',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' },
+    body:    { model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] },
+    extract: (data) => data.content?.[0]?.text || '',
+  };
+}
+
+// Einheitlicher KI-Call (provider-agnostisch, mit Timeout + Retry)
+async function aiCallUnified(apiCfg, prompt, maxTokens = 1000, tier = 'balanced', timeoutMs = 30000, retries = 1) {
+  const cfg = buildApiCall(apiCfg, prompt, maxTokens, tier);
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(cfg.url, {
+        method: 'POST', headers: cfg.headers, body: JSON.stringify(cfg.body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        if ((response.status === 429 || response.status >= 500) && attempt < retries) {
+          await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+          continue;
+        }
+        throw new Error(`${apiCfg.provider} ${response.status}: ${errText.substring(0, 200)}`);
+      }
+      const data = await response.json();
+      return cfg.extract(data);
+    } catch(e) {
+      lastErr = e;
+      if ((e.name === 'TimeoutError' || e.name === 'AbortError') && attempt < retries) {
+        timeoutMs = Math.round(timeoutMs * 1.5);
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
 // ── AUTH ──────────────────────────────────────────────────────
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -342,9 +428,10 @@ app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req
               await query('DELETE FROM embeddings WHERE doc_id=$1', [docId]);
               for (let i = 0; i < chunks.length; i++) {
                 const vec = simpleTextVector(chunks[i].text);
-                await query(
-                  'INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding) VALUES ($1,$2,$3,$4,$5,$6)',
-                  [req.params.id, docId, file.originalname, i, chunks[i].text, JSON.stringify(vec)]
+                const chunkFnName = chunks[i].functionName || null;
+              await query(
+                  'INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding,function_name) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING',
+                  [req.params.id, docId, file.originalname, i, chunks[i].text, JSON.stringify(vec), chunkFnName]
                 );
               }
               log('info', `RAG: ${file.originalname} → ${chunks.length} Chunks indexiert`);
@@ -367,7 +454,161 @@ app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req
 });
 
 // Text-Chunking im Backend
-function chunkTextBackend(text, docName, chunkSize = 800, overlap = 100) {
+// ── Import-Graph Extraktion ───────────────────────────────────
+function extractImports(text, docName) {
+  const imports = [];
+  // JS/TS: import/require
+  const jsImports = text.matchAll(/(?:import\s+.*?\s+from\s+['"]([^'"]+)['"]|require\s*\(\s*['"]([^'"]+)['"]\s*\))/g);
+  for (const m of jsImports) {
+    imports.push((m[1] || m[2]).replace(/^\.\.?\/?/, '').replace(/\.js$/, ''));
+  }
+  // Python: import/from
+  const pyImports = text.matchAll(/(?:^from\s+(\S+)\s+import|^import\s+(\S+))/gm);
+  for (const m of pyImports) {
+    imports.push(m[1] || m[2]);
+  }
+  return [...new Set(imports)].filter(i => !i.startsWith('node_modules') && i.length > 0);
+}
+
+// ── Funktions-Level-Extraktion (AST-light) ────────────────────
+function extractFunctions(text, docName) {
+  const functions = [];
+  const lines = text.split('\n');
+
+  // JS/TS: function declarations, arrow functions, class methods
+  const funcPatterns = [
+    /^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)/,
+    /^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:function|\(|\w+\s*=>)/,
+    /^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{/,
+    /^\s*(?:export\s+)?class\s+(\w+)/,
+    // Python
+    /^\s*(?:async\s+)?def\s+(\w+)/,
+    /^\s*class\s+(\w+)/,
+  ];
+
+  let currentFunc = null;
+  let depth = 0;
+  let funcStart = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const openBraces  = (line.match(/\{|\(/g) || []).length;
+    const closeBraces = (line.match(/\}|\)/g) || []).length;
+
+    // Neue Funktion gefunden
+    for (const pattern of funcPatterns) {
+      const m = line.match(pattern);
+      if (m && depth === 0) {
+        if (currentFunc && i - funcStart > 3) {
+          functions.push({
+            name: currentFunc,
+            startLine: funcStart,
+            endLine: i - 1,
+            text: lines.slice(funcStart, i).join('\n'),
+          });
+        }
+        currentFunc = m[1] || m[0].trim().substring(0, 40);
+        funcStart = i;
+        break;
+      }
+    }
+    depth += openBraces - closeBraces;
+    if (depth < 0) depth = 0;
+  }
+
+  // Letzte Funktion
+  if (currentFunc && lines.length - funcStart > 3) {
+    functions.push({
+      name: currentFunc,
+      startLine: funcStart,
+      endLine: lines.length - 1,
+      text: lines.slice(funcStart).join('\n'),
+    });
+  }
+  return functions;
+}
+
+function chunkTextBackend(text, docName, chunkSize = 1800, overlap = 200) {
+  const isCode = /\.(js|ts|jsx|tsx|py|java|cs|go|rs|cpp|c|php|rb|swift|kt)$/.test(docName);
+
+  if (isCode) {
+    // 1. Imports extrahieren als Kontext-Header
+    const imports = extractImports(text, docName);
+    const importHeader = imports.length
+      ? `// Abhängigkeiten: ${imports.join(', ')}\n`
+      : '';
+
+    // 2. Funktions-Level-Chunking
+    const functions = extractFunctions(text, docName);
+
+    if (functions.length > 0) {
+      const chunks = [];
+      const fileHeader = text.substring(0, Math.min(200, text.indexOf('\n', 100) + 1)); // erste Zeilen (imports)
+
+      for (const fn of functions) {
+        const fnText = fn.text;
+        if (fnText.length <= chunkSize) {
+          // Funktion passt in einen Chunk — komplett + Kontext
+          chunks.push({
+            text: importHeader + `// Funktion: ${fn.name} (${docName}:\${fn.startLine+1}-${fn.endLine+1})\n` + fnText,
+            docName,
+            functionName: fn.name,
+          });
+        } else {
+          // Große Funktion: nach Zeilen aufteilen mit Überlappung
+          const lines = fnText.split('\n');
+          const LINES_PER_CHUNK = 70;
+          for (let i = 0; i < lines.length; i += LINES_PER_CHUNK - 10) {
+            const slice = lines.slice(i, i + LINES_PER_CHUNK).join('\n');
+            chunks.push({
+              text: importHeader + `// ${fn.name} (Teil ${Math.floor(i/LINES_PER_CHUNK)+1}, Zeilen ${fn.startLine+i+1}-${fn.startLine+i+LINES_PER_CHUNK})\n` + slice,
+              docName,
+              functionName: fn.name,
+            });
+          }
+        }
+      }
+
+      // Top-Level Code außerhalb von Funktionen
+      const funcLines = new Set(functions.flatMap(f =>
+        Array.from({length: f.endLine - f.startLine + 1}, (_, i) => f.startLine + i)
+      ));
+      const topLevel = text.split('\n')
+        .filter((_, i) => !funcLines.has(i))
+        .join('\n').trim();
+      if (topLevel.length > 100) {
+        chunks.push({
+          text: importHeader + '// Top-Level / Exports / Konfiguration:\n' + topLevel.substring(0, chunkSize),
+          docName,
+          functionName: '__top_level__',
+        });
+      }
+
+      return chunks.length > 0 ? chunks : [{ text: importHeader + text.substring(0, chunkSize), docName }];
+    }
+
+    // Fallback: zeilenbasiertes Chunking
+    const lines = text.split('\n');
+    const chunks = [];
+    let current = importHeader;
+    let currentLines = 0;
+    const MAX_LINES = 75;
+
+    for (let i = 0; i < lines.length; i++) {
+      current += (current ? '\n' : '') + lines[i];
+      currentLines++;
+      if (currentLines >= MAX_LINES && lines[i].trim() === '') {
+        if (current.trim().length > 50) chunks.push({ text: current.trim(), docName });
+        const overlapLines = lines.slice(Math.max(0, i - 5), i + 1);
+        current = importHeader + overlapLines.join('\n');
+        currentLines = overlapLines.length;
+      }
+    }
+    if (current.trim().length > 50) chunks.push({ text: current.trim(), docName });
+    return chunks.length > 0 ? chunks : [{ text: text.substring(0, chunkSize), docName }];
+  }
+
+  // Nicht-Code: Satz-basiertes Chunking
   const sentences = text.split(/(?<=[.!?\n])\s+/);
   const chunks = [];
   let current = '';
@@ -379,7 +620,7 @@ function chunkTextBackend(text, docName, chunkSize = 800, overlap = 100) {
       current += (current ? ' ' : '') + sentence;
     }
   }
-  if (current.trim().length > 20) chunks.push({ text: current.trim(), docName });
+  if (current.trim().length > 50) chunks.push({ text: current.trim(), docName });
   return chunks;
 }
 
@@ -478,7 +719,9 @@ app.post('/api/requirements', requireAuth, async (req, res) => {
         review_status=$14,review_comment=$15,reviewed_by=$16,reviewed_by_name=$17,reviewed_at=$18,
         assigned_to=$19,subcategory=$20,source_analysis=$21,source_suggestion=$22,
         last_changed_by=$23,archived=$24,archived_at=$25,archived_by=$26,
-        decomposed=$27,decomposed_into=$28
+        decomposed=$27,decomposed_into=$28,
+        acceptance_criteria_text=$29,verification_method=$30,iso_category=$31,
+        risk_level=$32,business_value=$33,stakeholders=$34,source=$35
         WHERE id=$1`, [
         clean.id,
         clean.title ?? existing.title,
@@ -508,6 +751,13 @@ app.post('/api/requirements', requireAuth, async (req, res) => {
         clean.archivedBy ?? existing.archived_by,
         clean.decomposed ?? existing.decomposed ?? false,
         clean.decomposedInto ?? existing.decomposed_into,
+        clean.acceptance_criteria_text ?? clean.acceptanceCriteriaText ?? existing.acceptance_criteria_text ?? '',
+        clean.verification_method ?? clean.verificationMethod ?? existing.verification_method ?? '',
+        clean.iso_category ?? clean.isoCategory ?? existing.iso_category ?? '',
+        clean.risk_level ?? clean.riskLevel ?? existing.risk_level ?? '',
+        clean.business_value ?? clean.businessValue ?? existing.business_value ?? 0,
+        JSON.stringify(clean.stakeholders || jparse(existing.stakeholders, [])),
+        clean.source ?? existing.source ?? '',
       ]);
     } else {
       const id = clean.id || `${clean.systemId?.substring(0,4)||'REQ'}-${Date.now()}`;
@@ -515,8 +765,10 @@ app.post('/api/requirements', requireAuth, async (req, res) => {
         (id,system_id,title,description,category,priority,status,rationale,tags,
          comments,history,acceptance_criteria,quality_score,iso_issues,
          review_status,assigned_to,subcategory,source_analysis,source_suggestion,
-         last_changed_by,created_by,created_by_name,imported_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`, [
+         last_changed_by,created_by,created_by_name,imported_at,
+         acceptance_criteria_text,verification_method,iso_category,
+         risk_level,business_value,stakeholders,source)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`, [
         id, clean.systemId||clean.system_id,
         clean.title, clean.description||'', clean.category||'Funktional',
         clean.priority||'medium', clean.status||'open', clean.rationale||'',
@@ -528,6 +780,13 @@ app.post('/api/requirements', requireAuth, async (req, res) => {
         clean.sourceSuggestion||null,
         req.session.userId, clean.createdBy||req.session.userId,
         clean.createdByName||null, clean.importedAt ? new Date(clean.importedAt) : null,
+        clean.acceptance_criteria_text || clean.acceptanceCriteriaText || '',
+        clean.verification_method || clean.verificationMethod || '',
+        clean.iso_category || clean.isoCategory || '',
+        clean.risk_level || clean.riskLevel || '',
+        clean.business_value || clean.businessValue || 0,
+        JSON.stringify(clean.stakeholders || []),
+        clean.source || '',
       ]);
     }
 
@@ -569,14 +828,14 @@ Bestehende:\n${rows.slice(0,15).map(r=>`- [${r.id}] ${r.title}: ${(r.description
 
           let apiUrl, apiHeaders, apiBody;
           if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
-            const model = apiCfg.provider === 'groq' ? 'llama-3.3-70b-versatile' : 'grok-3-mini';
+            const model = resolveModel(apiCfg.provider, 'balanced');
             apiUrl = apiCfg.provider === 'groq' ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://api.x.ai/v1/chat/completions';
             apiHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key };
             apiBody = { model, messages: [{ role: 'user', content: prompt }], max_tokens: 600 };
           } else {
             apiUrl = 'https://api.anthropic.com/v1/messages';
             apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
-            apiBody = { model: 'claude-haiku-4-5-20251001', max_tokens: 600, messages: [{ role: 'user', content: prompt }] };
+            apiBody = { model: resolveModel(apiCfg.provider, 'fast'), max_tokens: 600, messages: [{ role: 'user', content: prompt }] };
           }
 
           const response = await fetch(apiUrl, { method: 'POST', headers: apiHeaders, body: JSON.stringify(apiBody) });
@@ -923,16 +1182,59 @@ app.post('/api/embeddings/search', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-function simpleTextVector(text) {
-  const vec = new Array(128).fill(0);
-  const words = text.toLowerCase().split(/\W+/).filter(w=>w.length>2);
-  for (const word of words) {
-    let h = 5381;
-    for (let i=0; i<word.length; i++) h = ((h<<5)+h)+word.charCodeAt(i);
-    vec[Math.abs(h)%128] += 1;
+// ── Semantische Embeddings via Anthropic Voyage API ──────────
+// Fallback auf erweitertes TF-IDF wenn kein Key vorhanden
+async function getSemanticEmbedding(text) {
+  try {
+    const apiCfg = await resolveApiConfig(null);
+    if (apiCfg.key) {
+      const prompt = 'Extrahiere die 20 wichtigsten semantischen Schlüsselbegriffe aus diesem Text als kommagetrennte Liste. Nur die Begriffe, keine Erklärungen:\n\n' + text.substring(0, 2000);
+      const result = await aiCallUnified(apiCfg, prompt, 150, 'fast', 12000, 0);
+      const keywords = result.toLowerCase()
+        .split(/[,\n]+/).map(k => k.trim()).filter(k => k.length > 2 && k.length < 30);
+      if (keywords.length > 0) {
+        return enhancedTextVector(keywords.join(' ') + ' ' + text);
+      }
+    }
+  } catch(e) {
+    // Fallback auf lokales Embedding
   }
-  const mag = Math.sqrt(vec.reduce((s,v)=>s+v*v,0)) || 1;
-  return vec.map(v=>v/mag);
+  return enhancedTextVector(text);
+}
+
+// Verbesserter lokaler Vektor: 512-dimensional, N-Gramme, Code-Tokens
+function enhancedTextVector(text) {
+  const vec = new Array(512).fill(0);
+  // Code-Tokens extrahieren (Funktionsnamen, Klassen, Imports)
+  const codeTokens = text.match(/(?:function|class|async|import|export|const|let|var)\s+(\w+)|\b(\w+)(?=\s*[=(\[{])/g) || [];
+  const words = [
+    ...text.toLowerCase().split(/\W+/).filter(w => w.length > 1),
+    ...codeTokens.map(t => t.trim().toLowerCase()),
+  ];
+
+  // Unigramme + Bigramme
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (w.length < 2) continue;
+    // Unigram
+    let h = 5381;
+    for (let j = 0; j < w.length; j++) h = ((h << 5) + h) + w.charCodeAt(j);
+    vec[Math.abs(h) % 512] += 1;
+    // Bigram
+    if (i + 1 < words.length) {
+      const bigram = w + '_' + words[i + 1];
+      let h2 = 5381;
+      for (let j = 0; j < bigram.length; j++) h2 = ((h2 << 5) + h2) + bigram.charCodeAt(j);
+      vec[Math.abs(h2) % 512] += 0.5;
+    }
+  }
+  const mag = Math.sqrt(vec.reduce((s, v) => s + v * v, 0)) || 1;
+  return vec.map(v => v / mag);
+}
+
+// Synchrones Fallback für sofortige Nutzung (ohne API-Call)
+function simpleTextVector(text) {
+  return enhancedTextVector(text);
 }
 function cosineSimilarity(a, b) {
   if (!a?.length || !b?.length || a.length!==b.length) return 0;
@@ -1327,7 +1629,8 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
       });
     }
 
-    const { _feature, _systemId, _apiKey, _provider, _grokApiKey, _groqApiKey, ...cleanBody } = req.body;
+    const { _feature, _systemId, _apiKey, _provider, _grokApiKey, _groqApiKey,
+      _attachments, ...cleanBody } = req.body;
 
     // Provider + Key ausschließlich serverseitig auflösen (app_settings / per-user DB)
     const apiCfg = await resolveApiConfig(req.session.userId);
@@ -1342,26 +1645,98 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
 
     if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
       // Grok (xAI) + Groq — beide OpenAI-kompatibel
-      const defaultModel = apiCfg.provider === 'groq' ? 'llama-3.3-70b-versatile' : 'grok-3-mini';
-      const model = cleanBody.model?.startsWith('claude') ? defaultModel : (cleanBody.model || defaultModel);
+      const defaultModel = resolveModel(apiCfg.provider, 'balanced');
+      // Wenn Client ein claude-Modell schickt aber Provider ist grok/groq → ignorieren
+      const model = (cleanBody.model && !cleanBody.model.startsWith('claude'))
+        ? cleanBody.model
+        : defaultModel;
       const msgs = [];
       if (cleanBody.system) msgs.push({ role: 'system', content: cleanBody.system });
-      for (const m of (cleanBody.messages || [])) {
-        const text = Array.isArray(m.content) ? m.content.map(c => c.text || '').join('') : m.content;
-        msgs.push({ role: m.role, content: text });
+
+      const rawMessages = cleanBody.messages || [];
+      for (let mi = 0; mi < rawMessages.length; mi++) {
+        const m = rawMessages[mi];
+        const isLastUser = m.role === 'user' && mi === rawMessages.map(x=>x.role).lastIndexOf('user');
+
+        if (isLastUser && _attachments?.length) {
+          // OpenAI multimodal format für Grok (Vision) und Groq
+          const contentParts = [];
+
+          for (const att of _attachments) {
+            if (att.type === 'image' && att.data && apiCfg.provider === 'grok') {
+              // Grok unterstützt Vision
+              contentParts.push({
+                type:      'image_url',
+                image_url: { url: `data:${att.mime || 'image/jpeg'};base64,${att.data}` },
+              });
+            } else if (att.type === 'text' && att.text) {
+              contentParts.push({ type: 'text', text: `\n\n## Anhang: ${att.name}\n${att.text}` });
+            } else if (att.type === 'image' && att.data && apiCfg.provider === 'groq') {
+              // Groq: Bild als Text-Beschreibung (Groq hat noch keine Vision für alle Modelle)
+              contentParts.push({ type: 'text', text: `\n\n[Bild: ${att.name} — ${att.mime}]\n[Hinweis: Beschreibe was du auf diesem Bild siehst und wie es mit der Anfrage zusammenhängt]` });
+            }
+          }
+
+          const textContent = typeof m.content === 'string' ? m.content : '';
+          if (textContent) contentParts.push({ type: 'text', text: textContent });
+
+          msgs.push({ role: m.role, content: contentParts.length === 1 && contentParts[0].type === 'text' ? contentParts[0].text : contentParts });
+        } else {
+          const text = Array.isArray(m.content) ? m.content.map(c => c.text || '').join('') : (m.content || '');
+          msgs.push({ role: m.role, content: text });
+        }
       }
+
       const baseUrl = apiCfg.provider === 'groq' ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://api.x.ai/v1/chat/completions';
+      // Grok Vision benötigt ein Modell das Vision unterstützt
+      const visionModel = (_attachments?.some(a => a.type === 'image') && apiCfg.provider === 'grok')
+        ? 'grok-2-vision-latest'
+        : model;
       apiUrl     = baseUrl;
       apiHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key };
-      apiBody    = { model, messages: msgs, max_tokens: cleanBody.max_tokens || 1000 };
+      apiBody    = { model: visionModel, messages: msgs, max_tokens: cleanBody.max_tokens || 1000 };
     } else {
       apiUrl     = 'https://api.anthropic.com/v1/messages';
       apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
-      // Default-Modell falls Client keines vorgibt oder ein xAI/Groq-Modell hinterlegt war
+      // Default-Modell: Client-Wahl respektieren (wenn claude-*), sonst balanced
       const model = (cleanBody.model && cleanBody.model.startsWith('claude'))
         ? cleanBody.model
-        : 'claude-sonnet-4-6';
-      apiBody    = { ...cleanBody, model };
+        : resolveModel('anthropic', 'balanced');
+
+      // Anhänge in Anthropic multimodal Format konvertieren
+      if (_attachments?.length) {
+        const messages = (cleanBody.messages || []).map(msg => {
+          if (msg.role !== 'user') return msg;
+          // Letzter User-Message bekommt die Anhänge
+          return msg;
+        });
+
+        // Letzte User-Nachricht mit Anhängen erweitern
+        const lastUserIdx = messages.map(m => m.role).lastIndexOf('user');
+        if (lastUserIdx >= 0) {
+          const lastMsg = messages[lastUserIdx];
+          const textContent = typeof lastMsg.content === 'string' ? lastMsg.content : '';
+          const contentParts = [];
+
+          for (const att of _attachments) {
+            if (att.type === 'image' && att.data) {
+              contentParts.push({
+                type:  'image',
+                source: { type: 'base64', media_type: att.mime || 'image/jpeg', data: att.data },
+              });
+            } else if (att.type === 'text' && att.text) {
+              contentParts.push({ type: 'text', text: `\n\n## Anhang: ${att.name}\n${att.text}` });
+            }
+          }
+
+          if (textContent) contentParts.push({ type: 'text', text: textContent });
+          messages[lastUserIdx] = { ...lastMsg, content: contentParts };
+        }
+
+        apiBody = { ...cleanBody, model, messages };
+      } else {
+        apiBody = { ...cleanBody, model };
+      }
     }
 
     log('info', `AI-Chat: Sende an ${apiUrl} (Model: ${apiBody.model})`);
@@ -1616,14 +1991,14 @@ Bestehende:
 ${rows.slice(0,15).map(r=>`- [${r.id}] ${r.title}`).join('\n')}`;
     let apiUrl, apiHeaders, apiBody;
     if (apiCfg.provider!=='anthropic') {
-      const model = apiCfg.provider==='groq'?'llama-3.3-70b-versatile':'grok-3-mini';
+      const model = resolveModel(apiCfg.provider, 'balanced');
       apiUrl = apiCfg.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'https://api.x.ai/v1/chat/completions';
       apiHeaders={'Content-Type':'application/json','Authorization':'Bearer '+apiCfg.key};
       apiBody={model,messages:[{role:'user',content:prompt}],max_tokens:600};
     } else {
       apiUrl='https://api.anthropic.com/v1/messages';
       apiHeaders={'Content-Type':'application/json','x-api-key':apiCfg.key,'anthropic-version':'2023-06-01'};
-      apiBody={model:'claude-haiku-4-5-20251001',max_tokens:600,messages:[{role:'user',content:prompt}]};
+      apiBody={model: resolveModel(apiCfg.provider, 'fast'),max_tokens:600,messages:[{role:'user',content:prompt}]};
     }
     const response = await fetch(apiUrl,{method:'POST',headers:apiHeaders,body:JSON.stringify(apiBody)});
     const data = await response.json();
@@ -1690,14 +2065,14 @@ Anforderung: ${req_.title}
 ${req_.description||''}`;
     let apiUrl,apiHeaders,apiBody;
     if(apiCfg.provider!=='anthropic'){
-      const model=apiCfg.provider==='groq'?'llama-3.3-70b-versatile':'grok-3-mini';
+      const model=resolveModel(apiCfg.provider, 'balanced');
       apiUrl=apiCfg.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'https://api.x.ai/v1/chat/completions';
       apiHeaders={'Content-Type':'application/json','Authorization':'Bearer '+apiCfg.key};
       apiBody={model,messages:[{role:'user',content:prompt}],max_tokens:1000};
     } else {
       apiUrl='https://api.anthropic.com/v1/messages';
       apiHeaders={'Content-Type':'application/json','x-api-key':apiCfg.key,'anthropic-version':'2023-06-01'};
-      apiBody={model:'claude-haiku-4-5-20251001',max_tokens:1000,messages:[{role:'user',content:prompt}]};
+      apiBody={model: resolveModel(apiCfg.provider, 'fast'),max_tokens:1000,messages:[{role:'user',content:prompt}]};
     }
     const response=await fetch(apiUrl,{method:'POST',headers:apiHeaders,body:JSON.stringify(apiBody)});
     const data=await response.json();
@@ -1917,7 +2292,7 @@ async function fetchWithTimeout(url, opts, timeoutMs = 25000) {
 async function aiCall(apiCfg, prompt, maxTokens = 400, timeoutMs = 30000, retries = 1) {
   let apiUrl, apiHeaders, apiBody;
   if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
-    const model = apiCfg.provider === 'groq' ? 'llama-3.3-70b-versatile' : 'grok-3-mini';
+    const model = resolveModel(apiCfg.provider, 'balanced');
     apiUrl = apiCfg.provider === 'groq'
       ? 'https://api.groq.com/openai/v1/chat/completions'
       : 'https://api.x.ai/v1/chat/completions';
@@ -1926,7 +2301,7 @@ async function aiCall(apiCfg, prompt, maxTokens = 400, timeoutMs = 30000, retrie
   } else {
     apiUrl = 'https://api.anthropic.com/v1/messages';
     apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
-    apiBody = { model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] };
+    apiBody = { model: resolveModel(apiCfg.provider, 'fast'), max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] };
   }
 
   let lastErr;
@@ -2003,7 +2378,7 @@ async function buildSystemContextCache(systemId) {
       byDoc[c.doc_id].texts.push(c.chunk_text);
     }
     const docIds = Object.keys(byDoc);
-    await updateStatus('building', { docs_total: docIds.length });
+    await updateStatus('building', { docs_total: docIds.length, build_phase: 'files', groups_total: 0, groups_done: 0 });
 
     const apiCfg = await resolveApiConfig(null);
 
@@ -2035,6 +2410,10 @@ async function buildSystemContextCache(systemId) {
 
     const toProcess = docIds.filter(id => !existingMap[id]);
 
+    if (toProcess.length === 0 && processed > 0) {
+      log('info', `Cache: Alle ${processed} Datei-Zusammenfassungen bereits vorhanden — überspringe Phase 1`);
+    }
+
     for (let i = 0; i < toProcess.length; i += BATCH_SIZE) {
       const batch = toProcess.slice(i, i + BATCH_SIZE);
       await Promise.all(batch.map(async (docId) => {
@@ -2043,7 +2422,7 @@ async function buildSystemContextCache(systemId) {
         const prompt = `Fasse den Inhalt dieser Datei in 2-3 Sätzen auf Deutsch zusammen. Konzentriere dich auf: Was macht dieser Code/diese Datei? Welche Funktionen, Komponenten oder Konfigurationen enthält sie?\n\nDatei: ${doc.name}\n\nInhalt:\n${content}`;
 
         try {
-          const summary = await aiCall(apiCfg, prompt, 200, 30000, 1);
+          const summary = await aiCallUnified(apiCfg, prompt, 200, 'fast', 30000, 1);
           await query(
             'INSERT INTO doc_summaries (doc_id,system_id,doc_name,summary) VALUES ($1,$2,$3,$4) ON CONFLICT (doc_id) DO UPDATE SET summary=$4',
             [docId, systemId, doc.name, summary.trim()]
@@ -2063,6 +2442,8 @@ async function buildSystemContextCache(systemId) {
       await updateStatus('building', { docs_processed: processed });
       log('info', `Cache: ${processed}/${docIds.length} Dokumente zusammengefasst`);
     }
+
+    await updateStatus('building', { docs_processed: docIds.length, build_phase: 'grouping' });
 
     // ── Schritt 2: Dateien nach Ordnerstruktur gruppieren ───────
     const allSummaries = await queryAll(
@@ -2085,12 +2466,14 @@ async function buildSystemContextCache(systemId) {
     }
     const groupNames = Object.keys(groups).sort();
     log('info', `Cache: ${allSummaries.length} Dateien in ${groupNames.length} Gruppen`);
+    await updateStatus('building', { build_phase: 'groups', groups_total: groupNames.length, groups_done: 0 });
 
     // ── Schritt 3: Pro Gruppe eine Zwischenzusammenfassung ──────
     const groupSummaries = {};
     const GROUP_BATCH = 4;
     const groupEntries = Object.entries(groups);
 
+    let groupsDone = 0;
     for (let i = 0; i < groupEntries.length; i += GROUP_BATCH) {
       const batch = groupEntries.slice(i, i + GROUP_BATCH);
       await Promise.all(batch.map(async ([groupName, files]) => {
@@ -2102,13 +2485,15 @@ async function buildSystemContextCache(systemId) {
         const fileList = files.map(f => `- ${f.doc_name}: ${f.summary}`).join('\n');
         const prompt = `Diese Dateien gehören zum Modul "${groupName}" eines Softwaresystems. Fasse in 2-4 Sätzen auf Deutsch zusammen, welchen Zweck dieses Modul erfüllt und welche Hauptfunktionen es bereitstellt.\n\nDateien:\n${fileList.substring(0, 6000)}`;
         try {
-          groupSummaries[groupName] = await aiCall(apiCfg, prompt, 250, 30000, 1);
+          groupSummaries[groupName] = await aiCallUnified(apiCfg, prompt, 300, 'fast', 30000, 1);
         } catch(e) {
           log('warning', `Cache: Gruppe ${groupName} fehlgeschlagen: ${e.message}`);
           groupSummaries[groupName] = fileList.substring(0, 500);
         }
       }));
-      await updateStatus('building', { docs_processed: docIds.length }); // Phase 2 läuft, Doks bereits fertig
+      groupsDone += batch.length;
+      await updateStatus('building', { groups_done: groupsDone });
+      log('info', `Cache: Gruppen ${groupsDone}/${groupNames.length} zusammengefasst`);
     }
 
     // ── Schritt 4: Finale Gesamtzusammenfassung aus Gruppen ─────
@@ -2116,18 +2501,46 @@ async function buildSystemContextCache(systemId) {
       .map(g => `### ${g}\n${groupSummaries[g]}`)
       .join('\n\n');
 
-    const finalPrompt = `Hier sind Zusammenfassungen aller Module/Ordner eines Softwaresystems (${allSummaries.length} Dateien in ${groupNames.length} Modulen). Erstelle daraus eine strukturierte Gesamtübersicht auf Deutsch mit:
-1. Überblick: Was ist das System? (3-5 Sätze)
-2. Hauptfunktionen — möglichst vollständig, gruppiert nach Bereich
-3. Technische Details: Architektur, Technologien, Module/Ordnerstruktur
-4. Wichtige Prozesse und Abläufe
+    const finalPrompt = `Du bist ein erfahrener Software-Architekt. Analysiere die folgenden Modul-Zusammenfassungen eines Softwaresystems (${allSummaries.length} Dateien in ${groupNames.length} Modulen) und erstelle eine vollständige, fachlich hochwertige Systemdokumentation auf Deutsch.
+
+Die Dokumentation MUSS folgende Abschnitte enthalten:
+
+## 1. Systemüberblick
+Was ist das System? Welchen Zweck erfüllt es? Für wen ist es gedacht? (5-8 Sätze, konkret und präzise)
+
+## 2. Architektur & Technologien
+- Frontend-Technologien und Frameworks (mit Versionen wenn erkennbar)
+- Backend-Technologien und Frameworks
+- Datenbankschicht
+- Externe Dienste und APIs
+- Deployment/Infrastruktur
+
+## 3. Module und Komponenten
+Für JEDES erkannte Modul:
+- **Modulname** (Pfad/Ordner): Kurzbeschreibung, Hauptfunktionen, wichtige Dateien
+
+## 4. Hauptfunktionen
+Vollständige Liste ALLER Funktionen des Systems — keine Auslassungen. Gruppiert nach Funktionsbereich.
+
+## 5. Datenflüsse und Prozesse
+Wichtige Abläufe: Wie interagieren die Module? Welche Daten fließen wohin?
+
+## 6. Schnittstellen und APIs
+Alle erkennbaren Endpunkte, externe Integrationen, Protokolle.
+
+## 7. Bekannte Besonderheiten / Auffälligkeiten
+Besondere Implementierungen, Muster, Abhängigkeiten oder potenzielle Problembereiche.
 
 Modul-Zusammenfassungen:
-${groupsCombined.substring(0, 30000)}`;
+${groupsCombined.substring(0, 30000)}
+
+WICHTIG: Sei so konkret und vollständig wie möglich. Nenne echte Dateinamen, Funktionsnamen und technische Details aus den Zusammenfassungen. Keine Floskeln.`;
+
+    await updateStatus('building', { build_phase: 'final' });
 
     let finalSummary;
     try {
-      finalSummary = await aiCall(apiCfg, finalPrompt, 4000, 60000, 1);
+      finalSummary = await aiCallUnified(apiCfg, finalPrompt, 6000, 'balanced', 90000, 1);
     } catch(e) {
       log('warning', `Cache: Finale Zusammenfassung fehlgeschlagen, nutze Modul-Zusammenfassungen: ${e.message}`);
       finalSummary = `Systemübersicht (automatisch zusammengestellt aus ${allSummaries.length} Dateien in ${groupNames.length} Modulen):\n\n${groupsCombined.substring(0, 35000)}`;
@@ -2142,6 +2555,7 @@ ${groupsCombined.substring(0, 30000)}`;
       doc_names: JSON.stringify(Object.values(byDoc).map(d => d.name)),
       token_count: finalSummary.length,
       docs_processed: docIds.length,
+      build_phase: 'done',
       built_at: new Date().toISOString(),
     });
 
@@ -2180,6 +2594,9 @@ app.get('/api/systems/:id/context-cache', requireAuth, async (req, res) => {
       tokenCount:    cache?.token_count || 0,
       docsProcessed: cache?.docs_processed || 0,
       docsTotal:     cache?.docs_total || 0,
+      buildPhase:    cache?.build_phase || '',
+      groupsTotal:   cache?.groups_total || 0,
+      groupsDone:    cache?.groups_done || 0,
       hasCache:      !!cache && (cache.build_status === 'ready' || cache.build_status === 'ready_no_ai'),
       isAiGenerated: cache?.build_status === 'ready',
     });
@@ -2192,6 +2609,14 @@ app.get('/api/systems/:id/context-cache', requireAuth, async (req, res) => {
 // Cache manuell neu aufbauen
 app.post('/api/systems/:id/rebuild-cache', requireAuth, async (req, res) => {
   try {
+    // Race Condition: nicht starten wenn bereits ein Build läuft
+    const current = await queryOne(
+      "SELECT build_status FROM system_context_cache WHERE system_id=$1", [req.params.id]
+    );
+    if (current?.build_status === 'building') {
+      return res.json({ ok: true, message: 'Cache-Build läuft bereits', alreadyRunning: true });
+    }
+
     // Bei vollständigem Neuaufbau: alte Dok-Zusammenfassungen löschen
     if (req.body?.force) {
       await query('DELETE FROM doc_summaries WHERE system_id=$1', [req.params.id]);
@@ -2244,14 +2669,14 @@ app.post('/api/apikey/test', requireAuth, requireAdmin, async (req, res) => {
     let apiUrl, apiHeaders, apiBody, model;
 
     if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
-      model  = apiCfg.provider === 'groq' ? 'llama-3.3-70b-versatile' : 'grok-3-mini';
+      model  = resolveModel(apiCfg.provider, 'balanced');
       apiUrl = apiCfg.provider === 'groq'
         ? 'https://api.groq.com/openai/v1/chat/completions'
         : 'https://api.x.ai/v1/chat/completions';
       apiHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key };
       apiBody    = { model, messages: [{ role: 'user', content: 'Antworte nur mit OK' }], max_tokens: 5 };
     } else {
-      model      = 'claude-haiku-4-5-20251001';
+      model      = resolveModel(apiCfg.provider, 'fast');
       apiUrl     = 'https://api.anthropic.com/v1/messages';
       apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
       apiBody    = { model, max_tokens: 5, messages: [{ role: 'user', content: 'Antworte nur mit OK' }] };
@@ -2300,6 +2725,798 @@ app.post('/api/apikey/test', requireAuth, requireAdmin, async (req, res) => {
     }
     res.json({ ok: false, error, latency });
   }
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// ANFORDERUNGSQUALITÄT — Stakeholder, Use Cases, Grenzen, Ziele
+// ═══════════════════════════════════════════════════════════════
+
+// ── Stakeholder ───────────────────────────────────────────────
+app.get('/api/systems/:id/stakeholders', requireAuth, async (req, res) => {
+  try {
+    const rows = await queryAll('SELECT * FROM system_stakeholders WHERE system_id=$1 ORDER BY created_at', [req.params.id]);
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/systems/:id/stakeholders', requireAuth, async (req, res) => {
+  try {
+    const { name, role, interests, influence } = req.body;
+    const id = 'SH-' + Date.now();
+    await query('INSERT INTO system_stakeholders (id,system_id,name,role,interests,influence) VALUES ($1,$2,$3,$4,$5,$6)',
+      [id, req.params.id, name, role||'', interests||'', influence||'medium']);
+    res.json({ ok:true, id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/systems/:id/stakeholders/:shId', requireAuth, async (req, res) => {
+  try {
+    const { name, role, interests, influence } = req.body;
+    await query('UPDATE system_stakeholders SET name=$1,role=$2,interests=$3,influence=$4 WHERE id=$5',
+      [name, role||'', interests||'', influence||'medium', req.params.shId]);
+    res.json({ ok:true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/systems/:id/stakeholders/:shId', requireAuth, async (req, res) => {
+  try {
+    await query('DELETE FROM system_stakeholders WHERE id=$1', [req.params.shId]);
+    res.json({ ok:true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Use Cases ─────────────────────────────────────────────────
+app.get('/api/systems/:id/use-cases', requireAuth, async (req, res) => {
+  try {
+    const rows = await queryAll('SELECT * FROM use_cases WHERE system_id=$1 ORDER BY created_at', [req.params.id]);
+    res.json(rows.map(r => ({ ...r, req_ids: jparse(r.req_ids, []) })));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/systems/:id/use-cases', requireAuth, async (req, res) => {
+  try {
+    const { title, actor, description, preconditions, main_flow, alt_flows, postconditions, req_ids } = req.body;
+    const id = 'UC-' + Date.now();
+    await query(`INSERT INTO use_cases (id,system_id,title,actor,description,preconditions,main_flow,alt_flows,postconditions,req_ids)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [id, req.params.id, title, actor||'', description||'', preconditions||'',
+       main_flow||'', alt_flows||'', postconditions||'', JSON.stringify(req_ids||[])]);
+    res.json({ ok:true, id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/systems/:id/use-cases/:ucId', requireAuth, async (req, res) => {
+  try {
+    const { title, actor, description, preconditions, main_flow, alt_flows, postconditions, req_ids } = req.body;
+    await query(`UPDATE use_cases SET title=$1,actor=$2,description=$3,preconditions=$4,
+      main_flow=$5,alt_flows=$6,postconditions=$7,req_ids=$8 WHERE id=$9`,
+      [title, actor||'', description||'', preconditions||'', main_flow||'',
+       alt_flows||'', postconditions||'', JSON.stringify(req_ids||[]), req.params.ucId]);
+    res.json({ ok:true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/systems/:id/use-cases/:ucId', requireAuth, async (req, res) => {
+  try {
+    await query('DELETE FROM use_cases WHERE id=$1', [req.params.ucId]);
+    res.json({ ok:true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Systemgrenzen ─────────────────────────────────────────────
+app.get('/api/systems/:id/boundaries', requireAuth, async (req, res) => {
+  try {
+    const rows = await queryAll('SELECT * FROM system_boundaries WHERE system_id=$1 ORDER BY type,created_at', [req.params.id]);
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/systems/:id/boundaries', requireAuth, async (req, res) => {
+  try {
+    const { type, description } = req.body;
+    const id = 'SB-' + Date.now();
+    await query('INSERT INTO system_boundaries (id,system_id,type,description) VALUES ($1,$2,$3,$4)',
+      [id, req.params.id, type||'in_scope', description]);
+    res.json({ ok:true, id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/systems/:id/boundaries/:bId', requireAuth, async (req, res) => {
+  try {
+    await query('DELETE FROM system_boundaries WHERE id=$1', [req.params.bId]);
+    res.json({ ok:true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Qualitätsziele ────────────────────────────────────────────
+app.get('/api/systems/:id/quality-goals', requireAuth, async (req, res) => {
+  try {
+    const rows = await queryAll('SELECT * FROM quality_goals WHERE system_id=$1 ORDER BY iso_char,priority', [req.params.id]);
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/systems/:id/quality-goals', requireAuth, async (req, res) => {
+  try {
+    const { iso_char, description, measure, target, priority } = req.body;
+    const id = 'QG-' + Date.now();
+    await query('INSERT INTO quality_goals (id,system_id,iso_char,description,measure,target,priority) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+      [id, req.params.id, iso_char, description, measure||'', target||'', priority||'medium']);
+    res.json({ ok:true, id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/systems/:id/quality-goals/:gId', requireAuth, async (req, res) => {
+  try {
+    await query('DELETE FROM quality_goals WHERE id=$1', [req.params.gId]);
+    res.json({ ok:true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── SMART-Qualitätsprüfung einer Anforderung ──────────────────
+app.post('/api/requirements/:id/quality-check', requireAuth, async (req, res) => {
+  try {
+    const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
+    if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
+
+    const apiCfg = await resolveApiConfig(req.session.userId);
+    if (!apiCfg.key) return res.status(400).json({ error: 'Kein API-Key' });
+
+    // Kontext: andere Anforderungen für Konflikt-Check
+    const others = await queryAll(
+      'SELECT id,title,description FROM requirements WHERE system_id=$1 AND id!=$2 LIMIT 50',
+      [req_.system_id, req.params.id]
+    );
+
+    const othersText = others.map(o => '- ' + o.id + ': ' + o.title).join('\n');
+    const smartSchema = '{"smart":{"specific":{"score":"0-10","issue":"...","suggestion":"..."},"measurable":{"score":"0-10","issue":"...","suggestion":"..."},"achievable":{"score":"0-10","issue":"...","suggestion":"..."},"relevant":{"score":"0-10","issue":"...","suggestion":"..."},"timebound":{"score":"0-10","issue":"...","suggestion":"..."}},"overall_score":"0-100","iso_category":"Funktionale Eignung|Leistungseffizienz|Kompatibilitaet|Gebrauchstauglichkeit|Zuverlaessigkeit|Sicherheit|Wartbarkeit|Portierbarkeit","ieee_issues":["..."],"conflicts":["REQ-ID: Begruendung"],"improved_title":"...","improved_description":"...","acceptance_criteria":["Gegeben...Wenn...Dann..."],"verification_method":"Test|Inspektion|Review|Analyse|Demo","risk_level":"hoch|mittel|niedrig","complexity":"hoch|mittel|niedrig","business_value":"1-10"}';
+    const prompt = 'Du bist ein zertifizierter Requirements Engineer (CPRE). Analysiere diese Anforderung nach IEEE-830, SMART und ISO-25010.\n\n'
+      + 'ANFORDERUNG:\n'
+      + 'ID: ' + req_.id + '\n'
+      + 'Titel: ' + req_.title + '\n'
+      + 'Beschreibung: ' + req_.description + '\n'
+      + 'Kategorie: ' + req_.category + '\n'
+      + 'Begruendung: ' + (req_.rationale || '(keine)') + '\n'
+      + 'Akzeptanzkriterien: ' + (req_.acceptance_criteria_text || '(keine)') + '\n\n'
+      + 'ANDERE ANFORDERUNGEN (fuer Konflikt-Check):\n' + othersText + '\n\n'
+      + 'Antworte NUR mit JSON (keine Backticks):\n' + smartSchema;
+    const text = await aiCallUnified(apiCfg, prompt, 2000, 'fast', 40000, 1);
+    const result = JSON.parse(text.replace(/\`\`\`json|\`\`\`/g,'').trim());
+
+    // Ergebnis in DB speichern
+    await query(`UPDATE requirements SET
+      smart_score=$1, iso_category=$2, quality_score=$3,
+      acceptance_criteria_text=$4, verification_method=$5,
+      risk_level=$6, complexity=$7, business_value=$8, conflicts=$9
+      WHERE id=$10`,
+      [JSON.stringify(result.smart), result.iso_category,
+       result.overall_score, (result.acceptance_criteria||[]).join('\n'),
+       result.verification_method||'', result.risk_level||'',
+       result.complexity||'', result.business_value||0,
+       JSON.stringify(result.conflicts||[]), req.params.id]);
+
+    res.json({ ok:true, result });
+  } catch(e) {
+    log('error', `Quality-Check ${req.params.id}: ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── KI-gestützte Analyse: Stakeholder/Grenzen/UseCases aus Docs ──
+app.post('/api/systems/:id/analyze-requirements', requireAuth, async (req, res) => {
+  try {
+    const sysId = req.params.id;
+    const { aspect } = req.body; // 'stakeholders'|'boundaries'|'use-cases'|'quality-goals'|'full'
+
+    const apiCfg = await resolveApiConfig(req.session.userId);
+    if (!apiCfg.key) return res.status(400).json({ error: 'Kein API-Key' });
+
+    const cache = await queryOne('SELECT summary FROM system_context_cache WHERE system_id=$1', [sysId]);
+    const ctx   = cache?.summary?.substring(0, 15000) || '';
+    const reqs  = await queryAll('SELECT id,title,category,priority FROM requirements WHERE system_id=$1 LIMIT 100', [sysId]);
+
+    const reqsText = reqs.map(r => '- ' + r.id + ': ' + r.title).join('\n');
+
+    function makePrompt(aspect) {
+      const base = 'Systemkontext:\n' + ctx + '\n\nBestehende Anforderungen (' + reqs.length + '):\n' + reqsText;
+      if (aspect === 'stakeholders') {
+        return 'Analysiere das System und identifiziere ALLE relevanten Stakeholder.\n\n' + base
+          + '\n\nAntworte NUR mit JSON-Array (keine Backticks):\n'
+          + '[{"name":"...","role":"...","interests":"Was dieser Stakeholder erwartet...","influence":"hoch|mittel|niedrig"}]';
+      }
+      if (aspect === 'boundaries') {
+        return 'Analysiere das System und definiere klare Systemgrenzen.\n\n' + 'Systemkontext:\n' + ctx
+          + '\n\nAntworte NUR mit JSON-Array (keine Backticks):\n'
+          + '[{"type":"in_scope|out_of_scope|interface","description":"..."}]\n'
+          + 'Typen: in_scope=Im Systemumfang, out_of_scope=Explizit ausgeschlossen, interface=Schnittstelle zu externem System';
+      }
+      if (aspect === 'use-cases') {
+        return 'Identifiziere die wichtigsten Use Cases des Systems nach IEEE-830.\n\n' + 'Systemkontext:\n' + ctx
+          + '\n\nAntworte NUR mit JSON-Array (keine Backticks):\n'
+          + '[{"title":"...","actor":"...","description":"...","preconditions":"...","main_flow":"1. Schritt\n2. Schritt","alt_flows":"...","postconditions":"..."}]';
+      }
+      if (aspect === 'quality-goals') {
+        return 'Definiere messbare Qualitaetsziele nach ISO-25010.\n\nSystemkontext:\n' + ctx
+          + '\n\nISO-25010 Charakteristiken: Funktionale Eignung, Leistungseffizienz, Kompatibilitaet, Gebrauchstauglichkeit, Zuverlaessigkeit, Sicherheit, Wartbarkeit, Portierbarkeit'
+          + '\n\nAntworte NUR mit JSON-Array (keine Backticks):\n'
+          + '[{"iso_char":"...","description":"...","measure":"Wie messen?","target":"Zielwert","priority":"hoch|mittel|niedrig"}]';
+      }
+      // full
+      return 'Vollstaendige Systemanalyse als erfahrener Requirements Engineer.\n\n' + base
+        + '\n\nAntworte NUR mit JSON (keine Backticks):\n'
+        + '{"stakeholders":[{"name":"...","role":"...","interests":"...","influence":"hoch|mittel|niedrig"}],'
+        + '"boundaries":[{"type":"in_scope|out_of_scope|interface","description":"..."}],'
+        + '"use_cases":[{"title":"...","actor":"...","description":"...","preconditions":"...","main_flow":"...","alt_flows":"...","postconditions":"..."}],'
+        + '"quality_goals":[{"iso_char":"...","description":"...","measure":"...","target":"...","priority":"hoch|mittel|niedrig"}],'
+        + '"gaps":["Fehlende Anforderung..."],'
+        + '"conflicts":["Widerspruch..."],'
+        + '"recommendations":["Empfehlung..."]}';
+    }
+
+    const promptText = makePrompt(aspect);
+    const text = await aiCallUnified(apiCfg, promptText, 4000, 'fast', 90000, 1);
+    const result = JSON.parse(text.replace(/\`\`\`json|\`\`\`/g,'').trim());
+    res.json({ ok:true, aspect, result });
+  } catch(e) {
+    log('error', `analyze-requirements ${req.params.id}: ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+// Alle Chunks einer spezifischen Datei laden (für Deep-Queries)
+app.get('/api/embeddings/doc-chunks', requireAuth, async (req, res) => {
+  try {
+    const { systemId, docName } = req.query;
+    if (!systemId || !docName) return res.status(400).json({ error: 'systemId und docName erforderlich' });
+
+    const rows = await queryAll(
+      'SELECT chunk_text, chunk_index, function_name FROM embeddings WHERE system_id=$1 AND doc_name=$2 ORDER BY chunk_index ASC',
+      [systemId, docName]
+    );
+
+    // Chunks nach Funktion gruppieren für bessere Lesbarkeit
+    res.json({
+      docName,
+      chunks: rows.map(r => r.chunk_text),
+      functions: [...new Set(rows.map(r => r.function_name).filter(Boolean))],
+      totalChunks: rows.length,
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// CHAT-UNTERHALTUNGEN — Speichern, Laden, Löschen
+// ═══════════════════════════════════════════════════════════════
+
+// Alle Unterhaltungen eines Nutzers
+app.get('/api/conversations', requireAuth, async (req, res) => {
+  try {
+    const { chatType, systemId, limit = 50 } = req.query;
+    const conditions = ['user_id=$1'];
+    const params = [req.session.userId];
+    let p = 2;
+    if (chatType)  { conditions.push(`chat_type=$${p++}`); params.push(chatType); }
+    if (systemId)  { conditions.push(`system_id=$${p++}`); params.push(systemId); }
+    const rows = await queryAll(
+      `SELECT id, system_id, chat_type, title, message_count, created_at, updated_at
+       FROM chat_conversations WHERE ${conditions.join(' AND ')}
+       ORDER BY updated_at DESC LIMIT $${p}`,
+      [...params, parseInt(limit)]
+    );
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Einzelne Unterhaltung mit Nachrichten laden
+app.get('/api/conversations/:id', requireAuth, async (req, res) => {
+  try {
+    const conv = await queryOne(
+      'SELECT * FROM chat_conversations WHERE id=$1 AND user_id=$2',
+      [req.params.id, req.session.userId]
+    );
+    if (!conv) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json({ ...conv, messages: jparse(conv.messages, []) });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Unterhaltung speichern (neu oder aktualisieren)
+app.post('/api/conversations', requireAuth, async (req, res) => {
+  try {
+    const { id, systemId, chatType = 'bc', title, messages = [] } = req.body;
+    const convId = id || ('conv-' + Date.now() + '-' + req.session.userId.substring(0, 6));
+
+    // Titel automatisch generieren wenn leer
+    const autoTitle = title || (messages.find(m => m.role === 'user')?.content || 'Neue Unterhaltung')
+      .substring(0, 60);
+
+    await query(
+      `INSERT INTO chat_conversations (id, user_id, system_id, chat_type, title, messages, message_count, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         title=$5, messages=$6, message_count=$7, updated_at=NOW()`,
+      [convId, req.session.userId, systemId || null, chatType,
+       autoTitle, JSON.stringify(messages), messages.length]
+    );
+    res.json({ ok: true, id: convId, title: autoTitle });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Unterhaltung löschen
+app.delete('/api/conversations/:id', requireAuth, async (req, res) => {
+  try {
+    await query(
+      'DELETE FROM chat_conversations WHERE id=$1 AND user_id=$2',
+      [req.params.id, req.session.userId]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Unterhaltungs-Titel umbenennen
+app.patch('/api/conversations/:id', requireAuth, async (req, res) => {
+  try {
+    await query(
+      'UPDATE chat_conversations SET title=$1 WHERE id=$2 AND user_id=$3',
+      [req.body.title, req.params.id, req.session.userId]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ── Streaming Chat-Endpoint (SSE) ────────────────────────────
+app.post('/api/ai/chat/stream', requireAuth, async (req, res) => {
+  const { _feature, _systemId, _attachments, ...cleanBody } = req.body;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Nginx buffering deaktivieren
+
+  const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+  try {
+    const apiCfg = await resolveApiConfig(req.session.userId);
+    if (!apiCfg.key) {
+      send({ error: 'Kein API-Key konfiguriert' });
+      return res.end();
+    }
+
+    if (apiCfg.provider === 'anthropic') {
+      // Anthropic Streaming
+      const model = (cleanBody.model && cleanBody.model.startsWith('claude'))
+        ? cleanBody.model : resolveModel('anthropic', 'balanced');
+
+      // Attachments einbauen
+      let messages = cleanBody.messages || [];
+      if (_attachments?.length) {
+        const lastUserIdx = messages.map(m=>m.role).lastIndexOf('user');
+        if (lastUserIdx >= 0) {
+          const parts = [];
+          for (const att of _attachments) {
+            if (att.type === 'image' && att.data) {
+              parts.push({ type:'image', source:{ type:'base64', media_type: att.mime||'image/jpeg', data: att.data } });
+            } else if (att.type === 'text' && att.text) {
+              parts.push({ type:'text', text:'\n\n## Anhang: ' + att.name + '\n' + att.text });
+            }
+          }
+          const orig = messages[lastUserIdx];
+          const text = typeof orig.content === 'string' ? orig.content : '';
+          parts.push({ type:'text', text });
+          messages = [...messages];
+          messages[lastUserIdx] = { ...orig, content: parts };
+        }
+      }
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiCfg.key,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model, max_tokens: cleanBody.max_tokens || 4000,
+          system: cleanBody.system || undefined,
+          messages,
+          stream: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.text();
+        send({ error: `API Fehler ${response.status}: ${err.substring(0, 200)}` });
+        return res.end();
+      }
+
+      // Stream lesen
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') continue;
+          try {
+            const event = JSON.parse(data);
+            if (event.type === 'content_block_delta' && event.delta?.text) {
+              send({ token: event.delta.text });
+            } else if (event.type === 'message_stop') {
+              send({ done: true });
+            }
+          } catch(e) {}
+        }
+      }
+
+    } else {
+      // Groq/Grok: OpenAI-kompatibles Streaming
+      const model = resolveModel(apiCfg.provider, 'balanced');
+      const baseUrl = apiCfg.provider === 'groq'
+        ? 'https://api.groq.com/openai/v1/chat/completions'
+        : 'https://api.x.ai/v1/chat/completions';
+
+      const msgs = [];
+      if (cleanBody.system) msgs.push({ role: 'system', content: cleanBody.system });
+      for (const m of (cleanBody.messages || [])) {
+        msgs.push({ role: m.role, content: typeof m.content === 'string' ? m.content : (m.content?.[m.content.length-1]?.text || '') });
+      }
+
+      const response = await fetch(baseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key },
+        body: JSON.stringify({ model, messages: msgs, max_tokens: cleanBody.max_tokens || 4000, stream: true }),
+      });
+
+      if (!response.ok) {
+        send({ error: 'API Fehler ' + response.status });
+        return res.end();
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') { send({ done: true }); continue; }
+          try {
+            const event = JSON.parse(data);
+            const token = event.choices?.[0]?.delta?.content;
+            if (token) send({ token });
+          } catch(e) {}
+        }
+      }
+    }
+  } catch(e) {
+    send({ error: e.message });
+  }
+  res.end();
+});
+
+
+// ── Re-Chunking: bestehende Docs mit neuem Algorithmus neu indexieren ──
+app.post('/api/systems/:id/rechunk', requireAuth, async (req, res) => {
+  try {
+    const sysId = req.params.id;
+    const apiCfg = await resolveApiConfig(req.session.userId);
+
+    // Alle Dokumente des Systems laden
+    const docs = await queryAll(
+      'SELECT DISTINCT doc_id, doc_name FROM embeddings WHERE system_id=$1',
+      [sysId]
+    );
+
+    if (!docs.length) return res.json({ ok: true, message: 'Keine Dokumente' });
+
+    // Im Hintergrund: alle Chunks löschen und neu indexieren
+    res.json({ ok: true, message: `Re-Chunking für ${docs.length} Dokumente gestartet` });
+
+    setImmediate(async () => {
+      try {
+        log('info', `Re-Chunking: ${docs.length} Dokumente für System ${sysId}`);
+
+        // Original-Inhalt aus Chunks rekonstruieren
+        for (const doc of docs) {
+          const chunks = await queryAll(
+            'SELECT chunk_text, chunk_index FROM embeddings WHERE system_id=$1 AND doc_id=$2 ORDER BY chunk_index',
+            [sysId, doc.doc_id]
+          );
+
+          // Text rekonstruieren
+          const fullText = chunks.map(c => c.chunk_text).join('\n');
+
+          // Alte Chunks löschen
+          await query('DELETE FROM embeddings WHERE system_id=$1 AND doc_id=$2', [sysId, doc.doc_id]);
+
+          // Neu chunken mit aktuellem Algorithmus
+          const newChunks = chunkTextBackend(fullText, doc.doc_name);
+
+          for (let i = 0; i < newChunks.length; i++) {
+            const vec = await getSemanticEmbedding(newChunks[i].text);
+            await query(
+              'INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding,function_name) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+              [sysId, doc.doc_id, doc.doc_name, i, newChunks[i].text, JSON.stringify(vec), newChunks[i].functionName || null]
+            ).catch(() => {});
+          }
+          log('info', `Re-Chunked: ${doc.doc_name} → ${newChunks.length} Chunks`);
+        }
+
+        // Cache als veraltet markieren
+        await query("UPDATE system_context_cache SET build_status='outdated' WHERE system_id=$1", [sysId]);
+        log('info', `Re-Chunking abgeschlossen für System ${sysId}`);
+      } catch(e) {
+        log('error', `Re-Chunking Fehler: ${e.message}`);
+      }
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ── Prompt-Injection-Schutz (serverseitig) ───────────────────
+function sanitizeUserInput(text) {
+  if (!text || typeof text !== 'string') return '';
+  // Bekannte Injection-Pattern entschärfen
+  return text
+    .replace(/ignore (all |previous |above )?instructions?/gi, '[Eingabe bereinigt]')
+    .replace(/system prompt/gi, '[Eingabe bereinigt]')
+    .replace(/you are now/gi, '[Eingabe bereinigt]')
+    .replace(/jetzt bist du/gi, '[Eingabe bereinigt]')
+    .replace(/ignoriere (alle |vorherige )?Anweisungen/gi, '[Eingabe bereinigt]')
+    .substring(0, 8000); // Max-Länge
+}
+
+// ── Antwort-Caching (5 Minuten, pro System+Frage) ────────────
+const _answerCache = new Map(); // key → { text, ts }
+const CACHE_TTL = 5 * 60 * 1000; // 5 Minuten
+
+function getCachedAnswer(systemId, question) {
+  const key = (systemId || '') + '::' + question.substring(0, 200);
+  const entry = _answerCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL) { _answerCache.delete(key); return null; }
+  return entry.text;
+}
+
+function setCachedAnswer(systemId, question, text) {
+  // Nur für Overview-Fragen cachen (teuer + stabil)
+  const isOverview = /überblick|zusammenfassung|was macht|worum geht|vorstell/i.test(question);
+  if (!isOverview) return;
+  const key = (systemId || '') + '::' + question.substring(0, 200);
+  _answerCache.set(key, { text, ts: Date.now() });
+  // Cache-Größe begrenzen
+  if (_answerCache.size > 100) {
+    const firstKey = _answerCache.keys().next().value;
+    _answerCache.delete(firstKey);
+  }
+}
+
+// Cache in /api/ai/chat nutzen
+// (wird in der Route selbst aufgerufen — Funktion hier definieren)
+
+// ── KI-Antwort Feedback ───────────────────────────────────────
+app.post('/api/feedback', requireAuth, async (req, res) => {
+  try {
+    const { messageId, rating, feature, systemId, comment } = req.body;
+    // In audit_log speichern (kein eigenes Schema nötig)
+    await query(
+      'INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES ($1,$2,$3,$4,$5)',
+      [req.session.userId, 'ai_feedback', 'message', messageId || 'unknown',
+       JSON.stringify({ rating, feature, systemId, comment: (comment||'').substring(0, 500) })]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// REVIEW-WORKFLOW (9) + BULK-OPERATIONEN (11) + FREEZE (12)
+// ═══════════════════════════════════════════════════════════════
+
+// ── Review-Workflow ───────────────────────────────────────────
+
+// Anforderung zur Review einreichen
+app.post('/api/requirements/:id/submit-review', requireAuth, async (req, res) => {
+  try {
+    const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
+    if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
+    if (req_.frozen) return res.status(400).json({ error: 'Anforderung ist eingefroren' });
+
+    await query(
+      `UPDATE requirements SET review_status='in_review', last_changed_by=$1, updated_at=NOW() WHERE id=$2`,
+      [req.session.userId, req.params.id]
+    );
+    await writeAuditLog(req.session.userId, 'submit_review', 'requirement', req.params.id, req_.title);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Review abschließen: genehmigen oder ablehnen
+app.post('/api/requirements/:id/review-decision', requireAuth, async (req, res) => {
+  try {
+    const { decision, comment } = req.body; // decision: 'approved' | 'rejected'
+    if (!['approved','rejected'].includes(decision))
+      return res.status(400).json({ error: 'Ungültige Entscheidung' });
+
+    const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
+    if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
+
+    const user = await queryOne('SELECT name FROM users WHERE id=$1', [req.session.userId]);
+    const newStatus = decision === 'approved' ? 'approved' : 'rejected';
+
+    await query(
+      `UPDATE requirements SET
+        review_status=$1, review_comment=$2,
+        reviewed_by=$3, reviewed_by_name=$4, reviewed_at=NOW(),
+        last_changed_by=$3, updated_at=NOW()
+       WHERE id=$5`,
+      [newStatus, comment || '', req.session.userId, user?.name || '', req.params.id]
+    );
+
+    await writeAuditLog(req.session.userId, 'review_' + decision, 'requirement', req.params.id,
+      req_.title + (comment ? ' — ' + comment.substring(0, 100) : ''));
+    res.json({ ok: true, status: newStatus });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Review-Queue: alle Anforderungen die auf Review warten
+app.get('/api/review-queue', requireAuth, async (req, res) => {
+  try {
+    const { systemId } = req.query;
+    const conditions = ["review_status = 'in_review'", 'archived = FALSE'];
+    const params = [];
+    if (systemId) { conditions.push(`system_id=$${params.length + 1}`); params.push(systemId); }
+    const rows = await queryAll(
+      `SELECT r.*, s.name as system_name FROM requirements r
+       LEFT JOIN systems s ON r.system_id = s.id
+       WHERE ${conditions.join(' AND ')} ORDER BY r.updated_at DESC`,
+      params
+    );
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Review-History einer Anforderung
+app.get('/api/requirements/:id/review-history', requireAuth, async (req, res) => {
+  try {
+    const rows = await queryAll(
+      `SELECT * FROM audit_log
+       WHERE entity_type='requirement' AND entity_id=$1
+       AND action IN ('submit_review','review_approved','review_rejected')
+       ORDER BY created_at DESC`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Bulk-Operationen (11) ─────────────────────────────────────
+
+app.post('/api/requirements/bulk', requireAuth, async (req, res) => {
+  try {
+    const { ids, operation, value } = req.body;
+    if (!ids?.length) return res.status(400).json({ error: 'Keine IDs angegeben' });
+
+    const MAX_BULK = 200;
+    const safeIds = ids.slice(0, MAX_BULK);
+    let updated = 0;
+
+    for (const id of safeIds) {
+      const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [id]);
+      if (!req_) continue;
+      if (req_.frozen && operation !== 'unfreeze') continue; // Frozen ignorieren
+
+      switch(operation) {
+        case 'set_priority':
+          if (!['high','medium','low'].includes(value)) break;
+          await query('UPDATE requirements SET priority=$1, updated_at=NOW() WHERE id=$2', [value, id]);
+          break;
+        case 'set_status':
+          await query('UPDATE requirements SET status=$1, updated_at=NOW() WHERE id=$2', [value, id]);
+          break;
+        case 'set_category':
+          await query('UPDATE requirements SET category=$1, updated_at=NOW() WHERE id=$2', [value, id]);
+          break;
+        case 'submit_review':
+          await query("UPDATE requirements SET review_status='in_review', updated_at=NOW() WHERE id=$1 AND frozen=FALSE", [id]);
+          break;
+        case 'archive':
+          await query('UPDATE requirements SET archived=TRUE, archived_at=NOW(), archived_by=$1 WHERE id=$2',
+            [req.session.userId, id]);
+          break;
+        case 'unarchive':
+          await query('UPDATE requirements SET archived=FALSE, archived_at=NULL WHERE id=$1', [id]);
+          break;
+        case 'freeze':
+          await query('UPDATE requirements SET frozen=TRUE, frozen_at=NOW(), frozen_by=$1 WHERE id=$2',
+            [req.session.userId, id]);
+          break;
+        case 'unfreeze':
+          await query('UPDATE requirements SET frozen=FALSE, frozen_at=NULL WHERE id=$1', [id]);
+          break;
+        case 'delete':
+          await query('DELETE FROM requirements WHERE id=$1 AND frozen=FALSE', [id]);
+          break;
+        case 'set_assigned_to':
+          await query('UPDATE requirements SET assigned_to=$1, updated_at=NOW() WHERE id=$2', [value, id]);
+          break;
+        default:
+          continue;
+      }
+      updated++;
+    }
+
+    await writeAuditLog(req.session.userId, 'bulk_' + operation, 'requirement', safeIds.join(','),
+      `${updated} Anforderungen: ${operation}${value ? ' = ' + value : ''}`);
+
+    res.json({ ok: true, updated, skipped: safeIds.length - updated });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Freeze / Unfreeze (12) ────────────────────────────────────
+
+app.post('/api/requirements/:id/freeze', requireAuth, async (req, res) => {
+  try {
+    const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
+    if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
+
+    const user = await queryOne('SELECT name, role FROM users WHERE id=$1', [req.session.userId]);
+    // Nur BA und Admin dürfen einfrieren
+    if (!['admin','businessanalyst'].includes(user?.role))
+      return res.status(403).json({ error: 'Nur BA/Admin darf Anforderungen einfrieren' });
+
+    await query(
+      'UPDATE requirements SET frozen=TRUE, frozen_at=NOW(), frozen_by=$1, frozen_by_name=$2, updated_at=NOW() WHERE id=$3',
+      [req.session.userId, user?.name || '', req.params.id]
+    );
+    await writeAuditLog(req.session.userId, 'freeze', 'requirement', req.params.id, req_.title);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/requirements/:id/unfreeze', requireAuth, async (req, res) => {
+  try {
+    const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
+    if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
+
+    const user = await queryOne('SELECT role FROM users WHERE id=$1', [req.session.userId]);
+    if (!['admin','businessanalyst'].includes(user?.role))
+      return res.status(403).json({ error: 'Nur BA/Admin darf Anforderungen freigeben' });
+
+    await query(
+      'UPDATE requirements SET frozen=FALSE, frozen_at=NULL, frozen_by=NULL, frozen_by_name=NULL, updated_at=NOW() WHERE id=$1',
+      [req.params.id]
+    );
+    await writeAuditLog(req.session.userId, 'unfreeze', 'requirement', req.params.id, req_.title);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Schutz beim Speichern: Frozen-Anforderungen nicht überschreiben
+// (bereits in saveRequirement integriert — hier Fallback-Check)
+app.post('/api/requirements/:id/check-frozen', requireAuth, async (req, res) => {
+  try {
+    const req_ = await queryOne('SELECT frozen, frozen_by_name, frozen_at FROM requirements WHERE id=$1', [req.params.id]);
+    res.json({ frozen: req_?.frozen || false, frozenBy: req_?.frozen_by_name, frozenAt: req_?.frozen_at });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── SPA Fallback ──────────────────────────────────────────────

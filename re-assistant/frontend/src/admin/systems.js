@@ -327,9 +327,19 @@ async function rebuildContextCache(systemId, force = false) {
         return;
       }
 
-      // Fortschritt anzeigen
-      if (btn && data.docsTotal > 0) {
-        btn.innerHTML = `<span class="spin"></span> ${data.docsProcessed}/${data.docsTotal}`;
+      // Fortschritt anzeigen — phasenabhängig
+      if (btn) {
+        if (data.buildPhase === 'groups' && data.groupsTotal > 0) {
+          btn.innerHTML = `<span class="spin"></span> Module ${data.groupsDone}/${data.groupsTotal}`;
+        } else if (data.buildPhase === 'final') {
+          btn.innerHTML = `<span class="spin"></span> Finalisiere…`;
+        } else if (data.buildPhase === 'grouping') {
+          btn.innerHTML = `<span class="spin"></span> Gruppiere…`;
+        } else if (data.docsTotal > 0) {
+          btn.innerHTML = `<span class="spin"></span> ${data.docsProcessed}/${data.docsTotal}`;
+        } else {
+          btn.innerHTML = '<span class="spin"></span>';
+        }
       }
 
       // Noch "building" oder "pending" oder "outdated" — weiter pollen

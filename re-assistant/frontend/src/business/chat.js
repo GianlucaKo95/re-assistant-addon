@@ -19,7 +19,17 @@ async function loadBizChat() {
       <span class="sys-dot"></span>
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(sys.name)}</span>
       ${depth > 0 ? `<span style="font-size:9px;color:var(--t3);flex-shrink:0;margin-left:4px">Sub</span>` : ''}`;
-    btn.onclick = () => { S.activeSystemId = sys.id; loadBizChat(); };
+    btn.onclick = () => {
+      // System-Wechsel: Chat-Kontext zurücksetzen
+      if (S.activeSystemId !== sys.id) {
+        S.chatHistory.bc = [];
+        window._bcAttachments  = [];
+        window._pendingAttachments = undefined;
+        if (typeof clearAttachments === 'function') clearAttachments('bc');
+      }
+      S.activeSystemId = sys.id;
+      loadBizChat();
+    };
     sl.appendChild(btn);
     // Subdomains
     S.systems.filter(s => s.parentId === sys.id)
@@ -45,6 +55,11 @@ async function loadBizChat() {
   document.querySelectorAll('#bc-chips .chip').forEach(c =>
     c.onclick = () => { inp.value = c.dataset.p; sendBizChat(); }
   );
+
+  // Datei-Upload initialisieren
+  if (typeof initChatAttachments === 'function') initChatAttachments();
+  // Unterhaltungsliste laden
+  if (typeof loadConvList === 'function') loadConvList('bc');
 
   // Req-Pane Buttons
   $('bc-btn-extract').onclick   = extractFromConversation;
@@ -85,8 +100,24 @@ async function sendBizChat() {
   inp.value = '';
   inp.style.height = 'auto';
 
-  pushMsg('bc-chat-msgs', 'u', text);
-  S.chatHistory.bc.push({ role:'user', content:text });
+  // Anhänge für diese Nachricht
+  const bcAttachments = [...(window._bcAttachments || [])];
+  window._pendingAttachments = bcAttachments.map(a => ({
+    type: a.type, name: a.name, mime: a.mime,
+    data: a.data || undefined,
+    text: a.text || undefined,
+  }));
+
+  // User-Nachricht mit Anhang-Vorschau anzeigen
+  const attachmentHtml = bcAttachments.length
+    ? bcAttachments.map(a => a.type === 'image' && a.preview
+        ? `<img src="${a.preview}" style="max-width:120px;max-height:80px;border-radius:6px;margin-top:4px;display:block"/>`
+        : `<div style="font-size:11px;color:var(--t3);margin-top:2px">📎 ${esc(a.name)}</div>`
+      ).join('')
+    : '';
+
+  pushMsg('bc-chat-msgs', 'u', text + (attachmentHtml ? '\n' + attachmentHtml : ''));
+  S.chatHistory.bc.push({ role:'user', content: text });
 
   const typing = addTyping('bc-chat-msgs');
   const sys    = S.systems.find(s => s.id === S.activeSystemId);
@@ -119,15 +150,92 @@ async function sendBizChat() {
     document.getElementById('bc-send')?.style.setProperty('display','flex');
     return;
   }
+  // RE-Kontext laden: Stakeholder, Use Cases, Qualitätsziele, bestehende Anforderungen
+  let stakeholders = [], useCases = [], qualityGoals = [], boundaries = [];
+  if (S.activeSystemId) {
+    try {
+      [stakeholders, useCases, qualityGoals, boundaries] = await Promise.all([
+        fetch(`api/systems/${S.activeSystemId}/stakeholders`, {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+        fetch(`api/systems/${S.activeSystemId}/use-cases`,   {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+        fetch(`api/systems/${S.activeSystemId}/quality-goals`,{credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+        fetch(`api/systems/${S.activeSystemId}/boundaries`,  {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+      ]);
+    } catch(e) {}
+  }
+
+  const existingReqs = (S.requirements||[])
+    .filter(r => r.systemId === S.activeSystemId)
+    .slice(0, 40)
+    .map(r => `- ${r.id} [${r.priority||'?'}][${r.category||'?'}]: ${r.title}${r.quality_score != null ? ` (Score: ${r.quality_score}/100)` : ''}`)
+    .join('\n');
+
+  const sysCtx = ragCtx
+    ? `${ragCtx}\n\nWICHTIG: Stütze dich ausschließlich auf die oben bereitgestellte Dokumentation. Nenne konkrete Funktionen, Komponenten und Abläufe mit ihren exakten Namen aus den Quellen.`
+    : (sys ? getCtx(sys, 12000) : '');
+
+  // RE-Kontextblöcke aufbauen
+  const stakeholderCtx = stakeholders.length
+    ? '## Stakeholder\n' + stakeholders.map(s =>
+        `- **${s.name}** (${s.role}, Einfluss: ${s.influence}): ${s.interests}`).join('\n')
+    : '';
+
+  const boundaryCtx = boundaries.length
+    ? '## Systemgrenzen\n'
+      + boundaries.filter(b=>b.type==='in_scope').map(b=>`✓ ${b.description}`).join('\n') + '\n'
+      + boundaries.filter(b=>b.type==='out_of_scope').map(b=>`✗ ${b.description}`).join('\n') + '\n'
+      + boundaries.filter(b=>b.type==='interface').map(b=>`⟷ ${b.description}`).join('\n')
+    : '';
+
+  const useCaseCtx = useCases.length
+    ? '## Use Cases\n' + useCases.map(u =>
+        `- **${u.title}** (Akteur: ${u.actor}): ${u.description}`).join('\n')
+    : '';
+
+  const qualityCtx = qualityGoals.length
+    ? '## Qualitätsziele (ISO-25010)\n' + qualityGoals.map(g =>
+        `- ${g.iso_char}: ${g.description}${g.target ? ' → Ziel: ' + g.target : ''}`).join('\n')
+    : '';
+
+  const reqCtx = existingReqs
+    ? `## Bestehende Anforderungen (${(S.requirements||[]).filter(r=>r.systemId===S.activeSystemId).length})\n${existingReqs}`
+    : '';
+
   const system = [
-    `Du bist ein erfahrener Requirements Engineer und Business-Analyst. ${langNote()}`,
-    sys ? `System: ${sys.name}\nBeschreibung: ${sys.description || ''}\nAnzahl Dokumente: ${(sys.docs||[]).length}` : 'Kein System ausgewählt.',
-    ragCtx ? `${ragCtx}\n\nWICHTIG: Beziehe dich auf ALLE oben genannten Dokumente und Quellen. Erwähne konkrete Funktionen aus den Dokumenten.` : (sys ? getCtx(sys, 15000) : ''),
-    'Hilf dem Business-Nutzer dabei, Anforderungen zu definieren und Prozesse zu dokumentieren.',
-    'Wenn der Nutzer nach einem Überblick fragt, nenne alle Hauptfunktionen aus der Dokumentation vollständig.',
+    `Du bist ein hochrangiger Requirements Engineer, Software-Architekt und Business-Analyst mit 20 Jahren Erfahrung. ${langNote()}`,
+
+    sys ? [
+      `## Analysiertes System: ${sys.name}`,
+      sys.description ? `Beschreibung: ${sys.description}` : '',
+      `Dokumentenumfang: ${(sys.docs||[]).length} Dateien`,
+    ].filter(Boolean).join('\n') : 'Kein System ausgewählt.',
+
+    stakeholderCtx,
+    boundaryCtx,
+    useCaseCtx,
+    qualityCtx,
+    reqCtx,
+    sysCtx,
+
+    `## Deine Aufgaben und Verhaltensregeln
+
+Du analysierst das oben beschriebene System tiefgründig und lieferst präzise, fachlich hochwertige Antworten:
+
+- **Systemüberblick**: Beschreibe Architektur, alle Hauptmodule, ihre Funktionen und das Zusammenspiel — vollständig und strukturiert. Keine Verallgemeinerungen.
+- **Funktionsanalysen**: Erkläre konkrete Implementierungsdetails aus der Dokumentation, nenne Dateinamen, Funktionsnamen, Datenflüsse.
+- **Anforderungsextraktion**: Formuliere Anforderungen nach dem Schema: "Das System MUSS/SOLL/KANN [konkrete Funktion]." Immer mit Priorität (hoch/mittel/niedrig) und Kategorie (funktional/nicht-funktional/Sicherheit/Performance).
+- **Lückenanalyse**: Identifiziere fehlende Funktionen, Inkonsistenzen, unklare Schnittstellen und nicht-dokumentierte Bereiche. Sei kritisch und präzise.
+- **Prozessmodellierung**: Beschreibe Abläufe schrittweise mit allen Beteiligten, Eingaben, Ausgaben und Ausnahmen.
+
+## Qualitätsstandards
+
+- Antworte immer strukturiert mit Überschriften, Listen und konkreten Beispielen
+- Vermeide Floskeln wie "Das System bietet vielfältige Funktionen" — nenne stattdessen die Funktionen direkt beim Namen
+- Bei Überblicksanfragen: vollständige Auflistung aller Module/Komponenten aus der Dokumentation, kein Auslassen
+- Belege deine Aussagen mit konkreten Referenzen aus der Dokumentation (Dateinamen, Codebeispiele)
+- Maximale Ausführlichkeit bei technischen Fragen — kurze, prägnante Antworten nur wenn explizit gewünscht`,
   ].filter(Boolean).join('\n\n');
 
-  const res = await callAPI(S.chatHistory.bc, system, 1800);
+  const res = await callAPI(S.chatHistory.bc, system, 4000);
   typing.remove();
 
   // Stopp-/Send-Button zurücksetzen
@@ -141,11 +249,181 @@ async function sendBizChat() {
   const reply = res.ok ? res.text : `❌ ${res.text}`;
   pushMsg('bc-chat-msgs', 'a', reply);
 
+  // Anhänge leeren nach dem Senden
+  window._pendingAttachments = undefined;
+  if (typeof clearAttachments === 'function') clearAttachments('bc');
+
   if (res.ok) {
     S.chatHistory.bc.push({ role:'assistant', content:reply });
-    if (S.chatHistory.bc.length > 40) S.chatHistory.bc = S.chatHistory.bc.slice(-40);
+    if (S.chatHistory.bc.length > 40) {
+      // Ältere Nachrichten zusammenfassen statt löschen
+      compressHistory('bc').catch(() => {
+        S.chatHistory.bc = S.chatHistory.bc.slice(-40);
+      });
+    }
+    if (typeof scheduleConvAutoSave === 'function') scheduleConvAutoSave('bc');
+
+    // Prüfe ob die Antwort Anforderungen enthält — zeige dann inline "Anforderungen erstellen" Button
+    if (S.activeSystemId && containsRequirements(reply)) {
+      appendExtractButton('bc-chat-msgs', reply);
+    }
   }
 }
+
+// Heuristik: enthält die Antwort Anforderungen?
+function containsRequirements(text) {
+  const patterns = [
+    /das system (muss|soll|kann|sollte)/gi,
+    /anforderung[en]?\s*:/gi,
+    /(REQ|FA|NFA|UC)-?\d+/gi,
+    /- \*\*(funktional|nicht.funktional|sicherheit|performance)/gi,
+    /priorität[:\s]*(hoch|mittel|niedrig)/gi,
+    /\[(hoch|mittel|niedrig)\]/gi,
+    /\*\*req|req-\d+/gi,
+  ];
+  return patterns.some(p => p.test(text));
+}
+
+// Fügt nach der letzten KI-Nachricht einen "Anforderungen erstellen"-Button ein
+function appendExtractButton(containerId, reply) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  // Alten Button entfernen falls vorhanden
+  container.querySelectorAll('.inline-extract-btn').forEach(el => el.remove());
+
+  const wrap = document.createElement('div');
+  wrap.className = 'inline-extract-btn';
+  wrap.style.cssText = 'display:flex;justify-content:flex-end;padding:4px 12px 8px;';
+
+  const btn = document.createElement('button');
+  btn.className = 'btn-primary';
+  btn.style.cssText = 'font-size:12px;padding:6px 14px;display:flex;align-items:center;gap:6px';
+  btn.innerHTML = '📋 Anforderungen aus dieser Antwort erstellen';
+  btn.onclick = () => previewAndCreateRequirements(reply, wrap);
+
+  wrap.appendChild(btn);
+  container.appendChild(wrap);
+  container.scrollTop = container.scrollHeight;
+}
+
+// Extrahiert und zeigt Vorschau — User muss bestätigen
+async function previewAndCreateRequirements(reply, btnWrap) {
+  if (!S.activeSystemId) { toast('⚠ System auswählen'); return; }
+  const btn = btnWrap?.querySelector('button');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Extrahiere…'; }
+
+  const existing = S.requirements
+    .filter(r => r.systemId === S.activeSystemId)
+    .map(r => r.title).join(', ');
+
+  // Stakeholder als zusätzlichen Kontext laden
+  let shCtx = '';
+  try {
+    const shs = await fetch(`api/systems/${S.activeSystemId}/stakeholders`,{credentials:'include'}).then(r=>r.json()).catch(()=>[]);
+    if (shs.length) shCtx = 'Bekannte Stakeholder: ' + shs.map(s => s.name + ' (' + s.role + ')').join(', ') + '\n\n';
+  } catch(e) {}
+
+  const schema = '[{"title":"Verb + Objekt (max 80 Zeichen)","description":"Vollständig und messbar",'
+    + '"category":"Funktional|Nicht-Funktional|Sicherheit|Performance|Schnittstelle|Qualität",'
+    + '"priority":"high|medium|low","rationale":"Warum wichtig?",'
+    + '"acceptance_criteria_text":"Gegeben...Wenn...Dann...",'
+    + '"verification_method":"Test|Inspektion|Review|Analyse",'
+    + '"iso_category":"Funktionale Eignung|Leistungseffizienz|Sicherheit|Wartbarkeit",'
+    + '"risk_level":"hoch|mittel|niedrig","business_value":5}]';
+
+  const res = await callAPI([{ role:'user', content:
+    'Du bist CPRE-zertifizierter Requirements Engineer. Extrahiere ALLE Anforderungen aus dem folgenden Text.\n\n'
+    + shCtx
+    + 'NICHT DUPLIZIEREN: ' + (existing || '(keine)') + '\n\n'
+    + 'TEXT:\n' + reply + '\n\n'
+    + 'REGELN: Eindeutig, testbar, mit Akzeptanzkriterien (Gegeben/Wenn/Dann), IEEE-830 Kategorie.\n\n'
+    + 'JSON-Array (keine Backticks):\n' + schema
+    + '\nWenn keine Anforderungen: []' }],
+    '', 3000);
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '📋 Anforderungen aus dieser Antwort erstellen'; }
+
+  if (!res.ok) { toast('❌ ' + res.text); return; }
+
+  let reqs;
+  try {
+    reqs = JSON.parse(res.text.replace(/\`\`\`json|\`\`\`/g, '').trim());
+  } catch(e) { toast('❌ Konnte Anforderungen nicht parsen'); return; }
+
+  if (!reqs?.length) { toast('ℹ Keine klaren Anforderungen erkannt'); return; }
+
+  // Bestätigungs-Modal mit Vorschau
+  const preview = reqs.map((r, i) => `
+    <div style="background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);
+      padding:10px 12px;display:flex;gap:10px;align-items:flex-start">
+      <input type="checkbox" id="req-cb-${i}" checked
+        style="width:15px;height:15px;accent-color:var(--aa);flex-shrink:0;margin-top:2px"/>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600">${esc(r.title)}</div>
+        <div style="font-size:11px;color:var(--t3);margin-top:2px">${esc(r.description||'')}</div>
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <span style="font-size:10px;background:var(--s3);padding:1px 7px;border-radius:99px">
+            ${esc(r.category||'Funktional')}</span>
+          <span style="font-size:10px;background:var(--s3);padding:1px 7px;border-radius:99px">
+            ${esc(r.priority||'medium')}</span>
+        </div>
+      </div>
+    </div>`).join('');
+
+  openModal(`${reqs.length} Anforderung(en) erstellen?`, `
+    <p style="font-size:12px;color:var(--t3);margin-bottom:12px">
+      Wähle die Anforderungen aus die du übernehmen möchtest:</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+      ${preview}
+    </div>
+    <div class="modal-footer-actions">
+      <button class="btn-primary" onclick="confirmCreateRequirements(${JSON.stringify(reqs).replace(/"/g,'&quot;')})">
+        ✅ Ausgewählte erstellen
+      </button>
+      <button class="btn-secondary" onclick="closeModal()">Abbrechen</button>
+    </div>`);
+}
+
+// Erstellt die bestätigten Anforderungen
+async function confirmCreateRequirements(reqs) {
+  const checked = reqs.filter((_, i) =>
+    document.getElementById(`req-cb-${i}`)?.checked
+  );
+  if (!checked.length) { toast('⚠ Keine ausgewählt'); return; }
+
+  closeModal();
+  let created = 0;
+  for (const r of checked) {
+    try {
+      await window.api.saveRequirement({
+        ...r,
+        id:            'REQ-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+        systemId:      S.activeSystemId,
+        createdBy:     S.user.id,
+        createdByName: S.user.name,
+        status:        'open',
+        tags:          r.tags || [],
+      });
+      created++;
+      await new Promise(r => setTimeout(r, 50)); // kurze Pause zwischen Saves
+    } catch(e) { console.error('Req save error:', e); }
+  }
+  toast(`✅ ${created} Anforderung(en) erstellt`);
+  if (typeof refreshReqPane === 'function') await refreshReqPane();
+
+  // Backlog automatisch aktualisieren
+  if (created > 0 && typeof scheduleAutoEpicUpdate === 'function') {
+    scheduleAutoEpicUpdate(S.activeSystemId);
+  }
+
+  // Button entfernen nach Erstellung
+  document.querySelectorAll('.inline-extract-btn').forEach(el => el.remove());
+}
+
+window.previewAndCreateRequirements = previewAndCreateRequirements;
+window.confirmCreateRequirements    = confirmCreateRequirements;
+
 
 window.loadBizChat  = loadBizChat;
 window.sendBizChat  = sendBizChat;

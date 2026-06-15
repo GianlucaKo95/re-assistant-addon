@@ -31,23 +31,54 @@ async function generateDiagram(){
   if(!text){toast('⚠ Beschreibung eingeben');return;}
   const btn=$('btn-gen-diagram');btn.disabled=true;btn.innerHTML='<span class="spin"></span> Generiere …';
   $('diag-canvas').innerHTML='<div class="empty-state"><div class="spin"></div><p>Generiere Diagramm …</p></div>';
-  const bpmnPrompt=`Erstelle ein professionelles BPMN 2.0 Prozessdiagramm als SVG (Breite 900px):
-- Swimlanes: horizontale Bereiche mit Label links, hellgrauer Hintergrund
-- Tasks: abgerundete Rechtecke rx=8, weiß mit #6366f1 Rahmen
-- Start-Event: grüner Kreis; End-Event: roter Kreis mit dickem Rand
-- Gateways: Rauten #f59e0b
-- Sequenzflüsse: Pfeile mit Beschriftungen
-- Schrift: 12px sans-serif #1e1b4b; Hintergrund: #f8f9fc
+  // RE-Kontext laden für reichhaltigere Diagramme
+  let reCtxForDiagram = '';
+  try {
+    const sysId = S.activeSystemId;
+    if (sysId) {
+      const [reqs, shs, ucs, ragCtxDiag] = await Promise.all([
+        window.api.getRequirements({systemId: sysId}),
+        fetch('api/systems/' + sysId + '/stakeholders', {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+        fetch('api/systems/' + sysId + '/use-cases', {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+        typeof getRAGContextForQuery === 'function'
+          ? getRAGContextForQuery(sysId, text + ' Architektur Komponenten Module', { role: 'overview' }).catch(()=>'')
+          : Promise.resolve(''),
+      ]);
+      const reqSummary = reqs.slice(0,20).map(r => '- ' + r.title).join('\n');
+      const shSummary  = shs.map(s => s.name + ' (' + s.role + ', Einfluss: ' + s.influence + ')').join('\n- ');
+      const ucSummary  = ucs.map(u => u.title + ' (Akteur: ' + (u.actor||'?') + '): ' + (u.description||'')).join('\n- ');
+      reCtxForDiagram = [
+        shSummary  ? 'STAKEHOLDER:\n- ' + shSummary : '',
+        ucSummary  ? 'USE CASES:\n- ' + ucSummary   : '',
+        reqSummary ? 'HAUPTANFORDERUNGEN:\n' + reqSummary : '',
+        ragCtxDiag ? 'SYSTEMDOKUMENTATION:\n' + ragCtxDiag.substring(0, 3000) : '',
+      ].filter(Boolean).join('\n\n');
+    }
+  } catch(e) {}
 
-Prozess:\n${text}\n\nNur SVG-Code, beginnend mit <svg`;
-  const ctxPrompt=`Erstelle ein Systemkontextdiagramm als SVG (800×600px):
-- Zentrales System: Rechteck Mitte, violetter Hintergrund #6366f1, weiße Schrift
-- Externe Akteure: Ovale, grau #f3f4f6 mit dunklem Rand, um das System herum
-- Datenflüsse: beschriftete Pfeile
-- Schrift: 13px sans-serif #1e1b4b; Hintergrund: #f8f9fc
+  const ctxHint = reCtxForDiagram
+    ? '\n\nRE- UND SYSTEM-KONTEXT (für inhaltliche Genauigkeit — verwende echte Namen, Akteure und Komponenten):\n' + reCtxForDiagram
+    : '';
 
-System:\n${text}\n\nNur SVG-Code, beginnend mit <svg`;
-  const res=await callAPI([{role:'user',content:type==='bpmn'?bpmnPrompt:ctxPrompt}],'Erstelle nur SVG, keine Erklärungen.',3000);
+  const bpmnPrompt = 'Erstelle ein professionelles BPMN 2.0 Prozessdiagramm als SVG (Breite 900px):\n'
+    + '- Swimlanes: horizontale Bereiche mit Label links, hellgrauer Hintergrund\n'
+    + '- Tasks: abgerundete Rechtecke rx=8, weiß mit #6366f1 Rahmen\n'
+    + '- Start-Event: grüner Kreis; End-Event: roter Kreis mit dickem Rand\n'
+    + '- Gateways: Rauten #f59e0b\n'
+    + '- Sequenzflüsse: Pfeile mit Beschriftungen\n'
+    + '- Schrift: 12px sans-serif #1e1b4b; Hintergrund: #f8f9fc\n'
+    + '- Verwende die echten Akteure aus dem RE-Kontext als Swimlane-Labels\n\n'
+    + 'PROZESS:\n' + text + ctxHint + '\n\nNur SVG-Code, beginnend mit <svg';
+
+  const ctxPrompt = 'Erstelle ein Systemkontextdiagramm als SVG (800x600px):\n'
+    + '- Zentrales System: Rechteck Mitte, violetter Hintergrund #6366f1, weiße Schrift\n'
+    + '- Externe Akteure/Stakeholder: Ovale, grau #f3f4f6 mit dunklem Rand\n'
+    + '- Alle Stakeholder aus dem RE-Kontext als externe Akteure einzeichnen\n'
+    + '- Datenflüsse: beschriftete Pfeile (aus Use Cases ableiten)\n'
+    + '- Schrift: 13px sans-serif #1e1b4b; Hintergrund: #f8f9fc\n\n'
+    + 'SYSTEM:\n' + text + ctxHint + '\n\nNur SVG-Code, beginnend mit <svg';
+
+  const res=await callAPI([{role:'user',content:type==='bpmn'?bpmnPrompt:ctxPrompt}],'Erstelle nur SVG-Code, keine Erklärungen, keine Backticks. Beginne direkt mit <svg.',3500);
   btn.disabled=false;btn.innerHTML='⚡ Diagramm generieren';
   if(!res.ok){toast('❌ '+res.text);return;}
   const svg=res.text.includes('<svg')?res.text.substring(res.text.indexOf('<svg')):res.text;

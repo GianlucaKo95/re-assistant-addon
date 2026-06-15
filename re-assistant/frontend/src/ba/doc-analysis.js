@@ -45,27 +45,53 @@ async function runDocAnalysis() {
   btn.innerHTML = '<span class="spin"></span>';
   $('da-results').innerHTML = '<div class="empty-state"><div class="spin"></div><p>Analysiere Dokumente …</p></div>';
 
-  const content = docs.map(d => `### ${d.name}\n${d.content.substring(0, 8000)}`).join('\n\n---\n\n');
+  // Dokument-Inhalt sicher lesen
+  // Falls d.content leer: RAG-Cache wird als Hauptkontext genutzt (bessere Strategie)
+  const hasContent = docs.some(d => d.content && d.content.length > 50);
+  const contentParts = hasContent
+    ? docs.map(d => {
+        const text = d.content || '';
+        return '### ' + d.name + '\n' + (text ? text.substring(0, 4000) : '(Inhalt via RAG-Index)');
+      }).join('\n\n---\n\n')
+    : '(Dokumente sind via RAG-Index verfügbar — Analyse basiert auf dem Systemkontext)';
 
-  const res = await callAPI([{ role:'user', content:
-    `Analysiere diese Dokumentation strukturiert und extrahiere:
-    1. Anforderungen (funktionale und nicht-funktionale)
-    2. Annahmen (implizite Voraussetzungen)
-    3. Risiken (potenzielle Probleme)
-    
-    JSON ohne Backticks:
-    {
-      "requirements": [{"id":"REQ-001","title":"...","description":"...","category":"Funktional","priority":"medium","confidence":"high"}],
-      "assumptions":  [{"text":"...","impact":"hoch|mittel|niedrig"}],
-      "risks":        [{"text":"...","probability":"hoch|mittel|niedrig","impact":"hoch|mittel|niedrig"}],
-      "summary":      "Kurze Zusammenfassung der Dokumentation"
-    }
-    
-    Confidence-Werte: high = klar explizit, medium = implizit erkennbar, low = Vermutung
-    
-    Dokumentation:
-    ${content}` }],
-    langNote(), 3500);
+  // Vollständiger RE-Kontext
+  let shCtx = '', ucCtx = '', qgCtx = '', ragCtx = '';
+  try {
+    const [shs, ucs, qgs, cache] = await Promise.all([
+      fetch(`api/systems/${sysId}/stakeholders`,  {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+      fetch(`api/systems/${sysId}/use-cases`,     {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+      fetch(`api/systems/${sysId}/quality-goals`, {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+      fetch(`api/embeddings/summary?systemId=${sysId}`, {credentials:'include'}).then(r=>r.json()).catch(()=>null),
+    ]);
+    if (shs.length) shCtx = 'Stakeholder: ' + shs.map(s => s.name + ' (' + s.role + ')').join(', ');
+    if (ucs.length) ucCtx = 'Bekannte Use Cases: ' + ucs.map(u => u.title).join(', ');
+    if (qgs.length) qgCtx = 'Qualitätsziele: ' + qgs.map(g => g.iso_char + ': ' + g.description).join(' | ');
+    if (cache?.summary) ragCtx = 'SYSTEMÜBERBLICK (KI-analysiert):\n' + cache.summary.substring(0, 5000);
+  } catch(e) {}
+
+  const schema = '{"requirements":[{"title":"Beginnt mit Verb","description":"vollständig und messbar","category":"Funktional|Nicht-Funktional|Sicherheit|Performance|Schnittstelle","priority":"high|medium|low","confidence":"high|medium|low","rationale":"Warum wichtig?","acceptance_criteria_text":"Gegeben...Wenn...Dann...","stakeholders":"Betroffene Stakeholder","iso_category":"ISO-25010 Charakteristik","risk_level":"hoch|mittel|niedrig"}],"assumptions":[{"text":"...","impact":"hoch|mittel|niedrig","affectedStakeholders":"..."}],"risks":[{"text":"...","probability":"hoch|mittel|niedrig","impact":"hoch|mittel|niedrig","mitigation":"Gegenmaßnahme"}],"gaps":["Fehlende Anforderung aus Stakeholder-Sicht..."],"summary":"Zusammenfassung"}';
+
+  const prompt = [
+    'Du bist CPRE-zertifizierter Requirements Engineer. Analysiere die Dokumentation tiefgründig.',
+    '',
+    shCtx, ucCtx, qgCtx, ragCtx,
+    '',
+    'EXTRAHIERE:',
+    '1. Anforderungen — explizit UND implizit, mit Akzeptanzkriterien und Stakeholder-Zuordnung',
+    '2. Annahmen — implizite Voraussetzungen mit Auswirkung auf betroffene Stakeholder',
+    '3. Risiken — mit konkreten Gegenmaßnahmen',
+    '4. Lücken — Anforderungen die aus Stakeholder-Perspektive fehlen',
+    '',
+    'DOKUMENTATION:',
+    contentParts,
+    '',
+    'Antworte NUR mit JSON (keine Backticks):',
+    schema,
+  ].filter(Boolean).join('\n');
+
+  const res = await callAPI([{ role:'user', content: prompt }],
+    'Du bist CPRE-zertifizierter Requirements Engineer. ' + langNote(), 4500);
 
   btn.disabled = false;
   btn.innerHTML = '🔍 Analysieren';
@@ -148,6 +174,22 @@ function renderDocAnalysis(a, sysId) {
     dr.appendChild(g);
   }
 
+  // Lücken
+  if (a.gaps?.length) {
+    const g = document.createElement('div');
+    g.className = 'da-group';
+    g.innerHTML = \`
+      <div class="da-group-head">🕳 Erkannte Lücken (\${a.gaps.length})</div>
+      <div class="da-group-body">
+        \${a.gaps.map(x => \`
+          <div class="da-item">
+            <div class="da-item-icon" style="background:var(--redbg)">🕳</div>
+            <div class="da-item-body">\${esc(x)}</div>
+          </div>\`).join('')}
+      </div>\`;
+    dr.appendChild(g);
+  }
+
   // Risiken
   if (a.risks?.length) {
     const g = document.createElement('div');
@@ -174,11 +216,15 @@ function renderDocAnalysis(a, sysId) {
 async function saveSingleDocReq(r, sysId) {
   await window.api.saveRequirement({
     ...r,
-    id:            'REQ-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
-    systemId:      sysId,
-    createdBy:     S.user.id,
-    createdByName: S.user.name,
-    status:        'open',
+    id:                       'REQ-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+    systemId:                 sysId,
+    createdBy:                S.user.id,
+    createdByName:            S.user.name,
+    status:                   'open',
+    acceptance_criteria_text: r.acceptance_criteria_text || '',
+    iso_category:             r.iso_category || '',
+    risk_level:               r.risk_level || '',
+    source:                   'doc-analysis',
   });
   toast('✅ Anforderung gespeichert');
 }
