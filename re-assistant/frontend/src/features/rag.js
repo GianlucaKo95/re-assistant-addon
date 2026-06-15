@@ -275,47 +275,47 @@ async function showRAGStatus(systemId) {
   if (!sys) return;
 
   try {
-    // Neue Status-Route nutzen
-    const statusRes = await fetch(`api/systems/${systemId}/rag-status`, { credentials: 'include' });
+    const statusRes = await fetch('api/systems/' + systemId + '/rag-status', { credentials: 'include' });
     const status    = statusRes.ok ? await statusRes.json() : {};
     const hasEmbeddings = status.ready || false;
     const docCount      = sys.docs?.length || 0;
     const indexedDocs   = status.indexedDocs || 0;
     const totalChunks   = status.totalChunks || 0;
 
-    openModal(`📚 Wissens-Index: ${sys.name}`, `
-      <div style="margin-bottom:16px">
-        <div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--s2);border-radius:10px">
-          <span style="font-size:24px">${hasEmbeddings ? '✅' : '⚠'}</span>
-          <div>
-            <div style="font-size:13px;font-weight:600">
-              ${hasEmbeddings ? 'Semantische Suche aktiv' : 'Nur Textsuche (keine Embeddings)'}
-            </div>
-            <div style="font-size:11px;color:var(--t3);margin-top:2px">
-              ${docCount} Dokument(e) · ${indexedDocs} indexiert · ${totalChunks} Chunks
-            </div>
-          </div>
-        </div>
-      </div>
+    const docListHtml = docCount
+      ? '<div style="max-height:160px;overflow-y:auto;border:1px solid var(--b1);border-radius:8px;margin-bottom:14px">'
+        + (sys.docs||[]).map(d =>
+            '<div style="padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:12px">'
+            + '<span>' + esc(d.name) + '</span>'
+            + '<span style="color:var(--t3)">' + ((d.size||0)/1024).toFixed(1) + ' KB</span>'
+            + '</div>'
+          ).join('')
+        + '</div>'
+      : '<p style="font-size:12px;color:var(--t3)">Keine Dokumente hochgeladen.</p>';
 
-      <div style="font-size:12px;color:var(--t2);margin-bottom:14px">
-        ${hasEmbeddings
+    const indexBtn = docCount
+      ? '<button class="btn-primary" style="flex:1" onclick="closeModal();runIndexing(\'' + systemId + '\')">⚡ Jetzt indexieren</button>'
+      : '';
+
+    const body = '<div style="margin-bottom:16px">'
+      + '<div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--s2);border-radius:10px">'
+      + '<span style="font-size:24px">' + (hasEmbeddings ? '✅' : '⚠') + '</span>'
+      + '<div>'
+      + '<div style="font-size:13px;font-weight:600">' + (hasEmbeddings ? 'Semantische Suche aktiv' : 'Nur Textsuche (keine Embeddings)') + '</div>'
+      + '<div style="font-size:11px;color:var(--t3);margin-top:2px">' + docCount + ' Dokument(e) · ' + indexedDocs + ' indexiert · ' + totalChunks + ' Chunks</div>'
+      + '</div></div></div>'
+      + '<div style="font-size:12px;color:var(--t2);margin-bottom:14px">'
+      + (hasEmbeddings
           ? 'Die KI nutzt semantische Ähnlichkeit um relevante Passagen zu finden — auch wenn die exakten Wörter nicht übereinstimmen.'
-          : 'Indexieren Sie die Dokumente damit die KI präziser auf Ihren Dokumentationsinhalt eingehen kann.'}
-      </div>
+          : 'Indexieren Sie die Dokumente damit die KI präziser auf Ihren Dokumentationsinhalt eingehen kann.')
+      + '</div>'
+      + docListHtml
+      + '<div style="display:flex;gap:8px">'
+      + indexBtn
+      + '<button class="btn-secondary" style="flex:1" onclick="closeModal()">Schließen</button>'
+      + '</div>';
 
-      ${docCount ? `
-        <div style="max-height:160px;overflow-y:auto;border:1px solid var(--b1);border-radius:8px;margin-bottom:14px">
-          (sys.docs||[]).map(d => "<div style="padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:12px">               <span>' + (esc(d.name)) + '</span>               <span style="color:var(--t3)">' + (((d.size||0)/1024).toFixed(1)) + ' KB</span>").join('')}
-        </div>` : '<p style="font-size:12px;color:var(--t3)">Keine Dokumente hochgeladen.</p>'}
-
-      <div style="display:flex;gap:8px">
-        ${docCount ? `
-          <button class="btn-primary" style="flex:1" onclick="closeModal();runIndexing('${systemId}')">
-            ⚡ Jetzt indexieren
-          </button>` : ''}
-        <button class="btn-secondary" style="flex:1" onclick="closeModal()">Schließen</button>
-      </div>`);
+    openModal('📚 Wissens-Index: ' + sys.name, body);
   } catch(e) {
     toast('❌ Status-Abfrage fehlgeschlagen');
   }

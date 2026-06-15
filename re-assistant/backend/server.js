@@ -1398,6 +1398,8 @@ app.post('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
     if (staleSystems.rows.length) {
       log('info', `API-Key gespeichert — baue ${staleSystems.rows.length} Cache(s) ohne KI-Inhalt neu auf`);
       for (const row of staleSystems.rows) {
+        // doc_summaries löschen damit Phase 1 mit KI neu durchläuft
+        await query('DELETE FROM doc_summaries WHERE system_id=$1', [row.system_id]).catch(() => {});
         setImmediate(() => buildSystemContextCache(row.system_id));
       }
     }
@@ -2457,7 +2459,7 @@ async function buildSystemContextCache(systemId) {
     const toProcess = docIds.filter(id => !existingMap[id]);
 
     if (toProcess.length === 0 && processed > 0) {
-      log('info', `Cache: Alle ${processed} Datei-Zusammenfassungen bereits vorhanden — überspringe Phase 1`);
+      log('info', `Cache: Alle ${processed} Datei-Zusammenfassungen bereits vorhanden und KI-generiert — überspringe Phase 1`);
     }
 
     for (let i = 0; i < toProcess.length; i += BATCH_SIZE) {
@@ -2663,9 +2665,12 @@ app.post('/api/systems/:id/rebuild-cache', requireAuth, async (req, res) => {
       return res.json({ ok: true, message: 'Cache-Build läuft bereits', alreadyRunning: true });
     }
 
-    // Bei vollständigem Neuaufbau: alte Dok-Zusammenfassungen löschen
-    if (req.body?.force) {
+    // Bei vollständigem Neuaufbau ODER wenn vorheriger Build kein KI hatte:
+    // doc_summaries löschen damit Phase 1 mit KI neu durchläuft
+    const shouldClearSummaries = req.body?.force || current?.build_status === 'ready_no_ai';
+    if (shouldClearSummaries) {
       await query('DELETE FROM doc_summaries WHERE system_id=$1', [req.params.id]);
+      log('info', `Cache: doc_summaries gelöscht für Neuaufbau mit KI (${req.params.id})`);
     }
     res.json({ ok: true, message: 'Cache wird im Hintergrund aufgebaut …' });
     setImmediate(() => buildSystemContextCache(req.params.id));

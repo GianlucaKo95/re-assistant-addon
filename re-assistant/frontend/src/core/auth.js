@@ -191,6 +191,12 @@ async function saveCfg() {
     $('cfg-msg').innerHTML = '<span style="color:var(--grn)">✅ Gespeichert</span>';
     setTimeout(() => { if ($('cfg-msg')) $('cfg-msg').innerHTML = ''; }, 3000);
   }
+
+  // Banner sofort entfernen + Status neu laden
+  document.getElementById('cfg-provider-mismatch')?.remove();
+  if (typeof applyApiSectionVisibility === 'function') {
+    await applyApiSectionVisibility();
+  }
 }
 
 // 🔴 FIX 3: Passwort ändern (eigenes)
