@@ -138,7 +138,7 @@ function renderCompletenessResult(result, sysId) {
         <div style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;margin-bottom:8px">
           🚨 Kritische Lücken (${result.criticalGaps.length})
         </div>
-        ${result.criticalGaps.map(g=>`<div style="font-size:12px;color:var(--red);padding:3px 0">• ${esc(g)}</div>`).join('')}
+        ${result.criticalGaps.map(g => '<div style="font-size:12px;color:var(--red);padding:3px 0">• ${esc(g)}</div>').join('')}
       </div>` : ''}
 
     <!-- Kategorien -->
@@ -162,7 +162,7 @@ function renderCompletenessResult(result, sysId) {
           <div id="cc-${cat.name.replace(/\W/g,'_')}" style="display:none;padding:0 14px 12px">
             ${(cat.gaps||[]).length ? `
               <div style="font-size:11px;font-weight:700;color:var(--amb);margin-bottom:6px">Lücken:</div>
-              ${cat.gaps.map(g=>`<div style="font-size:11px;color:var(--t2);padding:2px 0">• ${esc(g)}</div>`).join('')}` : ''}
+              ${cat.gaps.map(g => '<div style="font-size:11px;color:var(--t2);padding:2px 0">• ${esc(g)}</div>').join('')}` : ''}
             ${(cat.suggestedRequirements||[]).length ? `
               <div style="font-size:11px;font-weight:700;color:var(--aa);margin:10px 0 6px">✦ Vorgeschlagene Anforderungen:</div>
               ${cat.suggestedRequirements.map((s,si) => `

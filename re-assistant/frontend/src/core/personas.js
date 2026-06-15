@@ -238,14 +238,10 @@ function renderPersonaDetail(id) {
       <div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;margin-bottom:8px">
         ${p.icon} ${p.label} — Zusätzliche QS-Regeln
       </div>
-      ${(p.qsRules || []).map(r => `
-        <div style="display:flex;gap:7px;padding:4px 0;font-size:12px;color:var(--t2);border-bottom:1px solid var(--b1)">
-          <span style="color:${p.color};flex-shrink:0">✓</span>
-          ${esc(r)}
-        </div>`).join('')}
+      (p.qsRules || []).map(r => "<div style="display:flex;gap:7px;padding:4px 0;font-size:12px;color:var(--t2);border-bottom:1px solid var(--b1)">           <span style="color:' + (p.color) + ';flex-shrink:0">✓</span>           ' + (esc(r))").join('')}
       ${p.badges?.length ? `
         <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">
-          ${p.badges.map(b => `<span style="font-size:10px;padding:2px 8px;background:${p.color}22;color:${p.color};border-radius:99px;font-weight:600">${esc(b)}</span>`).join('')}
+          ${p.badges.map(b => '<span style="font-size:10px;padding:2px 8px;background:${p.color}22;color:${p.color};border-radius:99px;font-weight:600">${esc(b)}</span>').join('')}
         </div>` : ''}
     </div>`;
 }

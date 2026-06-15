@@ -157,7 +157,7 @@ ${reqs.map(r => `
   <div class="req-body">
     <div class="req-desc">${(r.description||'').replace(/\n/g,'<br>')}</div>
     ${r.rationale ? `<div class="req-rat">💡 ${r.rationale}</div>` : ''}
-    ${(r.tags||[]).length ? `<div style="margin-top:8px">${r.tags.map(t=>`<span style="font-size:10px;padding:2px 8px;background:#f3f4f6;border-radius:99px;margin-right:4px">${t}</span>`).join('')}</div>` : ''}
+    ${(r.tags||[]).length ? `<div style="margin-top:8px">${r.tags.map(t => '<span style="font-size:10px;padding:2px 8px;background:#f3f4f6;border-radius:99px;margin-right:4px">${t}</span>').join('')}</div>` : ''}
   </div>
 </div>`).join('')}
 </body></html>`;
@@ -173,7 +173,7 @@ function buildWordHTML(reqs, projectName) {
 <p>Exportiert: ${new Date().toLocaleDateString('de-DE')}</p>
 <table>
 <tr><th>ID</th><th>Titel</th><th>Beschreibung</th><th>Priorität</th><th>Status</th><th>QS</th></tr>
-${reqs.map(r=>`<tr><td>${r.id}</td><td><b>${r.title}</b></td><td>${(r.description||'').substring(0,200)}</td><td>${priLabel(r.priority)}</td><td>${statusLabel(r.status)}</td><td>${r.qualityScore||'—'}</td></tr>`).join('')}
+${reqs.map(r => '<tr><td>${r.id}</td><td><b>${r.title}</b></td><td>${(r.description||\'\').substring(0,200)}</td><td>${priLabel(r.priority)}</td><td>${statusLabel(r.status)}</td><td>${r.qualityScore||\'—\'}</td></tr>').join('')}
 </table></body></html>`;
 }
 

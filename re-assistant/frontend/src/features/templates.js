@@ -262,7 +262,7 @@ async function adoImport() {
         <h3 style="font-size:14px">${items.length} Work Items aus ${esc(project)}</h3>
         <button class="btn-primary" style="font-size:12px" onclick="analyzeAdoImport()">✦ KI analysieren</button>
       </div>
-      ${items.slice(0,50).map(i => `<div class="jira-issue"><span class="jira-key" style="color:var(--ba)">#${i.id}</span><div style="font-size:13px">${esc(i.fields?.['System.Title']||i.url||'')}</div></div>`).join('')}
+      ${items.slice(0,50).map(i => '<div class="jira-issue"><span class="jira-key" style="color:var(--ba)">#${i.id}</span><div style="font-size:13px">${esc(i.fields?.[\'System.Title\']||i.url||\'\')}</div></div>').join('')}
       ${items.length > 50 ? `<p style="font-size:11px;color:var(--t3);margin-top:8px">… und ${items.length - 50} weitere</p>` : ''}
     </div>`;
     toast(`✅ ${items.length} Work Items geladen`);

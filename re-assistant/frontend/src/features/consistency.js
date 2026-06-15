@@ -104,11 +104,7 @@ function renderConsistencyResults(result, reqs) {
       <div style="font-size:11px;font-weight:700;color:var(--amb);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 8px">
         ⚠ Spannungsfelder (${result.warnings.length})
       </div>
-      ${result.warnings.map(w => `
-        <div style="background:var(--ambbg);border:1px solid rgba(251,191,36,.2);border-radius:var(--r);padding:10px 12px;margin-bottom:6px;font-size:12px">
-          <div style="font-weight:600;margin-bottom:4px">${esc(w.description)}</div>
-          <div style="color:var(--t3)">${(w.reqIds||[]).join(', ')}</div>
-        </div>`).join('')}` : ''}`;
+      result.warnings.map(w => "<div style="background:var(--ambbg);border:1px solid rgba(251,191,36,.2);border-radius:var(--r);padding:10px 12px;margin-bottom:6px;font-size:12px">           <div style="font-weight:600;margin-bottom:4px">' + (esc(w.description)) + '</div>           <div style="color:var(--t3)">' + ((w.reqIds||[]).join(', ')) + '</div>").join('')}` : ''}`;
 }
 
 function showConsistencyModal(result, reqs) {
@@ -186,12 +182,7 @@ function showACSuggestions(sugg, titleInputId, descInputId) {
     <div style="padding:6px 10px;border-bottom:1px solid var(--b1);font-size:10px;color:var(--t3);display:flex;align-items:center;gap:5px">
       <span style="color:var(--aa)">✦</span> KI-Vorschläge
     </div>
-    ${(sugg.suggestions||[]).map(s => `
-      <div class="ac-suggestion-item" onclick="applyACSuggestion('${titleInputId}','${descInputId}','${esc(s).replace(/'/g,"\\'")}','${esc(sugg.description||'').replace(/'/g,"\\'")}','${esc(sugg.category||'Funktional')}')"
-        style="padding:9px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--b1);transition:background .1s"
-        onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
-        ${esc(s)}
-      </div>`).join('')}
+    (sugg.suggestions||[]).map(s => "<div class="ac-suggestion-item" onclick="applyACSuggestion('' + (titleInputId) + '','' + (descInputId) + '','' + (esc(s).replace(/'/g,"\\'")) + '','' + (esc(sugg.description||'').replace(/'/g,"\\'")) + '','' + (esc(sugg.category||'Funktional')) + '')"         style="padding:9px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--b1);transition:background .1s"         onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">         ' + (esc(s))").join('')}
     ${sugg.description ? `
       <div style="padding:8px 12px;font-size:11px;color:var(--t3)">
         <span style="color:var(--t2)">Beschreibung:</span> ${esc(sugg.description.substring(0,100))}

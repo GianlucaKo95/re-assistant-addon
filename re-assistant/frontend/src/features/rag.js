@@ -306,11 +306,7 @@ async function showRAGStatus(systemId) {
 
       ${docCount ? `
         <div style="max-height:160px;overflow-y:auto;border:1px solid var(--b1);border-radius:8px;margin-bottom:14px">
-          ${(sys.docs||[]).map(d => `
-            <div style="padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:12px">
-              <span>${esc(d.name)}</span>
-              <span style="color:var(--t3)">${((d.size||0)/1024).toFixed(1)} KB</span>
-            </div>`).join('')}
+          (sys.docs||[]).map(d => "<div style="padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:12px">               <span>' + (esc(d.name)) + '</span>               <span style="color:var(--t3)">' + (((d.size||0)/1024).toFixed(1)) + ' KB</span>").join('')}
         </div>` : '<p style="font-size:12px;color:var(--t3)">Keine Dokumente hochgeladen.</p>'}
 
       <div style="display:flex;gap:8px">

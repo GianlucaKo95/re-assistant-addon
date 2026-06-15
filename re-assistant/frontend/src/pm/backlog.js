@@ -188,14 +188,12 @@ async function mergeNewReqsIntoBacklog(backlog, newReqs, systemId) {
 
     const existingEpics = backlog.epics.map(ep =>
       `${ep.id}: ${ep.title} (${(ep.features||[]).flatMap(f=>f.stories||[]).length} Stories)`
-    ).join('
-');
+    ).join('\n');
 
     const newReqList = newReqs.map(r =>
       `${r.id}: ${r.title} [${r.category||'?'}][${r.priority||'medium'}]` +
       (r.description ? ' — ' + r.description.substring(0, 80) : '')
-    ).join('
-');
+    ).join('\n');
 
     const prompt = 'Bestehender Backlog hat diese Epics:\n' + existingEpics
       + '\n\nNeue Anforderungen die einzugliedern sind:\n' + newReqList
@@ -293,8 +291,7 @@ async function autoGenerateBacklog(systemId, reqs) {
     const reqList = reqs.slice(0, 30).map(r =>
       r.id + ': ' + r.title + ' [' + (r.category||'?') + '][' + (r.priority||'medium') + ']'
       + (r.business_value ? '[BV:' + r.business_value + ']' : '')
-    ).join('
-');
+    ).join('\n');
 
     const schema = '{"epics":[{"id":"EPIC-1","title":"...","description":"Welches Nutzerziel?","features":[{"id":"FEAT-1.1","title":"...","stories":[{"id":"US-1.1.1","title":"Als [Stakeholder] möchte ich [Funktion] damit [Nutzen]","storyPoints":3,"priority":"high|medium|low","reqRef":"REQ-001","acceptanceCriteria":["Gegeben...Wenn...Dann..."]}]}]}]}';
 

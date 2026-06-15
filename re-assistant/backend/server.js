@@ -3,6 +3,7 @@ const express  = require('express');
 const session  = require('express-session');
 const PgSession = require('connect-pg-simple')(session);
 const cors     = require('cors');
+const rateLimit = require('express-rate-limit');
 const fs       = require('fs-extra');
 const path     = require('path');
 const fetch    = require('node-fetch');
@@ -18,6 +19,27 @@ const notif = require('./notifications');
 const ws    = require('./websocket');
 
 const app      = express();
+
+// ── Rate-Limiting ─────────────────────────────────────────────
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,        // 1 Minute
+  max: 60,                     // max 60 Requests/Min pro IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Zu viele Anfragen — bitte kurz warten.' },
+  skip: (req) => req.path.startsWith('/api/auth/'),  // Auth-Routen ausgenommen
+});
+
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,        // 1 Minute
+  max: 20,                     // max 20 KI-Calls/Min pro IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'KI-Rate-Limit erreicht — bitte kurz warten.' },
+});
+
+app.use('/api/', apiLimiter);
+app.use('/api/ai/', aiLimiter);
 
 // Sicheres Parsen von JSONB-Spalten: pg gibt JSONB bereits als JS-Objekt/Array
 // zurück, daher würde JSON.parse(wert) crashen ("Unexpected end of JSON input").
@@ -43,6 +65,17 @@ function log(level, msg) {
 }
 
 // ── Middleware ────────────────────────────────────────────────
+// ── Helmet: Security-Headers ─────────────────────────────────
+try {
+  const helmet = require('helmet');
+  app.use(helmet({
+    contentSecurityPolicy: false, // PWA + inline scripts — CSP separat konfigurieren
+    crossOriginEmbedderPolicy: false,
+  }));
+} catch(e) {
+  log('warning', 'Helmet nicht installiert — Security-Headers fehlen');
+}
+
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -328,7 +361,14 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
       const fields = ['name=$2','email=$3','role=$4','systems=$5','subcategories=$6'];
       const vals   = [u.id, u.name, u.email, u.role||'business', JSON.stringify(u.systems||[]), JSON.stringify(u.subcategories||[])];
       if (u.password) { fields.push(`password=$${vals.length+1}`); vals.push(bcrypt.hashSync(u.password,10)); }
-      await query(`UPDATE users SET ${fields.join(',')} WHERE id=$1`, vals);
+      // SQL-Injection-Schutz: nur Whitelist-Felder erlaubt
+    const ALLOWED_USER_FIELDS = ['name','email','role','systems','subcategories','settings','password_hash'];
+    const safeFields = fields.filter(f => ALLOWED_USER_FIELDS.some(af => f.trim().startsWith(af)));
+    if (safeFields.length !== fields.length) {
+      log('warning', `Ungültige User-Update-Felder abgeblockt: ${fields.filter(f => !safeFields.includes(f))}`);
+    }
+    if (!safeFields.length) throw new Error('Keine gültigen Felder zum Aktualisieren');
+    await query(`UPDATE users SET ${safeFields.join(',')} WHERE id=$1`, vals);
     } else {
       const pw = bcrypt.hashSync(u.password || 'changeme', 10);
       await query('INSERT INTO users (id,name,email,role,password,systems,subcategories) VALUES ($1,$2,$3,$4,$5,$6,$7)',
@@ -662,7 +702,8 @@ app.get('/api/requirements', requireAuth, async (req, res) => {
     const where = conditions.join(' AND ');
 
     // Total count
-    const { rows: countRows } = await query(`SELECT COUNT(*) FROM requirements WHERE ${where}`, params);
+    // where-Array enthält nur parameterisierte Bedingungen ($1, $2 etc.) — sicher
+    const { rows: countRows } = await query('SELECT COUNT(*) FROM requirements WHERE ' + where, params);
     const total = parseInt(countRows[0].count);
 
     const limit  = Math.min(parseInt(req.query.limit) || 50, 200);
@@ -675,12 +716,12 @@ app.get('/api/requirements', requireAuth, async (req, res) => {
 
     // Abwärtskompatibilität: kein Paging → alle (bis 500)
     if (!req.query.limit && !req.query.page && !req.query.q && !req.query.priority && !req.query.category) {
-      const { rows } = await query(`SELECT * FROM requirements WHERE ${where} ORDER BY created_at ASC LIMIT 500`, params);
+      const { rows } = await query('SELECT * FROM requirements WHERE ' + where + ' ORDER BY created_at ASC LIMIT 500', params);
       return res.json(rows.map(mapReq));
     }
 
     const { rows } = await query(
-      `SELECT * FROM requirements WHERE ${where} ORDER BY ${sortCol} ${sortDir} LIMIT $${params.length+1} OFFSET $${params.length+2}`,
+      'SELECT * FROM requirements WHERE ' + where + ' ORDER BY ' + sortCol + ' ' + sortDir + ' LIMIT $' + (params.length+1) + ' OFFSET $' + (params.length+2),
       [...params, limit, offset]
     );
     res.json({ data: rows.map(mapReq), total, limit, offset, page, pages: Math.ceil(total/limit) });
@@ -1014,7 +1055,11 @@ function crudTable(table, idPrefix) {
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
   app.delete(`/api/${table}/:id`, requireAuth, async (req, res) => {
-    try { await query(`DELETE FROM ${table} WHERE id=$1`, [req.params.id]); res.json({ ok:true }); }
+    const ALLOWED_DELETE_TABLES = ['requirements','system_stakeholders','use_cases','system_boundaries','quality_goals','chat_conversations','backlog_items'];
+    if (!ALLOWED_DELETE_TABLES.includes(table)) {
+      return res.status(400).json({ error: 'Ungültige Tabelle: ' + table });
+    }
+    try { await query('DELETE FROM ' + table + ' WHERE id=$1', [req.params.id]); res.json({ ok:true }); }
     catch(e) { res.status(500).json({ error: e.message }); }
   });
 }
@@ -1922,7 +1967,7 @@ app.get('/api/audit-log', requireAuth, async (req, res) => {
     if (req.query.dateFrom) { where.push(`created_at>=$${p}`); params.push(req.query.dateFrom); p++; }
     const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const total = parseInt((await queryOne(`SELECT COUNT(*) as c FROM audit_log ${wc}`, params))?.c||0);
-    const rows = (await query(`SELECT * FROM audit_log ${wc} ORDER BY created_at DESC LIMIT $${p} OFFSET $${p+1}`, [...params, limit, offset])).rows;
+    const rows = (await query('SELECT * FROM audit_log ' + wc + ' ORDER BY created_at DESC LIMIT $' + p + ' OFFSET $' + (p+1), [...params, limit, offset])).rows;
     res.json({ entries: rows, total });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -1954,7 +1999,7 @@ app.get('/api/conflicts', requireAuth, async (req, res) => {
     const where = ["status!='resolved'"]; const params = []; let p = 1;
     if (req.query.systemId) { where.push(`(system_id_a=$${p} OR system_id_b=$${p})`); params.push(req.query.systemId); p++; }
     if (req.query.status)   { where[0] = `status=$${p}`; params.push(req.query.status); p++; }
-    const rows = (await query(`SELECT * FROM req_conflicts WHERE ${where.join(' AND ')} ORDER BY created_at DESC`, params)).rows;
+    const rows = (await query('SELECT * FROM req_conflicts WHERE ' + where.join(' AND ') + ' ORDER BY created_at DESC', params)).rows;
     res.json(rows);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -3537,9 +3582,20 @@ notif.initAsync = async () => {
   };
 };
 
+// Migrationen vor dem Start ausführen
+(async () => {
+  try {
+    const migrate = require('./migrate');
+    await migrate();
+    log('info', '✅ Migrationen abgeschlossen');
+  } catch(e) {
+    log('warning', `Migrations-Fehler (non-fatal): ${e.message}`);
+  }
+})();
+
 server.listen(PORT, '127.0.0.1', async () => {
-  log('info', `RE-Assistent v4.0 läuft auf Port ${PORT}`);
-  dna.startDNAWorker(30000); // DNA-Worker alle 30s
+  log('info', `RE-Assistent v4.3 läuft auf Port ${PORT}`);
+  dna.startDNAWorker(30000);
   const db = await healthCheck();
   log('info', `PostgreSQL: ${db.ok ? 'OK' : 'FEHLER — ' + db.error}`);
   log('info', `Pool: ${db.pool?.total||0} Verbindungen`);
@@ -3556,11 +3612,23 @@ server.listen(PORT, '127.0.0.1', async () => {
   } catch(e) {}
 });
 
-process.on('SIGTERM', async () => {
-  log('info', 'Beende RE-Assistent …');
-  await pool.end();
-  process.exit(0);
-});
+async function gracefulShutdown(signal) {
+  log('info', `${signal} empfangen — beende RE-Assistent sauber …`);
+  // Laufende Requests abwarten (max 10 Sekunden)
+  server.close(async () => {
+    log('info', 'HTTP-Server geschlossen');
+    await pool.end();
+    log('info', 'DB-Pool geschlossen — Tschüss!');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    log('warning', 'Graceful Shutdown Timeout — force exit');
+    process.exit(1);
+  }, 10000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 
 process.on('uncaughtException', (err) => {
   log('error', `Unbehandelter Fehler: ${err.message}`);

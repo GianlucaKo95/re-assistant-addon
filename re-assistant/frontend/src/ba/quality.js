@@ -210,7 +210,7 @@ function renderQSResults(results, reqs) {
           ${r.acceptanceCriteria?.length ? `
           <div class="qs-suggestion-box">
             <div class="qs-suggestion-label">✅ Vorgeschlagene Akzeptanzkriterien</div>
-            ${r.acceptanceCriteria.map(c=>`<div style="font-size:11px;padding:2px 0">• ${esc(c)}</div>`).join('')}
+            ${r.acceptanceCriteria.map(c => '<div style="font-size:11px;padding:2px 0">• ${esc(c)}</div>').join('')}
             <button class="btn-accept" onclick="acceptAC('${r.reqId}',${JSON.stringify(r.acceptanceCriteria).replace(/"/g,'&quot;')})">✓ Übernehmen</button>
           </div>` : ''}
 
@@ -224,7 +224,7 @@ function renderQSResults(results, reqs) {
           <div style="background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);
             border-radius:var(--r);padding:8px 10px;margin-top:6px">
             <div style="font-size:10px;font-weight:600;color:var(--amb);margin-bottom:4px">📋 IEEE-830 Verstöße</div>
-            ${r.ieee830Issues.map(i=>`<div style="font-size:11px;padding:2px 0">• ${esc(i)}</div>`).join('')}
+            ${r.ieee830Issues.map(i => '<div style="font-size:11px;padding:2px 0">• ${esc(i)}</div>').join('')}
           </div>` : ''}
 
           ${r.improvedTitle || r.improvedDescription ? `

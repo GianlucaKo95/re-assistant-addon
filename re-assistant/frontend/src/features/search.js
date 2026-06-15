@@ -149,7 +149,7 @@ async function runSearch(q) {
   // Backlogs
   const backlogs = await window.api.getBacklogs('');
   for (const b of backlogs) {
-    const epicsText = (b.epics||[]).map(e => `${e.title} ${(e.features||[]).map(f=>`${f.title} ${(f.stories||[]).map(s=>s.title).join(' ')}`).join(' ')}`).join(' ');
+    const epicsText = (b.epics||[]).map(e => `${e.title} ${(e.features||[]).map(f => '${f.title} ${(f.stories||[]).map(s=>s.title).join(\' \')}').join(' ')}`).join(' ');
     const score = matchScore(ql, [b.systemName, epicsText]);
     if (score > 0) results.push({
       type: 'backlog', score, id: b.id,

@@ -348,3 +348,21 @@ window.renderReqList = renderReqList;
 window.openReqModal = openReqModal;
 window.saveReqModal = saveReqModal;
 window.deleteReqModal = deleteReqModal;
+
+// ── Offline-Handling ─────────────────────────────────────────
+function showOfflineBanner(show) {
+  let banner = document.getElementById('offline-banner');
+  if (!banner && show) {
+    banner = document.createElement('div');
+    banner.id = 'offline-banner';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#f59e0b;color:#000;text-align:center;padding:6px;font-size:12px;font-weight:600';
+    banner.textContent = '⚡ Keine Internetverbindung — Änderungen werden lokal gespeichert';
+    document.body.prepend(banner);
+  } else if (banner && !show) {
+    banner.remove();
+  }
+}
+
+window.addEventListener('online',  () => { showOfflineBanner(false); toast('✅ Verbindung wiederhergestellt'); });
+window.addEventListener('offline', () => showOfflineBanner(true));
+if (!navigator.onLine) showOfflineBanner(true);

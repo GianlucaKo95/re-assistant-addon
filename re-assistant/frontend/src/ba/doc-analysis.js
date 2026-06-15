@@ -119,39 +119,30 @@ function renderDocAnalysis(a, sysId) {
   if (a.requirements?.length) {
     const g = document.createElement('div');
     g.className = 'da-group';
-    g.innerHTML = `
-      <div class="da-group-head">
-        <span>📋 Anforderungen (${a.requirements.length})</span>
-        <button class="btn-primary" style="font-size:11px;padding:5px 10px"
-          onclick="saveAllDocReqs(${JSON.stringify(a.requirements).replace(/</g,'\\u003c')
-            .replace(/'/g,"\\'")},'${sysId}')">
-          Alle übernehmen
-        </button>
-      </div>
-      <div class="da-group-body">
-        ${a.requirements.map(r => `
-          <div class="da-item">
-            <div class="da-item-icon" style="background:var(--bluebg)">📝</div>
-            <div class="da-item-body">
-              <div style="font-weight:600;font-size:13px">${esc(r.title)}</div>
-              <div style="font-size:12px;color:var(--t2);margin-top:2px">${esc(r.description)}</div>
-              <div style="display:flex;gap:5px;margin-top:5px">
-                <span class="sbadge p-${r.priority}" style="font-size:9px">${priLabel(r.priority)}</span>
-                <span class="rtag" style="font-size:9px">${esc(r.category)}</span>
-                <span class="rtag" style="font-size:9px;color:${
-                  r.confidence==='high'?'var(--grn)':r.confidence==='medium'?'var(--amb)':'var(--red)'}">
-                  Konfidenz: ${esc(r.confidence||'?')}
-                </span>
-              </div>
-            </div>
-            <div class="da-item-actions">
-              <button class="btn-secondary" style="font-size:11px;padding:4px 9px"
-                onclick='saveSingleDocReq(${JSON.stringify(r).replace(/</g,"\\u003c").replace(/'/g,"\\'")},"${sysId}")'>
-                ✓ Übernehmen
-              </button>
-            </div>
-          </div>`).join('')}
-      </div>`;
+    const allReqsJson = JSON.stringify(a.requirements).replace(/</g,'\u003c').replace(/'/g,"\'");
+    const reqItems = a.requirements.map(r => {
+      const rJson = JSON.stringify(r).replace(/</g,'\u003c').replace(/'/g,"\'");
+      const confColor = r.confidence==='high'?'var(--grn)':r.confidence==='medium'?'var(--amb)':'var(--red)';
+      return '<div class="da-item">'
+        + '<div class="da-item-icon" style="background:var(--bluebg)">📝</div>'
+        + '<div class="da-item-body">'
+        + '<div style="font-weight:600;font-size:13px">' + esc(r.title) + '</div>'
+        + '<div style="font-size:12px;color:var(--t2);margin-top:2px">' + esc(r.description||'') + '</div>'
+        + '<div style="display:flex;gap:5px;margin-top:5px">'
+        + '<span class="sbadge p-' + r.priority + '" style="font-size:9px">' + priLabel(r.priority) + '</span>'
+        + '<span class="rtag" style="font-size:9px">' + esc(r.category||'') + '</span>'
+        + '<span class="rtag" style="font-size:9px;color:' + confColor + '">Konfidenz: ' + esc(r.confidence||'?') + '</span>'
+        + '</div></div>'
+        + '<div class="da-item-actions">'
+        + '<button class="btn-secondary" style="font-size:11px;padding:4px 9px"'
+        + ' onclick=\'saveSingleDocReq(' + rJson + ',\"' + sysId + '\")\'>✓ Übernehmen</button>'
+        + '</div></div>';
+    }).join('');
+    g.innerHTML = '<div class="da-group-head">'
+      + '<span>📋 Anforderungen (' + a.requirements.length + ')</span>'
+      + '<button class="btn-primary" style="font-size:11px;padding:5px 10px"'
+      + ' onclick=\'saveAllDocReqs(' + allReqsJson + ',\"' + sysId + '\")\'>Alle übernehmen</button>'
+      + '</div><div class="da-group-body">' + reqItems + '</div>';
     dr.appendChild(g);
   }
 
@@ -159,18 +150,15 @@ function renderDocAnalysis(a, sysId) {
   if (a.assumptions?.length) {
     const g = document.createElement('div');
     g.className = 'da-group';
-    g.innerHTML = `
-      <div class="da-group-head">💭 Annahmen (${a.assumptions.length})</div>
-      <div class="da-group-body">
-        ${a.assumptions.map(x => `
-          <div class="da-item">
-            <div class="da-item-icon" style="background:var(--ambbg)">💭</div>
-            <div class="da-item-body">
-              ${esc(x.text)}
-              <span class="rtag" style="margin-left:6px;font-size:9px">Auswirkung: ${esc(x.impact)}</span>
-            </div>
-          </div>`).join('')}
-      </div>`;
+    const assumItems = a.assumptions.map(x =>
+      '<div class="da-item">'
+      + '<div class="da-item-icon" style="background:var(--ambbg)">💭</div>'
+      + '<div class="da-item-body">' + esc(x.text||'')
+      + '<span class="rtag" style="margin-left:6px;font-size:9px">Auswirkung: ' + esc(x.impact||'') + '</span>'
+      + '</div></div>'
+    ).join('');
+    g.innerHTML = '<div class="da-group-head">💭 Annahmen (' + a.assumptions.length + ')</div>'
+      + '<div class="da-group-body">' + assumItems + '</div>';
     dr.appendChild(g);
   }
 
@@ -178,15 +166,14 @@ function renderDocAnalysis(a, sysId) {
   if (a.gaps?.length) {
     const g = document.createElement('div');
     g.className = 'da-group';
-    g.innerHTML = \`
-      <div class="da-group-head">🕳 Erkannte Lücken (\${a.gaps.length})</div>
-      <div class="da-group-body">
-        \${a.gaps.map(x => \`
-          <div class="da-item">
-            <div class="da-item-icon" style="background:var(--redbg)">🕳</div>
-            <div class="da-item-body">\${esc(x)}</div>
-          </div>\`).join('')}
-      </div>\`;
+    const gapItems = a.gaps.map(x =>
+      '<div class="da-item">'
+      + '<div class="da-item-icon" style="background:var(--redbg)">🕳</div>'
+      + '<div class="da-item-body">' + esc(x) + '</div>'
+      + '</div>'
+    ).join('');
+    g.innerHTML = '<div class="da-group-head">🕳 Erkannte Lücken (' + a.gaps.length + ')</div>'
+      + '<div class="da-group-body">' + gapItems + '</div>';
     dr.appendChild(g);
   }
 
@@ -194,21 +181,17 @@ function renderDocAnalysis(a, sysId) {
   if (a.risks?.length) {
     const g = document.createElement('div');
     g.className = 'da-group';
-    g.innerHTML = `
-      <div class="da-group-head">⚠ Risiken (${a.risks.length})</div>
-      <div class="da-group-body">
-        ${a.risks.map(x => `
-          <div class="da-item">
-            <div class="da-item-icon" style="background:var(--redbg)">⚠</div>
-            <div class="da-item-body">
-              ${esc(x.text)}
-              <div style="display:flex;gap:5px;margin-top:3px">
-                <span class="rtag" style="font-size:9px">W: ${esc(x.probability)}</span>
-                <span class="rtag" style="font-size:9px">A: ${esc(x.impact)}</span>
-              </div>
-            </div>
-          </div>`).join('')}
-      </div>`;
+    const riskItems = a.risks.map(x =>
+      '<div class="da-item">'
+      + '<div class="da-item-icon" style="background:var(--redbg)">⚠</div>'
+      + '<div class="da-item-body">' + esc(x.text||'')
+      + '<div style="display:flex;gap:5px;margin-top:3px">'
+      + '<span class="rtag" style="font-size:9px">W: ' + esc(x.probability||'') + '</span>'
+      + '<span class="rtag" style="font-size:9px">A: ' + esc(x.impact||'') + '</span>'
+      + '</div></div></div>'
+    ).join('');
+    g.innerHTML = '<div class="da-group-head">⚠ Risiken (' + a.risks.length + ')</div>'
+      + '<div class="da-group-body">' + riskItems + '</div>';
     dr.appendChild(g);
   }
 }
