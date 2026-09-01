@@ -245,8 +245,8 @@ function populateVoices() {
     const rest = voices.filter(v => !v.lang.toLowerCase().startsWith(lc));
     sel.innerHTML =
       '<option value="">Standard</option>' +
-      (rel.length  ? `<optgroup label="${lc==='de'?'Deutsch':'English'}">${rel.map(v => '<option value="${esc(v.voiceURI)}"${v.voiceURI===S.settings.voiceURI?\' selected\':\'\'}>${esc(v.name)}</option>').join('')}</optgroup>` : '') +
-      (rest.length ? `<optgroup label="Andere">${rest.map(v => '<option value="${esc(v.voiceURI)}">${esc(v.name)}</option>').join('')}</optgroup>` : '');
+      (rel.length  ? `<optgroup label="${lc==='de'?'Deutsch':'English'}">${rel.map(v => `<option value="${esc(v.voiceURI)}"${v.voiceURI===S.settings.voiceURI?' selected':''}>${esc(v.name)}</option>`).join('')}</optgroup>` : '') +
+      (rest.length ? `<optgroup label="Andere">${rest.map(v => `<option value="${esc(v.voiceURI)}">${esc(v.name)}</option>`).join('')}</optgroup>` : '');
   };
   if (window.speechSynthesis) { fill(); window.speechSynthesis.onvoiceschanged = fill; }
 }

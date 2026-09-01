@@ -122,7 +122,7 @@ function renderChangelog(cl, changes, period) {
       ${(cl.highlights||[]).length ? `
         <div style="padding:14px 20px;border-bottom:1px solid var(--b1);background:rgba(168,85,247,.04)">
           <div style="font-size:11px;font-weight:700;color:var(--aa);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Highlights</div>
-          ${cl.highlights.map(h => '<div style="font-size:13px;padding:4px 0;display:flex;gap:8px"><span>⭐</span>${esc(h)}</div>').join('')}
+          ${cl.highlights.map(h => `<div style="font-size:13px;padding:4px 0;display:flex;gap:8px"><span>⭐</span>${esc(h)}</div>`).join('')}
         </div>` : ''}
 
       <!-- Sections -->
@@ -145,7 +145,7 @@ function renderChangelog(cl, changes, period) {
       ${(cl.nextSteps||[]).length ? `
         <div style="padding:14px 20px;background:var(--s2)">
           <div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Nächste Schritte</div>
-          ${cl.nextSteps.map(s => '<div style="font-size:12px;color:var(--t2);padding:3px 0;display:flex;gap:7px"><span>→</span>${esc(s)}</div>').join('')}
+          ${cl.nextSteps.map(s => `<div style="font-size:12px;color:var(--t2);padding:3px 0;display:flex;gap:7px"><span>→</span>${esc(s)}</div>`).join('')}
         </div>` : ''}
     </div>
 
@@ -164,7 +164,7 @@ function exportChangelogMD(cl) {
   let md = `# ${cl.title}\n\n`;
   md += `${cl.summary||''}\n\n`;
   if (cl.highlights?.length) {
-    md += `## ⭐ Highlights\n${cl.highlights.map(h => '- ${h}').join('\n')}\n\n`;
+    md += `## ⭐ Highlights\n${cl.highlights.map(h => `- ${h}`).join('\n')}\n\n`;
   }
   for (const sec of (cl.sections||[])) {
     if (!sec.items?.length) continue;
@@ -172,7 +172,7 @@ function exportChangelogMD(cl) {
     for (const item of sec.items) md += `- **${item.id}**: ${item.title}${item.note?` — ${item.note}`:''}\n`;
     md += '\n';
   }
-  if (cl.nextSteps?.length) md += `## Nächste Schritte\n${cl.nextSteps.map(s => '- ${s}').join('\n')}\n`;
+  if (cl.nextSteps?.length) md += `## Nächste Schritte\n${cl.nextSteps.map(s => `- ${s}`).join('\n')}\n`;
   const blob = new Blob([md],{type:'text/markdown'});
   const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`changelog-${Date.now()}.md`; a.click();
   URL.revokeObjectURL(a.href); toast('✅ Markdown exportiert');

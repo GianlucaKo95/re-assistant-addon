@@ -181,7 +181,11 @@ function renderSourceAnalysisBlock(req, compact = false) {
         <div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 8px">
           Indirekt betroffen (${a.indirectFiles.length})
         </div>
-        (a.indirectFiles||[]).map(f => "<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--b1);font-size:12px;color:var(--t3)">             <span>↗</span>             <code style="color:var(--ab)">' + (esc(f.file)) + '</code>             <span style="flex:1">' + (esc(f.reason)) + '</span>").join('')}` : ''}
+        ${a.indirectFiles.map(f => `<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--b1);font-size:12px;color:var(--t3)">
+          <span>↗</span>
+          <code style="color:var(--ab)">${esc(f.file)}</code>
+          <span style="flex:1">${esc(f.reason)}</span>
+        </div>`).join('')}` : ''}
 
       <!-- Diff-Vorschlag -->
       ${a.diffSuggestion ? `
@@ -229,7 +233,7 @@ function renderAffectedFiles(a, compact) {
         <div style="font-size:11px;color:var(--t2);margin-bottom:4px">${esc(f.reason)}</div>
         ${(f.functions||[]).length ? `
           <div style="display:flex;gap:4px;flex-wrap:wrap">
-            ${f.functions.map(fn => '<code style="font-size:10px;background:var(--s3);padding:1px 6px;border-radius:4px;color:var(--aa)">${esc(fn)}()</code>').join('')}
+            ${f.functions.map(fn => `<code style="font-size:10px;background:var(--s3);padding:1px 6px;border-radius:4px;color:var(--aa)">${esc(fn)}()</code>`).join('')}
           </div>` : ''}` : `<div style="font-size:10px;color:var(--t3);margin-top:3px">${esc(f.reason.substring(0,80))}</div>`}
     </div>`).join('');
 }

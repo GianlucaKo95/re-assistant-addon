@@ -116,13 +116,18 @@ function renderNLQResult(result, query) {
     <!-- Insights -->
     ${(result.insights||[]).length ? `
       <div style="margin-bottom:14px">
-        result.insights.map(i => "<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--b1);font-size:12px;color:var(--t2)">             <span style="color:var(--aa);flex-shrink:0">💡</span> ' + (esc(i))").join('')}
+        ${result.insights.map(i => `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--b1);font-size:12px;color:var(--t2)">
+          <span style="color:var(--aa);flex-shrink:0">💡</span> ${esc(i)}
+        </div>`).join('')}
       </div>` : ''}
 
     <!-- Empfohlene Aktionen -->
     ${(result.suggestedActions||[]).length ? `
       <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px">
-        result.suggestedActions.map(a => "<button class="btn-secondary" style="font-size:11px;padding:5px 11px"             onclick="switchView('' + (a.view||'business-reqs') + '')">             → ' + (esc(a.label))").join('')}
+        ${result.suggestedActions.map(a => `<button class="btn-secondary" style="font-size:11px;padding:5px 11px"
+          onclick="switchView('${a.view||'business-reqs'}')">
+          → ${esc(a.label)}
+        </button>`).join('')}
       </div>` : ''}
 
     <!-- Gefundene Anforderungen -->

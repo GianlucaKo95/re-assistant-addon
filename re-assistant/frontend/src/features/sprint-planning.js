@@ -113,7 +113,11 @@ function renderSprintDetail(plan) {
     ${Object.entries(storyGroups).map(([dev, stories]) => `
       <div style="margin-bottom:10px">
         <div style="font-size:11px;font-weight:700;color:var(--t2);margin-bottom:5px">${esc(dev)}</div>
-        stories.map(s => "<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--b1);font-size:12px">             <span style="font-size:11px;font-weight:700;color:var(--aa);min-width:28px">' + (s.storyPoints||'?') + ' SP</span>             <div style="flex:1">' + (esc(s.title)) + '</div>             <span class="sbadge p-' + (s.priority) + '" style="font-size:9px">' + (priLabel(s.priority)) + '</span>").join('')}
+        ${stories.map(s => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--b1);font-size:12px">
+          <span style="font-size:11px;font-weight:700;color:var(--aa);min-width:28px">${s.storyPoints||'?'} SP</span>
+          <div style="flex:1">${esc(s.title)}</div>
+          <span class="sbadge p-${s.priority}" style="font-size:9px">${priLabel(s.priority)}</span>
+        </div>`).join('')}
       </div>`).join('')}
     <div style="display:flex;gap:8px;margin-top:10px">
       ${plan.status!=='active' ? `<button class="btn-primary" style="font-size:11px" onclick="setSprintStatus('${plan.id}','active')">▶ Starten</button>` : ''}
@@ -140,7 +144,11 @@ function openCreateSprintModal() {
       Team-Kapazität (verfügbare Tage pro Entwickler)
     </div>
     <div id="sp-team-capacity" style="margin-bottom:14px">
-      devs.length ? devs.map(d => "<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--b1)">           <span style="font-size:12px;flex:1">' + (esc(d.name)) + '</span>           <input type="number" id="sp-cap-' + (d.id) + '" value="10" min="0" max="14" style="width:60px;font-size:12px" />           <span style="font-size:11px;color:var(--t3)">Tage</span>").join("")}
+      ${devs.length ? devs.map(d => `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--b1)">
+        <span style="font-size:12px;flex:1">${esc(d.name)}</span>
+        <input type="number" id="sp-cap-${d.id}" value="10" min="0" max="14" style="width:60px;font-size:12px" />
+        <span style="font-size:11px;color:var(--t3)">Tage</span>
+      </div>`).join('')
       : '<div style="font-size:12px;color:var(--t3)">Keine Entwickler im System — Gesamtkapazität eingeben:</div>'}
       ${!devs.length ? '<input type="number" id="sp-cap-total" value="20" min="1" style="width:80px;font-size:12px;margin-top:6px"/> SP Gesamtkapazität' : ''}
     </div>
@@ -213,7 +221,7 @@ async function generateSprintPlan(sysId) {
   ).join('\n');
 
   const teamInfo = devs.length
-    ? `Team: ${devs.map(d => '${d.name} (${teamCapacity[d.name]||10} Tage, Bereiche: ${(d.subcategories||[]).join(\',\')||\'Allgemein\'})').join(', ')}`
+    ? `Team: ${devs.map(d => `${d.name} (${teamCapacity[d.name]||10} Tage, Bereiche: ${(d.subcategories||[]).join(',')||'Allgemein'})`).join(', ')}`
     : `Gesamtkapazität: ${capacity} Story Points`;
 
   const res = await callAPI([{ role:'user', content:

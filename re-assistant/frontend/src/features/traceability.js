@@ -380,7 +380,14 @@ function openStoryDetail(node) {
         ${story.acceptanceCriteria.map(ac => `<li>${esc(ac)}</li>`).join('')}
       </ul>` : ''}
     <div style="font-size:12px;font-weight:700;color:var(--t3);margin-bottom:8px">Testfälle (${tests.length})</div>
-    tests.length ? tests.map(t => "<div style="background:var(--s2);border-radius:var(--r);padding:8px 10px;margin-bottom:6px;font-size:12px">         <div style="display:flex;justify-content:space-between">           <span>🧪 ' + (esc(t.title)) + '</span>           <span style="color:' + (t.status==='passed'?'var(--grn)':t.status==='failed'?'var(--red)':'var(--t3)') + '">             ' + (t.status) + '           </span>         </div>").join("")}
+    ${tests.map(t => `<div style="background:var(--s2);border-radius:var(--r);padding:8px 10px;margin-bottom:6px;font-size:12px">
+      <div style="display:flex;justify-content:space-between">
+        <span>🧪 ${esc(t.title)}</span>
+        <span style="color:${t.status==='passed'?'var(--grn)':t.status==='failed'?'var(--red)':'var(--t3)'}">
+          ${t.status}
+        </span>
+      </div>
+    </div>`).join('')}
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="btn-primary" style="font-size:12px" id="btn-add-test">+ Testfall</button>
       <button class="btn-danger" style="font-size:12px" id="btn-del-story">Löschen</button>

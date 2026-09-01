@@ -130,7 +130,11 @@ function renderTokenDashboard(data, wrap) {
       ${byModel.length > 1 ? `
         <div class="sg"><div class="sg-head">Kosten nach Modell</div>
         <div class="sg-body">
-          byModel.map(m => "<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--b1);font-size:12px">               <code style="color:var(--ab)">' + (esc(m.model)) + '</code>               <span>' + (m.requests) + ' Anfragen</span>               <strong style="color:var(--aa)">' + (fmtEur(m.costUsd)) + '</strong>").join('')}
+          ${byModel.map(m => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--b1);font-size:12px">
+            <code style="color:var(--ab)">${esc(m.model)}</code>
+            <span>${m.requests} Anfragen</span>
+            <strong style="color:var(--aa)">${fmtEur(m.costUsd)}</strong>
+          </div>`).join('')}
         </div></div>` : ''}
 
       <!-- Export -->
