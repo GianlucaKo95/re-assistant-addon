@@ -85,16 +85,20 @@ async function loadKanbanBoard() {
     const url = systemId ? `api/kanban?systemId=${systemId}` : 'api/kanban';
     const data = await fetch(url, { credentials: 'include' }).then(r => r.json());
 
+    const total = Object.values(data.board).reduce((s, l) => s + l.length, 0) || 1;
+
     wrap.innerHTML = `
       <div class="kanban-board">
         ${data.states.map(state => {
           const list = data.board[state.id] || [];
-          return `<div class="kanban-col" data-status="${state.id}">
-            <div class="kanban-col-head" style="border-top:3px solid ${state.color}">
-              <span style="color:${state.color}">${state.icon} ${state.label}</span>
-              <span class="kanban-count" style="background:${state.color}22;color:${state.color};
-                border-radius:99px;padding:1px 8px;font-size:11px">${list.length}</span>
+          const pct = list.length ? Math.max(6, Math.round(list.length / total * 100)) : 0;
+          return `<div class="kanban-col" data-status="${state.id}" style="background:linear-gradient(180deg, ${state.color}1c, ${state.color}05)">
+            <div class="kanban-col-head">
+              <span class="kanban-col-dot" style="background:${state.color}"></span>
+              <span>${state.icon} ${state.label}</span>
+              <span class="kanban-count" style="background:${state.color}22;color:${state.color}">${list.length}</span>
             </div>
+            <div class="kanban-progress"><div style="width:${pct}%;background:${state.color}"></div></div>
             <div class="kanban-cards" data-status="${state.id}">
               ${list.map(req => kanbanCard(req, state.color)).join('')}
               ${!list.length ? '<div style="padding:20px;text-align:center;color:var(--t3);font-size:12px">Keine Anforderungen</div>' : ''}
