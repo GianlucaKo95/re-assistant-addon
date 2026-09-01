@@ -83,7 +83,7 @@ async function analyzeJiraImport(){
   const list=window._jiraIssues.map(i=>`${i.key}: ${i.fields?.summary||''}`).join('\n');
   const res=await callAPI([{role:'user',content:`Analysiere diesen Jira-Backlog: Duplikate, Lücken, Qualitätsprobleme, Priorisierungsempfehlungen.\n\n${list}`}],langNote(),1500);
   if(!res.ok)return;
-  const a=document.createElement('div');a.style.cssText='margin-top:16px;padding:14px;background:var(--s2);border-radius:var(--rl);font-size:13px;line-height:1.7;border:1px solid var(--b1)';
+  const a=document.createElement('div');a.style.cssText='margin-top:16px;padding:14px;background:var(--s2);border-radius:var(--rl);font-size:13px;line-height:1.7;border:1px solid var(--b1);box-shadow:0 3px 10px rgba(0,0,0,.14)';
   a.innerHTML=`<div style="font-size:11px;font-weight:700;color:var(--aa);text-transform:uppercase;margin-bottom:8px">✦ KI-Analyse</div>${renderMD(res.text)}`;
   $('jira-results-pane').querySelector('div').appendChild(a);
 }
@@ -215,7 +215,7 @@ async function analyzeAdoImport() {
   const res = await callAPI([{role:'user', content:`Analysiere diesen Azure DevOps Backlog: Duplikate, Lücken, Qualitätsprobleme, Priorisierungsempfehlungen.\n\n${list}`}], langNote(), 1500);
   if (!res.ok) return;
   const analysis = document.createElement('div');
-  analysis.style.cssText = 'margin-top:16px;padding:14px;background:var(--s2);border-radius:var(--rl);font-size:13px;line-height:1.7;border:1px solid var(--b1)';
+  analysis.style.cssText = 'margin-top:16px;padding:14px;background:var(--s2);border-radius:var(--rl);font-size:13px;line-height:1.7;border:1px solid var(--b1);box-shadow:0 3px 10px rgba(0,0,0,.14)';
   analysis.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--ba);text-transform:uppercase;margin-bottom:8px">✦ KI-Analyse</div>${renderMD(res.text)}`;
   $('ado-results-pane').querySelector('div').appendChild(analysis);
 }

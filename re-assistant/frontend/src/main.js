@@ -1,8 +1,12 @@
 /**
  * main.js — RE-Assistent v3.2
  */
+import * as d3 from 'd3';      // Bundled statt CDN — funktioniert auch offline/air-gapped hinter HA Ingress
+window.d3 = d3;
+
 import './features/theme.js';  // Zuerst — verhindert Flash of Dark Content
 import './core/helpers.js';    // $ global verfügbar machen
+import './csp-compat.js';      // CSP-Kompatibilität für HA Ingress — nach helpers.js, vor allen onclick-Attributen
 import './features/service-worker.js';
 
 import './styles.css';
@@ -44,6 +48,7 @@ import './features/realtime.js';
 import './features/notification-settings.js';
 import './features/acceptance-criteria.js';
 import './features/review-workflow.js';
+import './features/workflow.js';
 import './features/mentions.js';
 import './features/pipeline.js';
 import './features/consistency.js';
@@ -74,6 +79,7 @@ import './features/dna.js';
 import './features/token-dashboard.js';
 
 import './features/req-network.js';
+import './features/word-analysis.js';
 import './features/conflict-detection.js';
 import './features/req-detail.js';
 import './pm/backlog-network.js';

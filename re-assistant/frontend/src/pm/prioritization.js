@@ -578,66 +578,9 @@ async function batchSmartCheck(sysId, reqIds) {
   runQSDashboard();
 }
 
-// Jira-Integration (unverändert)
-async function loadPMJira() {
-  S.systems = await window.api.getSystems();
-}
-async function connectJira() {
-  const url = $('jira-url')?.value, email = $('jira-email')?.value, token = $('jira-token')?.value;
-  if (!url || !email || !token) { toast('⚠ Alle Felder ausfüllen'); return; }
-  const res = await window.api.jiraGetProjects({ url, email, token });
-  if (!res.ok) { toast('❌ ' + res.error); return; }
-  S.settings.jiraUrl = url; S.settings.jiraEmail = email; S.settings.jiraToken = token;
-  await window.api.saveSettings(S.settings);
-  const sel = $('jira-proj-sel');
-  if (sel) sel.innerHTML = res.projects.map(p => `<option value="${p.key}">${esc(p.name)}</option>`).join('');
-  $('jira-project-pane')?.style?.setProperty('display', '');
-  toast('✅ Verbunden');
-}
-async function jiraExport() {
-  const sysId = $('jira-sys-sel')?.value, pk = $('jira-proj-sel')?.value;
-  if (!sysId || !pk) { toast('⚠ System und Projekt auswählen'); return; }
-  const reqs = await window.api.getRequirements({ systemId: sysId });
-  if (!reqs.length) { toast('ℹ Keine Anforderungen'); return; }
-  const res = await window.api.jiraCreateIssues({
-    url: S.settings.jiraUrl, email: S.settings.jiraEmail, token: S.settings.jiraToken,
-    projectKey: pk,
-    issues: reqs.map(r => ({
-      title: r.title, description: r.description || '', type: 'Story', priority: r.priority,
-      acceptance_criteria: r.acceptance_criteria_text || '',
-    })),
-  });
-  res.ok ? toast(`✅ ${res.created} Issues exportiert`) : toast('❌ ' + res.error);
-}
-async function jiraImport() {
-  const pk = $('jira-proj-sel')?.value;
-  if (!pk) { toast('⚠ Projekt auswählen'); return; }
-  const res = await window.api.jiraGetIssues({ url: S.settings.jiraUrl, email: S.settings.jiraEmail, token: S.settings.jiraToken, projectKey: pk });
-  if (!res.ok) { toast('❌ ' + res.error); return; }
-  const issues = res.issues || [];
-  window._jiraIssues = issues;
-  toast(`✅ ${issues.length} Issues geladen — Analyse starten?`);
-}
-async function analyzeJiraImport() {
-  if (!window._jiraIssues?.length) return;
-  const list = window._jiraIssues.map(i => `${i.key}: ${i.fields?.summary || ''}`).join('\n');
-  const res = await callAPI([{ role: 'user', content:
-    'Analysiere diesen Jira-Backlog auf Duplikate, Lücken, Qualitätsprobleme, Priorisierungsempfehlungen.\n\n' + list
-  }], langNote(), 2500);
-  const el = $('jira-analysis-result');
-  if (el) el.innerHTML = res.ok
-    ? `<div style="background:var(--s2);border-radius:var(--r);padding:12px;font-size:12px;white-space:pre-wrap">${esc(res.text)}</div>`
-    : `<div style="color:var(--red)">❌ ${esc(res.text)}</div>`;
-}
-
 // Exports
 window.loadPMPrio        = loadPMPrio;
 window.runPrio           = runPrio;
 window.applyPrioToReqs   = applyPrioToReqs;
 window.runQSDashboard    = runQSDashboard;
 window.batchSmartCheck   = batchSmartCheck;
-window.loadPMJira        = loadPMJira;
-window.connectJira       = connectJira;
-window.jiraExport        = jiraExport;
-window.jiraImport        = jiraImport;
-window.analyzeJiraImport = analyzeJiraImport;

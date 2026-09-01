@@ -13,9 +13,29 @@ async function loadPMBacklog(){
   $('btn-gen-backlog').onclick=generateBacklog;
   $('btn-bl-export-md').onclick=exportBacklogMd;
   $('btn-bl-export-jira').onclick=exportBacklogJira;
+  $('btn-backlog-view-list').onclick=()=>toggleBacklogView('list');
+  $('btn-backlog-view-network').onclick=()=>toggleBacklogView('network');
   const saved=await window.api.getBacklogs('');
   if(saved.length&&!S.currentBacklog){S.currentBacklog=saved[saved.length-1];renderBacklog(S.currentBacklog);}
   else if(!saved.length)$('backlog-area').innerHTML='<div class="empty-state"><div class="es-icon">📦</div><h3>System auswählen und Backlog generieren</h3></div>';
+}
+
+function toggleBacklogView(mode){
+  const listBtn=$('btn-backlog-view-list'), netBtn=$('btn-backlog-view-network');
+  const listWrap=$('backlog-area'), netWrap=$('backlog-network-wrap');
+  if(!listWrap||!netWrap)return;
+  listBtn?.classList.toggle('active', mode==='list');
+  netBtn?.classList.toggle('active', mode==='network');
+  listWrap.style.display = mode==='list' ? '' : 'none';
+  netWrap.style.display  = mode==='network' ? 'flex' : 'none';
+  if(mode==='network'){
+    if($('backlog-network-legend')) $('backlog-network-legend').innerHTML='';
+    if(!S.currentBacklog){
+      if($('backlog-network-canvas')) $('backlog-network-canvas').innerHTML='<div class="empty-state"><div class="es-icon">📊</div><h3>Kein Backlog vorhanden</h3><p>Zuerst ein Backlog generieren.</p></div>';
+      return;
+    }
+    if(typeof renderBacklogNetwork==='function') renderBacklogNetwork(S.currentBacklog);
+  }
 }
 async function generateBacklog(){
   const sysId=$('backlog-sys-sel').value;if(!sysId){toast('⚠ System auswählen');return;}

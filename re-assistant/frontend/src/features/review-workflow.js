@@ -14,6 +14,10 @@ const REVIEW_CONFIG = {
   rejected:    { label: 'Abgelehnt', color: 'var(--red)',  icon: '❌' },
 };
 
+// ── Rollen, die Review-Aktionen ausführen dürfen ──────────────
+const SUBMIT_ROLES = ['business','businessanalyst'];
+const DECIDE_ROLES = ['admin','businessanalyst','projectmanager'];
+
 function reviewBadge(status, frozen) {
   const cfg = REVIEW_CONFIG[status] || REVIEW_CONFIG.draft;
   const frozenBadge = frozen
@@ -28,11 +32,11 @@ function reviewBadge(status, frozen) {
 function renderReviewActions(req) {
   const user = S.user;
   const isFrozen = req.frozen;
-  const status = req.review_status || 'draft';
+  const status = req.reviewStatus || 'draft';
 
-  const canSubmit  = !isFrozen && status === 'draft' && ['business','businessanalyst'].includes(user.role);
-  const canDecide  = status === 'in_review' && ['admin','businessanalyst'].includes(user.role);
-  const canFreeze  = status === 'approved'  && ['admin','businessanalyst'].includes(user.role);
+  const canSubmit  = !isFrozen && status === 'draft' && SUBMIT_ROLES.includes(user.role);
+  const canDecide  = status === 'in_review' && DECIDE_ROLES.includes(user.role);
+  const canFreeze  = status === 'approved'  && DECIDE_ROLES.includes(user.role);
 
   const btns = [];
 
@@ -50,7 +54,7 @@ function renderReviewActions(req) {
     `<button class="btn-secondary" style="font-size:10px;padding:3px 8px"
       onclick="freezeReq('${req.id}')">🔒 Einfrieren</button>`
   );
-  if (isFrozen && ['admin','businessanalyst'].includes(user.role)) btns.push(
+  if (isFrozen && DECIDE_ROLES.includes(user.role)) btns.push(
     `<button class="btn-secondary" style="font-size:10px;padding:3px 8px"
       onclick="unfreezeReq('${req.id}')">🔓 Freigeben</button>`
   );
@@ -66,7 +70,7 @@ async function submitForReview(reqId) {
     method: 'POST', credentials: 'include',
   });
   const data = await res.json();
-  if (data.ok) { toast('📤 Zur Review eingereicht'); refreshReqPane?.(); }
+  if (data.ok) { toast('📤 Zur Review eingereicht'); refreshReqPane?.(); refreshReviewDashboardIfActive(); }
   else toast('❌ ' + data.error);
 }
 
@@ -107,6 +111,7 @@ async function submitDecision(reqId, decision) {
   if (data.ok) {
     toast(decision === 'approved' ? '✅ Genehmigt' : '❌ Abgelehnt');
     refreshReqPane?.();
+    refreshReviewDashboardIfActive();
   } else toast('❌ ' + data.error);
 }
 
@@ -115,7 +120,7 @@ async function freezeReq(reqId) {
   if (!confirm('Anforderung einfrieren? Sie kann danach nicht mehr bearbeitet werden.')) return;
   const res = await fetch(`api/requirements/${reqId}/freeze`, { method:'POST', credentials:'include' });
   const data = await res.json();
-  if (data.ok) { toast('🔒 Eingefroren'); refreshReqPane?.(); }
+  if (data.ok) { toast('🔒 Eingefroren'); refreshReqPane?.(); refreshReviewDashboardIfActive(); }
   else toast('❌ ' + data.error);
 }
 
@@ -123,17 +128,24 @@ async function unfreezeReq(reqId) {
   if (!confirm('Anforderung freigeben? Sie kann dann wieder bearbeitet werden.')) return;
   const res = await fetch(`api/requirements/${reqId}/unfreeze`, { method:'POST', credentials:'include' });
   const data = await res.json();
-  if (data.ok) { toast('🔓 Freigegeben'); refreshReqPane?.(); }
+  if (data.ok) { toast('🔓 Freigegeben'); refreshReqPane?.(); refreshReviewDashboardIfActive(); }
   else toast('❌ ' + data.error);
 }
 
-// ── Review-Queue (BA-Dashboard-Widget) ───────────────────────
-async function loadReviewQueue(containerId = 'review-queue-list') {
+function refreshReviewDashboardIfActive() {
+  if (S.activeView === 'review-workflow' && typeof loadReviewDashboard === 'function') loadReviewDashboard();
+}
+
+// ── Review-Queue (BA-Dashboard-Widget & PM Review-Dashboard) ──
+async function loadReviewQueue(containerId = 'review-queue-list', systemId) {
   const el = document.getElementById(containerId);
   if (!el) return;
 
+  const sysId = systemId !== undefined ? systemId : S.activeSystemId;
+  const canDecide = DECIDE_ROLES.includes(S.user?.role);
+
   try {
-    const params = S.activeSystemId ? '?systemId=' + S.activeSystemId : '';
+    const params = sysId ? '?systemId=' + sysId : '';
     const reqs = await fetch('api/review-queue' + params, { credentials: 'include' }).then(r => r.json());
 
     if (!reqs.length) {
@@ -143,25 +155,76 @@ async function loadReviewQueue(containerId = 'review-queue-list') {
 
     el.innerHTML = reqs.map(r => `
       <div style="background:var(--s2);border:1px solid var(--amb);border-left:3px solid var(--amb);
-        border-radius:var(--r);padding:10px 12px;margin-bottom:6px">
+        border-radius:var(--r);padding:10px 12px;margin-bottom:6px;box-shadow:0 3px 10px rgba(0,0,0,.14)">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
           <div>
             <span class="req-id">${esc(r.id)}</span>
             <span style="font-size:11px;color:var(--t3);margin-left:6px">${esc(r.system_name||'')}</span>
             <div style="font-size:13px;font-weight:600;margin-top:2px">${esc(r.title)}</div>
           </div>
-          <div style="display:flex;gap:5px;flex-shrink:0">
+          ${canDecide ? `<div style="display:flex;gap:5px;flex-shrink:0">
             <button class="btn-primary" style="font-size:10px;padding:3px 8px;background:var(--grn)"
               onclick="approveReq('${r.id}')">✅</button>
             <button class="btn-secondary" style="font-size:10px;padding:3px 8px;color:var(--red)"
               onclick="rejectReq('${r.id}')">❌</button>
-          </div>
+          </div>` : ''}
         </div>
         ${r.description ? `<div style="font-size:11px;color:var(--t2);margin-top:4px">${esc(r.description.substring(0,120))}…</div>` : ''}
       </div>`).join('');
   } catch(e) {
     el.innerHTML = `<div style="font-size:11px;color:var(--red)">Fehler: ${esc(e.message)}</div>`;
   }
+}
+
+// ── Review-Dashboard (PM/BA-Hauptansicht "Review & Freigabe") ─
+async function loadReviewDashboard() {
+  const sysSel = $('review-sys-filter');
+  if (sysSel && !sysSel.dataset.wired) {
+    const mySys = S.systems.filter(s => (S.user.systems||[]).includes(s.id));
+    sysSel.innerHTML = '<option value="">Alle Systeme</option>'
+      + mySys.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    sysSel.onchange = () => loadReviewQueue('review-dashboard-wrap', sysSel.value);
+    sysSel.dataset.wired = '1';
+  }
+
+  const submitBtn = $('btn-submit-review');
+  if (submitBtn) {
+    submitBtn.style.display = SUBMIT_ROLES.includes(S.user?.role) ? '' : 'none';
+    if (!submitBtn.dataset.wired) {
+      submitBtn.onclick = openSubmitReviewPicker;
+      submitBtn.dataset.wired = '1';
+    }
+  }
+
+  await loadReviewQueue('review-dashboard-wrap', sysSel?.value);
+}
+
+// ── "In Review schicken": Entwürfe zur Review auswählen ───────
+async function openSubmitReviewPicker() {
+  const sysId = $('review-sys-filter')?.value;
+  S.requirements = await window.api.getRequirements(sysId ? { systemId: sysId } : {});
+  const drafts = S.requirements.filter(r =>
+    !r.frozen && (r.reviewStatus || 'draft') === 'draft'
+  );
+
+  const body = drafts.length
+    ? drafts.map(r => {
+        const sys = S.systems.find(s => s.id === r.systemId);
+        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;
+          background:var(--s2);border-radius:var(--r);padding:8px 10px;margin-bottom:6px">
+          <div style="min-width:0">
+            <span class="req-id">${esc(r.id)}</span>
+            <span style="font-size:11px;color:var(--t3);margin-left:6px">${esc(sys?.name||'')}</span>
+            <div style="font-size:13px;font-weight:600">${esc(r.title)}</div>
+          </div>
+          <button class="btn-primary" style="font-size:11px;padding:4px 10px;flex-shrink:0"
+            onclick="submitForReview('${r.id}');closeModal()">📤 Einreichen</button>
+        </div>`;
+      }).join('')
+    : '<div style="font-size:12px;color:var(--t3)">Keine Entwürfe zum Einreichen gefunden.</div>';
+
+  openModal('📤 Zur Review einreichen', body
+    + '<div class="modal-footer-actions"><button class="btn-secondary" onclick="closeModal()">Schließen</button></div>');
 }
 
 // ── Bulk-Selektion & Operationen ──────────────────────────────
@@ -287,6 +350,8 @@ window.submitDecision    = submitDecision;
 window.freezeReq         = freezeReq;
 window.unfreezeReq       = unfreezeReq;
 window.loadReviewQueue   = loadReviewQueue;
+window.loadReviewDashboard    = loadReviewDashboard;
+window.openSubmitReviewPicker = openSubmitReviewPicker;
 window.toggleBulkMode    = toggleBulkMode;
 window.toggleReqSelect   = toggleReqSelect;
 window.selectAllReqs     = selectAllReqs;
@@ -300,33 +365,33 @@ async function openReviewDetail(reqId) {
     .then(r => r.json()).catch(() => null);
   if (!req) { toast('❌ Anforderung nicht gefunden'); return; }
 
-  const status  = req.review_status || 'draft';
-  const cfg     = { draft:'Entwurf', in_review:'In Review', approved:'Genehmigt', rejected:'Abgelehnt' };
-  const canDecide = status === 'in_review' && ['admin','businessanalyst'].includes(S.user?.role);
-  const canSubmit = status === 'draft' && ['business','businessanalyst'].includes(S.user?.role);
+  const status    = req.reviewStatus || 'draft';
+  const isFrozen  = req.frozen;
+  const canSubmit = !isFrozen && status === 'draft' && SUBMIT_ROLES.includes(S.user?.role);
+  const canDecide = !isFrozen && status === 'in_review' && DECIDE_ROLES.includes(S.user?.role);
 
   openModal('🔍 Review: ' + esc(req.title),
     '<div style="margin-bottom:12px">'
     + '<div style="font-size:11px;color:var(--t3);margin-bottom:4px">Status</div>'
     + reviewBadge(status, req.frozen)
     + '</div>'
-    + (req.review_comment ? '<div style="background:var(--s2);border-radius:var(--r);padding:10px;margin-bottom:12px;font-size:12px">'
+    + (req.reviewComment ? '<div style="background:var(--s2);border-radius:var(--r);padding:10px;margin-bottom:12px;font-size:12px">'
         + '<div style="font-size:10px;color:var(--t3);margin-bottom:4px">Kommentar</div>'
-        + esc(req.review_comment) + '</div>' : '')
+        + esc(req.reviewComment) + '</div>' : '')
     + '<div style="margin-bottom:12px">'
     + '<div style="font-size:11px;color:var(--t3);margin-bottom:6px">Beschreibung</div>'
     + '<div style="font-size:12px;color:var(--t2)">' + esc((req.description||'').substring(0,200)) + '</div>'
     + '</div>'
-    + (req.acceptance_criteria_text ? '<div style="background:rgba(63,185,80,.08);border-radius:var(--r);padding:8px 10px;margin-bottom:12px">'
+    + (req.acceptanceCriteriaText ? '<div style="background:rgba(63,185,80,.08);border-radius:var(--r);padding:8px 10px;margin-bottom:12px">'
         + '<div style="font-size:10px;font-weight:600;color:var(--grn);margin-bottom:4px">✅ Akzeptanzkriterien</div>'
-        + req.acceptance_criteria_text.split('\n').filter(Boolean)
+        + req.acceptanceCriteriaText.split('\n').filter(Boolean)
             .map(c => '<div style="font-size:11px;padding:2px 0">' + esc(c) + '</div>').join('')
         + '</div>' : '')
     + '<div class="modal-footer-actions">'
     + (canSubmit ? '<button class="btn-primary" onclick="submitForReview(\'' + reqId + '\');closeModal()">📤 Zur Review einreichen</button>' : '')
     + (canDecide ? '<button class="btn-primary" style="background:var(--grn)" onclick="approveReq(\'' + reqId + '\')">✅ Genehmigen</button>' : '')
     + (canDecide ? '<button class="btn-secondary" style="color:var(--red)" onclick="rejectReq(\'' + reqId + '\')">❌ Ablehnen</button>' : '')
-    + (!req.frozen && status === 'approved' && ['admin','businessanalyst'].includes(S.user?.role)
+    + (!isFrozen && status === 'approved' && DECIDE_ROLES.includes(S.user?.role)
         ? '<button class="btn-secondary" onclick="freezeReq(\'' + reqId + '\');closeModal()">🔒 Einfrieren</button>' : '')
     + '<button class="btn-secondary" onclick="closeModal()">Schließen</button>'
     + '</div>'

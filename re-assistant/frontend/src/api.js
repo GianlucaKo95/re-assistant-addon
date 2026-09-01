@@ -207,7 +207,7 @@ const API = {
       inp.multiple = true;
       inp.onchange = () => {
         // Nur unterstützte Code/Dokument-Formate durchlassen
-        const allowed = /\.(txt|md|pdf|js|ts|tsx|jsx|py|java|cs|cpp|c|h|go|rb|php|swift|kt|rs|json|csv|yaml|yml|html|css|scss|sql|sh|bash|vue|dart|xml|toml|ini|env|config|r|scala|ex|exs)$/i;
+        const allowed = /\.(txt|md|docx|pdf|js|ts|tsx|jsx|py|java|cs|cpp|c|h|go|rb|php|swift|kt|rs|json|csv|yaml|yml|html|css|scss|sql|sh|bash|vue|dart|xml|toml|ini|env|config|r|scala|ex|exs)$/i;
         const files = Array.from(inp.files).filter(f => allowed.test(f.name));
         resolve(files);
       };

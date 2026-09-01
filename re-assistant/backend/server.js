@@ -8,6 +8,7 @@ const fs       = require('fs-extra');
 const path     = require('path');
 const fetch    = require('node-fetch');
 const multer   = require('multer');
+const mammoth  = require('mammoth');
 const bcrypt   = require('bcryptjs');
 const crypto   = require('crypto');
 const http     = require('http');
@@ -458,6 +459,24 @@ app.post('/api/systems/:id/id-schema', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Textextraktion aus hochgeladenen Dateien ───────────────────
+// .docx → mammoth (echtes XML-Parsing); alles andere → Rohtext (bisheriges Verhalten)
+async function extractFileText(file) {
+  const ext = (file.originalname.split('.').pop() || '').toLowerCase();
+  if (ext === 'docx') {
+    try {
+      const { value } = await mammoth.extractRawText({ buffer: file.buffer });
+      return value || '';
+    } catch(e) {
+      log('warning', `Word-Textextraktion fehlgeschlagen (${file.originalname}): ${e.message}`);
+      return '';
+    }
+  }
+  try {
+    return file.buffer.toString('utf-8').replace(/[\x00-\x08\x0E-\x1F\x7F]/g, ' ');
+  } catch(e) { return ''; }
+}
+
 // Dokument-Upload
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10*1024*1024 } });
 app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req, res) => {
@@ -472,12 +491,7 @@ app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req
       if (docs.find(d => d.name === file.originalname)) continue;
 
       // Text extrahieren
-      let text = '';
-      try {
-        text = file.buffer.toString('utf-8');
-        // Binäre Dateien filtern (PDFs etc.)
-        text = text.replace(/[\x00-\x08\x0E-\x1F\x7F]/g, ' ');  // Steuerzeichen entfernen
-      } catch(e) { text = ''; }
+      const text = await extractFileText(file);
 
       const docId = 'd' + Date.now() + Math.floor(Math.random()*10000);
       const doc   = { id: docId, name: file.originalname, size: file.size, addedAt: Date.now() };
@@ -516,6 +530,16 @@ app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req
     }
 
     res.json({ ok: true, added, indexed });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Freistehende Textextraktion (kein System-Kontext) — für die Word-Analyse ohne Systembindung
+app.post('/api/docs/extract-text', requireAuth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Keine Datei hochgeladen' });
+    const text = await extractFileText(req.file);
+    if (!text.trim()) return res.status(422).json({ error: 'Kein Text aus der Datei extrahierbar' });
+    res.json({ ok: true, name: req.file.originalname, text });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -954,6 +978,14 @@ app.get('/api/requirements/archived', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/requirements/:id', requireAuth, async (req, res) => {
+  try {
+    const row = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
+    if (!row) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json(mapReq(row));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/requirements/:id/history', requireAuth, async (req, res) => {
   try {
     const row = await queryOne('SELECT history,title FROM requirements WHERE id=$1', [req.params.id]);
@@ -1319,8 +1351,9 @@ app.get('/api/qs/trends', requireAuth, async (req, res) => {
   try {
     const { systemId, days=30 } = req.query;
     const since = new Date(Date.now() - parseInt(days) * 86400000);
-    const cond  = systemId ? `AND system_id=$2` : '';
-    const params2 = systemId ? [since, systemId] : [since];
+    const params2 = [since];
+    let cond = 'AND updated_at >= $1';
+    if (systemId) { cond += ' AND system_id=$2'; params2.push(systemId); }
 
     const [scores, catStats] = await Promise.all([
       queryAll(`SELECT id,title,quality_score,category,priority,updated_at FROM requirements WHERE quality_score IS NOT NULL AND (archived IS FALSE OR archived IS NULL) ${cond} ORDER BY quality_score ASC LIMIT 20`, params2),
@@ -3445,6 +3478,10 @@ app.post('/api/feedback', requireAuth, async (req, res) => {
 // Anforderung zur Review einreichen
 app.post('/api/requirements/:id/submit-review', requireAuth, async (req, res) => {
   try {
+    const user = await queryOne('SELECT name, role FROM users WHERE id=$1', [req.session.userId]);
+    if (!['business','businessanalyst'].includes(user?.role))
+      return res.status(403).json({ error: 'Nur Business/BA darf zur Review einreichen' });
+
     const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
     if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
     if (req_.frozen) return res.status(400).json({ error: 'Anforderung ist eingefroren' });
@@ -3453,7 +3490,11 @@ app.post('/api/requirements/:id/submit-review', requireAuth, async (req, res) =>
       `UPDATE requirements SET review_status='in_review', last_changed_by=$1, updated_at=NOW() WHERE id=$2`,
       [req.session.userId, req.params.id]
     );
-    await writeAuditLog(req.session.userId, 'submit_review', 'requirement', req.params.id, req_.title);
+    await writeAuditLog({
+      action: 'submit_review', entityType: 'requirement', entityId: req.params.id,
+      entityName: req_.title, systemId: req_.system_id,
+      userId: req.session.userId, userName: user?.name || '',
+    });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -3465,10 +3506,13 @@ app.post('/api/requirements/:id/review-decision', requireAuth, async (req, res) 
     if (!['approved','rejected'].includes(decision))
       return res.status(400).json({ error: 'Ungültige Entscheidung' });
 
+    const user = await queryOne('SELECT name, role FROM users WHERE id=$1', [req.session.userId]);
+    if (!['admin','businessanalyst','projectmanager'].includes(user?.role))
+      return res.status(403).json({ error: 'Nur BA/PM/Admin darf über Reviews entscheiden' });
+
     const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
     if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
 
-    const user = await queryOne('SELECT name FROM users WHERE id=$1', [req.session.userId]);
     const newStatus = decision === 'approved' ? 'approved' : 'rejected';
 
     await query(
@@ -3480,8 +3524,12 @@ app.post('/api/requirements/:id/review-decision', requireAuth, async (req, res) 
       [newStatus, comment || '', req.session.userId, user?.name || '', req.params.id]
     );
 
-    await writeAuditLog(req.session.userId, 'review_' + decision, 'requirement', req.params.id,
-      req_.title + (comment ? ' — ' + comment.substring(0, 100) : ''));
+    await writeAuditLog({
+      action: 'review_' + decision, entityType: 'requirement', entityId: req.params.id,
+      entityName: req_.title, systemId: req_.system_id,
+      userId: req.session.userId, userName: user?.name || '',
+      details: { comment: comment || '' },
+    });
     res.json({ ok: true, status: newStatus });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -3573,8 +3621,13 @@ app.post('/api/requirements/bulk', requireAuth, async (req, res) => {
       updated++;
     }
 
-    await writeAuditLog(req.session.userId, 'bulk_' + operation, 'requirement', safeIds.join(','),
-      `${updated} Anforderungen: ${operation}${value ? ' = ' + value : ''}`);
+    const bulkUser = await queryOne('SELECT name FROM users WHERE id=$1', [req.session.userId]);
+    await writeAuditLog({
+      action: 'bulk_' + operation, entityType: 'requirement', entityId: safeIds.join(','),
+      entityName: `${updated} Anforderungen: ${operation}${value ? ' = ' + value : ''}`,
+      userId: req.session.userId, userName: bulkUser?.name || '',
+      details: { operation, value, ids: safeIds, updated },
+    });
 
     res.json({ ok: true, updated, skipped: safeIds.length - updated });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -3596,7 +3649,11 @@ app.post('/api/requirements/:id/freeze', requireAuth, async (req, res) => {
       'UPDATE requirements SET frozen=TRUE, frozen_at=NOW(), frozen_by=$1, frozen_by_name=$2, updated_at=NOW() WHERE id=$3',
       [req.session.userId, user?.name || '', req.params.id]
     );
-    await writeAuditLog(req.session.userId, 'freeze', 'requirement', req.params.id, req_.title);
+    await writeAuditLog({
+      action: 'freeze', entityType: 'requirement', entityId: req.params.id,
+      entityName: req_.title, systemId: req_.system_id,
+      userId: req.session.userId, userName: user?.name || '',
+    });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -3606,7 +3663,7 @@ app.post('/api/requirements/:id/unfreeze', requireAuth, async (req, res) => {
     const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
     if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
 
-    const user = await queryOne('SELECT role FROM users WHERE id=$1', [req.session.userId]);
+    const user = await queryOne('SELECT name, role FROM users WHERE id=$1', [req.session.userId]);
     if (!['admin','businessanalyst'].includes(user?.role))
       return res.status(403).json({ error: 'Nur BA/Admin darf Anforderungen freigeben' });
 
@@ -3614,7 +3671,11 @@ app.post('/api/requirements/:id/unfreeze', requireAuth, async (req, res) => {
       'UPDATE requirements SET frozen=FALSE, frozen_at=NULL, frozen_by=NULL, frozen_by_name=NULL, updated_at=NOW() WHERE id=$1',
       [req.params.id]
     );
-    await writeAuditLog(req.session.userId, 'unfreeze', 'requirement', req.params.id, req_.title);
+    await writeAuditLog({
+      action: 'unfreeze', entityType: 'requirement', entityId: req.params.id,
+      entityName: req_.title, systemId: req_.system_id,
+      userId: req.session.userId, userName: user?.name || '',
+    });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -3625,6 +3686,102 @@ app.post('/api/requirements/:id/check-frozen', requireAuth, async (req, res) => 
   try {
     const req_ = await queryOne('SELECT frozen, frozen_by_name, frozen_at FROM requirements WHERE id=$1', [req.params.id]);
     res.json({ frozen: req_?.frozen || false, frozenBy: req_?.frozen_by_name, frozenAt: req_?.frozen_at });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Kanban / Workflow-Status ────────────────────────────────────
+// Spiegelt frontend/src/features/workflow.js — Labels/Farben/Icons
+// müssen mit WORKFLOW_STATES dort synchron bleiben.
+const WORKFLOW_STATES = [
+  { id:'backlog',           label:'Im Backlog',       color:'#8b949e', icon:'📋' },
+  { id:'refinement',        label:'Refinement',        color:'#58a6ff', icon:'🔍' },
+  { id:'business_analysis', label:'Business Analyse',  color:'#a371f7', icon:'📊' },
+  { id:'in_progress',       label:'In Umsetzung',      color:'#3fb950', icon:'⚡' },
+  { id:'testing',           label:'Testing',           color:'#e3b341', icon:'🧪' },
+  { id:'done',              label:'Abgeschlossen',     color:'#56d364', icon:'✅' },
+  { id:'cancelled',         label:'Abgebrochen',       color:'#f85149', icon:'❌' },
+];
+const WORKFLOW_PERMISSIONS = {
+  admin:           ['backlog','refinement','business_analysis','in_progress','testing','done','cancelled'],
+  projectmanager:  ['backlog','refinement','business_analysis','in_progress','testing','done','cancelled'],
+  businessanalyst: ['backlog','refinement','business_analysis','testing'],
+  business:        ['backlog','refinement'],
+  developer:       ['in_progress','testing','done'],
+};
+
+app.get('/api/kanban', requireAuth, async (req, res) => {
+  try {
+    const { systemId } = req.query;
+    const conditions = ['(r.archived IS FALSE OR r.archived IS NULL)'];
+    const params = [];
+    if (systemId) { conditions.push(`r.system_id=$${params.length + 1}`); params.push(systemId); }
+
+    const rows = await queryAll(
+      `SELECT r.id, r.title, r.priority, r.workflow_status, r.system_id,
+              s.name as system_name, u.name as assignee_name
+       FROM requirements r
+       LEFT JOIN systems s ON r.system_id = s.id
+       LEFT JOIN users   u ON r.assigned_to = u.id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY r.updated_at DESC`,
+      params
+    );
+
+    const board = {};
+    for (const st of WORKFLOW_STATES) board[st.id] = [];
+    for (const row of rows) {
+      const key = board[row.workflow_status] ? row.workflow_status : 'backlog';
+      board[key].push(row);
+    }
+    res.json({ states: WORKFLOW_STATES, board });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/requirements/:id/workflow', requireAuth, async (req, res) => {
+  try {
+    const { status, comment } = req.body;
+    if (!WORKFLOW_STATES.some(s => s.id === status))
+      return res.status(400).json({ error: 'Ungültiger Status' });
+
+    const user = await queryOne('SELECT name, role FROM users WHERE id=$1', [req.session.userId]);
+    if (!(WORKFLOW_PERMISSIONS[user?.role] || []).includes(status))
+      return res.status(403).json({ error: 'Keine Berechtigung für diesen Status' });
+
+    const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
+    if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
+    if (req_.frozen) return res.status(400).json({ error: 'Anforderung ist eingefroren' });
+
+    const fromStatus = req_.workflow_status;
+    const saved = await queryOne(
+      `UPDATE requirements SET workflow_status=$1, last_changed_by=$2, updated_at=NOW()
+       WHERE id=$3 RETURNING *`,
+      [status, req.session.userId, req.params.id]
+    );
+    await query(
+      `INSERT INTO workflow_history (req_id, from_status, to_status, changed_by, comment)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [req.params.id, fromStatus, status, req.session.userId, comment || null]
+    );
+    await writeAuditLog({
+      action: 'workflow_status_change', entityType: 'requirement',
+      entityId: req.params.id, entityName: req_.title, systemId: req_.system_id,
+      userId: req.session.userId, userName: user?.name || '',
+      details: { from: fromStatus, to: status, comment: comment || '' },
+    });
+    ws.broadcastReqUpdate(mapReq(saved), req.session.userId);
+    res.json({ ok: true, status });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/requirements/:id/workflow/history', requireAuth, async (req, res) => {
+  try {
+    const rows = await queryAll(
+      `SELECT wh.*, u.name as user_name FROM workflow_history wh
+       LEFT JOIN users u ON wh.changed_by = u.id
+       WHERE wh.req_id=$1 ORDER BY wh.changed_at DESC`,
+      [req.params.id]
+    );
+    res.json(rows);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

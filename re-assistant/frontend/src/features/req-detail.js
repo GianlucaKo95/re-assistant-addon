@@ -21,11 +21,11 @@ async function openReqDetail(reqId) {
 
 function renderReqDetailPanel(req) {
   const isWatching = (req.watchers || []).includes(S.user?.id);
+  // systemId aus aktiver Selektion befüllen falls fehlt
+  if (!req.systemId && S.activeSystemId) req.systemId = S.activeSystemId;
   const sys = req?.systemId
     ? (S.systems || []).find(s => s.id === req.systemId)
     : null;
-  // systemId aus aktiver Selektion befüllen falls fehlt
-  if (!req.systemId && S.activeSystemId) req.systemId = S.activeSystemId;
 
   // Slide-in Panel
   let panel = document.getElementById('req-detail-panel');
@@ -417,8 +417,14 @@ function renderAttachmentsTab(req) {
   return `<div style="padding:14px 16px">
     <button class="btn-secondary" style="width:100%;margin-bottom:12px;font-size:12px"
       onclick="addAttachment('${req.id}')">📎 Datei anhängen</button>
-    attachments.length ? attachments.map(a => "<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--b1)">         <span style="font-size:20px">📄</span>         <div style="flex:1;min-width:0">           <div style="font-size:13px">' + (esc(a.name)) + '</div>           <div style="font-size:11px;color:var(--t3)">' + (((a.size||0)/1024).toFixed(1)) + ' KB</div>         </div>").join("")}
-      '<div style="text-align:center;color:var(--t3);padding:20px;font-size:13px">Keine Anhänge</div>'}
+    ${attachments.length ? attachments.map(a => `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--b1)">
+      <span style="font-size:20px">📄</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px">${esc(a.name)}</div>
+        <div style="font-size:11px;color:var(--t3)">${((a.size||0)/1024).toFixed(1)} KB</div>
+      </div>
+    </div>`).join('')
+      : '<div style="text-align:center;color:var(--t3);padding:20px;font-size:13px">Keine Anhänge</div>'}
   </div>`;
 }
 

@@ -179,7 +179,7 @@ async function loadTasksView() {
   wrap.innerHTML = tasks.map(t => {
     const req = allReqs.find(r => r.id === t.reqId);
     return `
-      <div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);padding:12px 16px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start">
+      <div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);padding:12px 16px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start;box-shadow:0 3px 10px rgba(0,0,0,.18)">
         <div style="width:32px;height:32px;background:var(--babg);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">💬</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600">${esc(req?.title || t.reqId)}</div>

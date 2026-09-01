@@ -46,6 +46,7 @@ function renderReqAnalysisTabs() {
         ['use-cases','📋 Use Cases'],
         ['quality-goals','🎯 Qualitätsziele'],
         ['smart-check','⭐ SMART-Prüfung'],
+        ['consistency','⚡ Konsistenz'],
       ].map(([id, label]) => `
         <button class="ra-tab" id="ra-tab-${id}" onclick="loadAnalysisTab('${id}')"
           style="padding:8px 14px;border:none;background:transparent;color:var(--t3);
@@ -83,6 +84,7 @@ async function loadAnalysisTab(tab) {
       case 'use-cases':      await renderUseCases(el, sysId); break;
       case 'quality-goals':  await renderQualityGoals(el, sysId); break;
       case 'smart-check':    await renderSmartCheck(el, sysId); break;
+      case 'consistency':    await renderConsistencyTab(el, sysId); break;
     }
   } catch(e) {
     el.innerHTML = `<div style="color:var(--red);padding:12px">Fehler: ${esc(e.message)}</div>`;
@@ -171,7 +173,13 @@ async function renderBoundaries(el, sysId) {
       <div style="margin-bottom:16px">
         <div style="font-size:12px;font-weight:600;color:${colors[type]};margin-bottom:8px">
           ${types[type]} (${items.length})</div>
-        items.length ? items.map(b => "<div style="background:var(--s2);border:1px solid var(--b1);border-left:3px solid ' + (colors[type]) + ';             border-radius:var(--r);padding:10px 12px;margin-bottom:6px;             display:flex;justify-content:space-between;align-items:center">             <div style="font-size:12px">' + (esc(b.description)) + '</div>             <button onclick="deleteBoundary('' + (b.id) + '')" style="background:transparent;border:none;               color:var(--t3);cursor:pointer;margin-left:8px">✕</button>").join("")}
+        ${items.map(b => `<div style="background:var(--s2);border:1px solid var(--b1);border-left:3px solid ${colors[type]};
+          border-radius:var(--r);padding:10px 12px;margin-bottom:6px;
+          display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:12px">${esc(b.description)}</div>
+          <button onclick="deleteBoundary('${b.id}')" style="background:transparent;border:none;
+            color:var(--t3);cursor:pointer;margin-left:8px">✕</button>
+        </div>`).join('')}
       </div>`).join('')}`;
 }
 
@@ -333,7 +341,7 @@ async function renderQualityGoals(el, sysId) {
 function addQualityGoal() {
   openModal('Qualitätsziel hinzufügen (ISO-25010)', `
     <div class="frow"><label>ISO-25010 Charakteristik</label>
-      <select id="qg-char">${ISO_CHARS.map(c => '<option>${c}</option>').join('')}</select></div>
+      <select id="qg-char">${ISO_CHARS.map(c => `<option>${c}</option>`).join('')}</select></div>
     <div class="frow"><label>Beschreibung</label>
       <textarea id="qg-desc" rows="2" placeholder="Das System soll..."></textarea></div>
     <div class="frow"><label>Messmethode</label>
@@ -434,6 +442,20 @@ async function runSmartCheck(reqId, btn) {
   }
 }
 
+// ── Konsistenz ────────────────────────────────────────────────
+async function renderConsistencyTab(el, sysId) {
+  el.innerHTML = `
+    <div style="padding:8px 0 14px">
+      <p style="font-size:13px;color:var(--t2);margin-bottom:12px">
+        Prüft alle Anforderungen dieses Systems auf inhaltliche Widersprüche (z.B. sich gegenseitig ausschließende Vorgaben).
+      </p>
+      <button class="btn-primary" id="btn-consistency-check" onclick="runConsistencyCheck('${sysId}')">
+        🔍 Konsistenz prüfen
+      </button>
+    </div>
+    <div id="consistency-results"></div>`;
+}
+
 function showSmartResult(reqId, result) {
   const scoreColor = result.overall_score >= 80 ? 'var(--grn)' : result.overall_score >= 50 ? 'var(--amb)' : 'var(--red)';
   openModal(`SMART-Analyse — Score: ${result.overall_score}/100`, `
@@ -496,14 +518,14 @@ function showSmartResult(reqId, result) {
     ${result.conflicts?.length ? `
     <div style="background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.2);border-radius:var(--r);padding:10px;margin-bottom:8px">
       <div style="font-size:10px;color:var(--red);margin-bottom:6px">⚠ Mögliche Konflikte</div>
-      ${result.conflicts.map(c => '<div style="font-size:11px;color:var(--t2);padding:2px 0">${esc(c)}</div>').join('')}
+      ${result.conflicts.map(c => `<div style="font-size:11px;color:var(--t2);padding:2px 0">${esc(c)}</div>`).join('')}
     </div>` : ''}
 
     <!-- IEEE-Issues -->
     ${result.ieee_issues?.filter(i=>i!=='...').length ? `
     <div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:var(--r);padding:10px;margin-bottom:8px">
       <div style="font-size:10px;color:var(--amb);margin-bottom:6px">📋 IEEE-830 Hinweise</div>
-      ${result.ieee_issues.map(i => '<div style="font-size:11px;color:var(--t2);padding:2px 0">• ${esc(i)}</div>').join('')}
+      ${result.ieee_issues.map(i => `<div style="font-size:11px;color:var(--t2);padding:2px 0">• ${esc(i)}</div>`).join('')}
     </div>` : ''}
 
     <div class="modal-footer-actions">
@@ -644,17 +666,17 @@ async function runAiAnalysis(aspect, btn) {
           ${result.gaps?.length ? `
           <div style="margin-bottom:10px">
             <div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:6px">⚠ Erkannte Lücken</div>
-            ${result.gaps.map(g => '<div style="font-size:11px;padding:3px 0;color:var(--t2)">• ${esc(g)}</div>').join('')}
+            ${result.gaps.map(g => `<div style="font-size:11px;padding:3px 0;color:var(--t2)">• ${esc(g)}</div>`).join('')}
           </div>` : ''}
           ${result.conflicts?.length ? `
           <div style="margin-bottom:10px">
             <div style="font-size:11px;font-weight:600;color:var(--amb);margin-bottom:6px">🔀 Mögliche Widersprüche</div>
-            ${result.conflicts.map(c => '<div style="font-size:11px;padding:3px 0;color:var(--t2)">• ${esc(c)}</div>').join('')}
+            ${result.conflicts.map(c => `<div style="font-size:11px;padding:3px 0;color:var(--t2)">• ${esc(c)}</div>`).join('')}
           </div>` : ''}
           ${result.recommendations?.length ? `
           <div>
             <div style="font-size:11px;font-weight:600;color:var(--grn);margin-bottom:6px">💡 Empfehlungen</div>
-            ${result.recommendations.map(r => '<div style="font-size:11px;padding:3px 0;color:var(--t2)">• ${esc(r)}</div>').join('')}
+            ${result.recommendations.map(r => `<div style="font-size:11px;padding:3px 0;color:var(--t2)">• ${esc(r)}</div>`).join('')}
           </div>` : ''}
         </div>`;
     }

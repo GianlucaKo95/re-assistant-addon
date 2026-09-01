@@ -57,7 +57,7 @@ async function sendPMChat(){
 Antworte immer strukturiert mit konkreten Handlungsempfehlungen.`,
   ].filter(Boolean).join('\n\n');
 
-  const pmMsgs = $('pmc-chat-msgs');
+  const pmMsgs = $('pm-chat-msgs');
   const pmBubble = document.createElement('div');
   pmBubble.className = 'msg assistant';
   pmBubble.innerHTML = '<div class="bubble"><span class="stream-cursor">▋</span></div>';

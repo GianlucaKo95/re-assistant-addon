@@ -236,7 +236,7 @@ async function addFolder(systemId) {
 }
 
 async function addFiles(systemId) {
-  const files = await window.api.pickFiles('.txt,.md,.pdf,.js,.ts,.tsx,.jsx,.py,.java,.cs,.cpp,.c,.h,.go,.rb,.php,.swift,.kt,.rs,.json,.csv,.yaml,.yml,.html,.css,.scss,.sql,.sh,.bash,.vue,.dart');
+  const files = await window.api.pickFiles('.txt,.md,.docx,.pdf,.js,.ts,.tsx,.jsx,.py,.java,.cs,.cpp,.c,.h,.go,.rb,.php,.swift,.kt,.rs,.json,.csv,.yaml,.yml,.html,.css,.scss,.sql,.sh,.bash,.vue,.dart');
   if (!files.length) return;
   const btn = document.querySelector(`[onclick="addFiles('${systemId}')"]`);
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span>'; }

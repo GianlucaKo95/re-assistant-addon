@@ -365,7 +365,14 @@ async function devFollowUp(reqId) {
 /* ── Kommentare ──────────────────────────────────────────────── */
 function renderCommentThread(r) {
   if (!(r.comments || []).length) return '';
-  return `<div class="comment-thread">(r.comments || []).map(c => "<div class="comment">       <div class="comment-avatar">' + (((c.authorName||c.userName||'?').substring(0,2)).toUpperCase()) + '</div>       <div class="comment-body">         <span class="comment-author">' + (esc(c.authorName || c.userName || '')) + '</span>         <span class="comment-time"> · ' + (new Date(c.createdAt||c.created_at).toLocaleString('de-DE',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit') + ')}</span>         <div class="comment-text">' + (esc(c.text || c.content || '')) + '</div>       </div>").join('')}</div>`;
+  return `<div class="comment-thread">${(r.comments || []).map(c => `<div class="comment">
+    <div class="comment-avatar">${((c.authorName||c.userName||'?').substring(0,2)).toUpperCase()}</div>
+    <div class="comment-body">
+      <span class="comment-author">${esc(c.authorName || c.userName || '')}</span>
+      <span class="comment-time"> · ${new Date(c.createdAt||c.created_at).toLocaleString('de-DE',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'})}</span>
+      <div class="comment-text">${esc(c.text || c.content || '')}</div>
+    </div>
+  </div>`).join('')}</div>`;
 }
 
 function toggleCommentInput(reqId) {
@@ -387,7 +394,7 @@ async function submitComment(reqId) {
 /* ── Audit-Log Helper ────────────────────────────────────────── */
 async function writeAuditLogFE(action, entityId, entityName) {
   try {
-    await fetch('api/audit-log', {
+    await fetch('api/audit-log/write', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, entityType: 'requirement', entityId, entityName }),

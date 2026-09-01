@@ -23,18 +23,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btn) btn.onclick = () => window.clearNotifs && window.clearNotifs();
   }
 
-  // Import Button
-  const importBtn = document.getElementById('btn-switch-import');
-  if (importBtn) importBtn.onclick = () => window.switchView && window.switchView('import');
-
-  // NL-Query History löschen
-  const clearNlq = document.getElementById('btn-clear-nlq');
-  if (clearNlq) clearNlq.onclick = () => window.clearNLQHistory && window.clearNLQHistory();
-
-  // Audit Log Export
-  const auditExport = document.getElementById('btn-export-audit');
-  if (auditExport) auditExport.onclick = () => window.exportAuditLog && window.exportAuditLog();
-
   // Audit Log Filter
   ['audit-filter-action','audit-filter-entity','audit-filter-date'].forEach(id => {
     const el = document.getElementById(id);
@@ -80,10 +68,6 @@ document.addEventListener('DOMContentLoaded', function() {
   // Theme Toggle
   const themeBtn = document.getElementById('btn-theme');
   if (themeBtn) themeBtn.onclick = () => window.toggleTheme && window.toggleTheme();
-
-  // Settings-Button (falls vorhanden)
-  const settingsBtn = document.getElementById('btn-settings');
-  if (settingsBtn) settingsBtn.onclick = () => window.switchView && window.switchView('settings');
 
 });
 
