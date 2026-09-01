@@ -8,6 +8,7 @@ const fs       = require('fs-extra');
 const path     = require('path');
 const fetch    = require('node-fetch');
 const multer   = require('multer');
+const mammoth  = require('mammoth');
 const bcrypt   = require('bcryptjs');
 const crypto   = require('crypto');
 const http     = require('http');
@@ -458,6 +459,24 @@ app.post('/api/systems/:id/id-schema', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Textextraktion aus hochgeladenen Dateien ───────────────────
+// .docx → mammoth (echtes XML-Parsing); alles andere → Rohtext (bisheriges Verhalten)
+async function extractFileText(file) {
+  const ext = (file.originalname.split('.').pop() || '').toLowerCase();
+  if (ext === 'docx') {
+    try {
+      const { value } = await mammoth.extractRawText({ buffer: file.buffer });
+      return value || '';
+    } catch(e) {
+      log('warning', `Word-Textextraktion fehlgeschlagen (${file.originalname}): ${e.message}`);
+      return '';
+    }
+  }
+  try {
+    return file.buffer.toString('utf-8').replace(/[\x00-\x08\x0E-\x1F\x7F]/g, ' ');
+  } catch(e) { return ''; }
+}
+
 // Dokument-Upload
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10*1024*1024 } });
 app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req, res) => {
@@ -472,12 +491,7 @@ app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req
       if (docs.find(d => d.name === file.originalname)) continue;
 
       // Text extrahieren
-      let text = '';
-      try {
-        text = file.buffer.toString('utf-8');
-        // Binäre Dateien filtern (PDFs etc.)
-        text = text.replace(/[\x00-\x08\x0E-\x1F\x7F]/g, ' ');  // Steuerzeichen entfernen
-      } catch(e) { text = ''; }
+      const text = await extractFileText(file);
 
       const docId = 'd' + Date.now() + Math.floor(Math.random()*10000);
       const doc   = { id: docId, name: file.originalname, size: file.size, addedAt: Date.now() };
@@ -516,6 +530,16 @@ app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req
     }
 
     res.json({ ok: true, added, indexed });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Freistehende Textextraktion (kein System-Kontext) — für die Word-Analyse ohne Systembindung
+app.post('/api/docs/extract-text', requireAuth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Keine Datei hochgeladen' });
+    const text = await extractFileText(req.file);
+    if (!text.trim()) return res.status(422).json({ error: 'Kein Text aus der Datei extrahierbar' });
+    res.json({ ok: true, name: req.file.originalname, text });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

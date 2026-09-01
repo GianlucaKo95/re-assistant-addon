@@ -235,6 +235,22 @@
         </div>
       </div>
 
+      <!-- WORD-ANALYSE (ohne Systembindung) -->
+      <div class="view" id="view-word-analysis">
+        <div class="view-header"><div><h2>Word-Analyse</h2><p class="view-sub">Word-Dokument hochladen — KI extrahiert Requirements direkt aus dem Text, ohne Systemkontext</p></div><select id="wa-sys-select" class="filter-select" style="min-width:220px"><option value="">Zielsystem wählen (zum Speichern) …</option></select></div>
+        <div id="wa-layout">
+          <div id="wa-left">
+            <div class="pane-label" style="padding:12px 14px 6px">Word-Dokument (.docx)</div>
+            <div style="padding:0 12px 12px">
+              <button class="btn-secondary" style="width:100%;justify-content:center" id="btn-wa-pick">📄 Datei auswählen …</button>
+            </div>
+            <div id="wa-upload-status" style="padding:0 12px"></div>
+            <div style="padding:10px 12px;border-top:1px solid var(--b1)"><button class="btn-primary" style="width:100%;justify-content:center" id="btn-wa-analyze" disabled>🔍 Analysieren</button></div>
+          </div>
+          <div id="wa-right"><div id="wa-results" class="scroll-body"><div class="empty-state"><div class="es-icon">📄</div><h3>Word-Dokument hochladen</h3><p>Die Analyse nutzt ausschließlich den Dokumentinhalt — kein Stakeholder- oder Systemkontext.</p></div></div></div>
+        </div>
+      </div>
+
       <!-- BA: Diagrams -->
       <div class="view" id="view-ba-diagrams">
         <div class="view-header"><div><h2>Diagramm-Generator</h2><p class="view-sub">BPMN-Prozessdiagramme und Systemkontextdiagramme automatisch generieren und exportieren</p></div><button class="btn-primary" id="btn-new-diagram">+ Neues Diagramm</button></div>

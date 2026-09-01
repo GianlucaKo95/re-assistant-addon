@@ -303,6 +303,12 @@ input::placeholder,textarea::placeholder{color:var(--t3)}
 .da-doc-item:hover{background:var(--s2);color:var(--t1)}.da-doc-item input[type=checkbox]{flex-shrink:0;cursor:pointer}
 #da-right{display:flex;flex-direction:column;overflow:hidden}
 #da-results{display:flex;flex-direction:column;gap:12px}
+
+/* Word-Analyse (ohne Systembindung) — teilt Layout-Maße mit BA: Doc Analysis */
+#wa-layout{display:grid;grid-template-columns:220px 1fr;flex:1;overflow:hidden}
+#wa-left{border-right:1px solid var(--b1);background:rgba(6,6,14,.98);display:flex;flex-direction:column}
+#wa-right{display:flex;flex-direction:column;overflow:hidden}
+#wa-results{display:flex;flex-direction:column;gap:12px}
 .da-group{background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);overflow:hidden;box-shadow:0 3px 10px rgba(0,0,0,.18)}
 .da-group-head{padding:11px 15px;font-size:12px;font-weight:600;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between}
 .da-group-body{padding:12px 15px;display:flex;flex-direction:column;gap:8px}
@@ -659,13 +665,13 @@ input::placeholder,textarea::placeholder{color:var(--t3)}
   .user-role-badge{font-size:10px}
 
   /* Diagramme / Jira / Workshops */
-  #jira-layout,#diag-editor-area,#ws-body,#da-layout,#diag-layout{
+  #jira-layout,#diag-editor-area,#ws-body,#da-layout,#diag-layout,#wa-layout{
     grid-template-columns:1fr
   }
   #jira-config-pane{border-right:none;border-bottom:1px solid var(--b1)}
   #diag-text-pane{border-right:none;border-bottom:1px solid var(--b1);max-height:180px}
   #ws-structured{display:none}
-  #da-left{border-right:none;border-bottom:1px solid var(--b1);max-height:160px}
+  #da-left,#wa-left{border-right:none;border-bottom:1px solid var(--b1);max-height:160px}
   #diag-sidebar{display:none}
 
   /* Voice */

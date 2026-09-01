@@ -79,6 +79,7 @@ import './features/dna.js';
 import './features/token-dashboard.js';
 
 import './features/req-network.js';
+import './features/word-analysis.js';
 import './features/conflict-detection.js';
 import './features/req-detail.js';
 import './pm/backlog-network.js';
