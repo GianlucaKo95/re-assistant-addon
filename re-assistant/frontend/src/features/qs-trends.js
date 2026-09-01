@@ -82,7 +82,7 @@ function renderTrends(data, sysId, days) {
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">
         ${data.categoryStats.map(cat => {
           const col = cat.avg>=7?'var(--grn)':cat.avg>=4?'var(--amb)':'var(--red)';
-          return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);padding:12px 14px">
+          return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);padding:12px 14px;box-shadow:0 3px 10px rgba(0,0,0,.18)">
             <div style="font-size:12px;font-weight:600;margin-bottom:6px">${esc(cat.category)}</div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
               <div style="font-size:22px;font-weight:700;color:${col}">${cat.avg.toFixed(1)}</div>

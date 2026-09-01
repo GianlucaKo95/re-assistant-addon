@@ -47,7 +47,7 @@ async function loadArchiveItems() {
       ${data.map(r => {
         const sys = S.systems.find(s=>s.id===r.systemId);
         const archivedAt = r.archivedAt ? new Date(r.archivedAt).toLocaleString('de-DE') : '—';
-        return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);padding:12px 16px;margin-bottom:8px;opacity:.85">
+        return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);padding:12px 16px;margin-bottom:8px;opacity:.85;box-shadow:0 3px 10px rgba(0,0,0,.14)">
           <div style="display:flex;align-items:flex-start;gap:10px">
             <div style="flex:1;min-width:0">
               <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;flex-wrap:wrap">

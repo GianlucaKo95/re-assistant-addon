@@ -61,7 +61,7 @@ function renderSprintList(plans) {
     return;
   }
   wrap.innerHTML = plans.map(p => `
-    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);margin-bottom:10px;overflow:hidden">
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);margin-bottom:10px;overflow:hidden;box-shadow:0 3px 10px rgba(0,0,0,.18)">
       <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;border-bottom:1px solid var(--b1)"
         onclick="toggleSprintDetail('sprint-${p.id}')">
         <div>

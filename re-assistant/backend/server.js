@@ -1327,8 +1327,9 @@ app.get('/api/qs/trends', requireAuth, async (req, res) => {
   try {
     const { systemId, days=30 } = req.query;
     const since = new Date(Date.now() - parseInt(days) * 86400000);
-    const cond  = systemId ? `AND system_id=$2` : '';
-    const params2 = systemId ? [since, systemId] : [since];
+    const params2 = [since];
+    let cond = 'AND updated_at >= $1';
+    if (systemId) { cond += ' AND system_id=$2'; params2.push(systemId); }
 
     const [scores, catStats] = await Promise.all([
       queryAll(`SELECT id,title,quality_score,category,priority,updated_at FROM requirements WHERE quality_score IS NOT NULL AND (archived IS FALSE OR archived IS NULL) ${cond} ORDER BY quality_score ASC LIMIT 20`, params2),
@@ -3453,11 +3454,14 @@ app.post('/api/feedback', requireAuth, async (req, res) => {
 // Anforderung zur Review einreichen
 app.post('/api/requirements/:id/submit-review', requireAuth, async (req, res) => {
   try {
+    const user = await queryOne('SELECT name, role FROM users WHERE id=$1', [req.session.userId]);
+    if (!['business','businessanalyst'].includes(user?.role))
+      return res.status(403).json({ error: 'Nur Business/BA darf zur Review einreichen' });
+
     const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
     if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
     if (req_.frozen) return res.status(400).json({ error: 'Anforderung ist eingefroren' });
 
-    const user = await queryOne('SELECT name FROM users WHERE id=$1', [req.session.userId]);
     await query(
       `UPDATE requirements SET review_status='in_review', last_changed_by=$1, updated_at=NOW() WHERE id=$2`,
       [req.session.userId, req.params.id]
@@ -3478,10 +3482,13 @@ app.post('/api/requirements/:id/review-decision', requireAuth, async (req, res) 
     if (!['approved','rejected'].includes(decision))
       return res.status(400).json({ error: 'Ungültige Entscheidung' });
 
+    const user = await queryOne('SELECT name, role FROM users WHERE id=$1', [req.session.userId]);
+    if (!['admin','businessanalyst','projectmanager'].includes(user?.role))
+      return res.status(403).json({ error: 'Nur BA/PM/Admin darf über Reviews entscheiden' });
+
     const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
     if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
 
-    const user = await queryOne('SELECT name FROM users WHERE id=$1', [req.session.userId]);
     const newStatus = decision === 'approved' ? 'approved' : 'rejected';
 
     await query(
