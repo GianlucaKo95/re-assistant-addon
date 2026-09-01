@@ -65,7 +65,7 @@ async function runWordAnalysis() {
   btn.innerHTML = '<span class="spin"></span> Analysiere …';
   $('wa-results').innerHTML = '<div class="empty-state"><div class="spin"></div><p>Analysiere Dokument …</p></div>';
 
-  const schema = '{"requirements":[{"title":"Beginnt mit Verb","description":"vollständig und messbar","category":"Funktional|Nicht-Funktional|Sicherheit|Performance|Schnittstelle","priority":"high|medium|low","confidence":"high|medium|low","rationale":"Warum wichtig?","acceptance_criteria_text":"Gegeben...Wenn...Dann..."}],"assumptions":[{"text":"...","impact":"hoch|mittel|niedrig"}],"risks":[{"text":"...","probability":"hoch|mittel|niedrig","impact":"hoch|mittel|niedrig","mitigation":"Gegenmaßnahme"}],"gaps":["Vermutlich fehlende Anforderung basierend auf dem Dokument..."],"summary":"Zusammenfassung"}';
+  const schema = '{"requirements":[{"title":"Beginnt mit Verb","description":"vollständig und messbar","category":"Funktional|Nicht-Funktional|Sicherheit|Performance|Schnittstelle","priority":"high|medium|low","confidence":"high|medium|low","rationale":"Warum wichtig?","acceptance_criteria_text":"Gegeben...Wenn...Dann..."}],"assumptions":[{"text":"...","impact":"hoch|mittel|niedrig"}],"risks":[{"text":"...","probability":"hoch|mittel|niedrig","impact":"hoch|mittel|niedrig","mitigation":"Gegenmaßnahme"}],"gaps":["Vermutlich fehlende Anforderung basierend auf dem Dokument..."],"qualityIssues":[{"type":"Widerspruch|Mehrdeutigkeit|Fehlende Angabe|Unvollständigkeit|Unrealistisch/nicht verifizierbar","severity":"hoch|mittel|niedrig","description":"Was genau ist das Problem und warum?","quote":"Wörtliches Zitat der betroffenen Textstelle(n)","suggestion":"Konkreter Verbesserungsvorschlag"}],"summary":"Zusammenfassung"}';
 
   const prompt = [
     'Du bist CPRE-zertifizierter Requirements Engineer. Analysiere das folgende Dokument eigenständig.',
@@ -76,6 +76,7 @@ async function runWordAnalysis() {
     '2. Annahmen — implizite Voraussetzungen, die das Dokument nicht ausspricht',
     '3. Risiken — mit konkreten Gegenmaßnahmen',
     '4. Lücken — Anforderungen, die aus dem Dokumenteninhalt heraus vermutlich fehlen',
+    '5. Qualitätsprüfung — prüfe den Text kritisch auf Widersprüche, Mehrdeutigkeiten, fehlende Angaben und unrealistische oder nicht verifizierbare Formulierungen. Zitiere für jeden Fund die betroffene Textstelle wörtlich — keine Vermutungen ohne Beleg im Text.',
     '',
     `DOKUMENT: ${_waFileName}`,
     _waText.substring(0, 12000),
@@ -92,9 +93,9 @@ async function runWordAnalysis() {
 
   if (!res.ok) { toast('❌ ' + res.text); $('wa-results').innerHTML = ''; return; }
   try {
-    const a = JSON.parse((() => { let _r=res.text.trim().replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\s*}/g,'}').replace(/,\s*]/g,']'); })());
+    const a = JSON.parse((() => { let _r=res.text.trim().replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); const _arrFirst=_fi!==-1&&(_fo===-1||_fi<_fo); if(_arrFirst&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\s*}/g,'}').replace(/,\s*]/g,']'); })());
     renderWordAnalysis(a);
-    toast(`✅ ${a.requirements?.length||0} Anforderungen · ${a.assumptions?.length||0} Annahmen · ${a.risks?.length||0} Risiken`);
+    toast(`✅ ${a.requirements?.length||0} Anforderungen · ${a.assumptions?.length||0} Annahmen · ${a.risks?.length||0} Risiken · ${a.qualityIssues?.length||0} QS-Befunde`);
   } catch(e) { toast('❌ Parsing-Fehler'); }
 }
 
@@ -181,6 +182,30 @@ function renderWordAnalysis(a) {
       + '</div></div></div>'
     ).join('');
     g.innerHTML = '<div class="da-group-head">⚠ Risiken (' + a.risks.length + ')</div>'
+      + '<div class="da-group-body">' + items + '</div>';
+    wr.appendChild(g);
+  }
+
+  // Qualitätsprüfung (Widersprüche, Mehrdeutigkeiten, Lücken im Text selbst)
+  if (a.qualityIssues?.length) {
+    const g = document.createElement('div');
+    g.className = 'da-group';
+    const sevColor = { hoch:'var(--red)', mittel:'var(--amb)', niedrig:'var(--blue)' };
+    const items = a.qualityIssues.map(x => {
+      const c = sevColor[x.severity] || 'var(--t3)';
+      return '<div class="da-item">'
+        + '<div class="da-item-icon" style="background:' + c + '22">⚖</div>'
+        + '<div class="da-item-body">'
+        + '<div style="display:flex;gap:5px;align-items:center;margin-bottom:3px">'
+        + '<span class="rtag" style="font-size:9px">' + esc(x.type||'') + '</span>'
+        + '<span class="sbadge" style="font-size:9px;background:' + c + '22;color:' + c + '">' + esc(x.severity||'?') + '</span>'
+        + '</div>'
+        + '<div style="font-size:12px">' + esc(x.description||'') + '</div>'
+        + (x.quote ? '<div style="font-size:11px;color:var(--t2);font-style:italic;border-left:2px solid ' + c + ';padding:3px 8px;margin-top:5px;background:var(--s2)">„' + esc(x.quote) + '"</div>' : '')
+        + (x.suggestion ? '<div style="font-size:11px;color:var(--grn);margin-top:5px">💡 ' + esc(x.suggestion) + '</div>' : '')
+        + '</div></div>';
+    }).join('');
+    g.innerHTML = '<div class="da-group-head">⚖ Qualitätsprüfung (' + a.qualityIssues.length + ')</div>'
       + '<div class="da-group-body">' + items + '</div>';
     wr.appendChild(g);
   }
