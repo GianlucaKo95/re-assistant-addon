@@ -498,5 +498,3 @@ window.parseJSON = parseJSON;
 window.parseExcel = parseExcel;
 window.parseMarkdown = parseMarkdown;
 window.parseJiraXML = parseJiraXML;
-window.detectPrefix = detectPrefix;
-window.getMaxCounter = getMaxCounter;

@@ -394,7 +394,7 @@ async function submitComment(reqId) {
 /* ── Audit-Log Helper ────────────────────────────────────────── */
 async function writeAuditLogFE(action, entityId, entityName) {
   try {
-    await fetch('api/audit-log', {
+    await fetch('api/audit-log/write', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, entityType: 'requirement', entityId, entityName }),

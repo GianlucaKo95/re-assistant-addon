@@ -46,6 +46,7 @@ function renderReqAnalysisTabs() {
         ['use-cases','📋 Use Cases'],
         ['quality-goals','🎯 Qualitätsziele'],
         ['smart-check','⭐ SMART-Prüfung'],
+        ['consistency','⚡ Konsistenz'],
       ].map(([id, label]) => `
         <button class="ra-tab" id="ra-tab-${id}" onclick="loadAnalysisTab('${id}')"
           style="padding:8px 14px;border:none;background:transparent;color:var(--t3);
@@ -83,6 +84,7 @@ async function loadAnalysisTab(tab) {
       case 'use-cases':      await renderUseCases(el, sysId); break;
       case 'quality-goals':  await renderQualityGoals(el, sysId); break;
       case 'smart-check':    await renderSmartCheck(el, sysId); break;
+      case 'consistency':    await renderConsistencyTab(el, sysId); break;
     }
   } catch(e) {
     el.innerHTML = `<div style="color:var(--red);padding:12px">Fehler: ${esc(e.message)}</div>`;
@@ -438,6 +440,20 @@ async function runSmartCheck(reqId, btn) {
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '🔄 Neu prüfen'; }
   }
+}
+
+// ── Konsistenz ────────────────────────────────────────────────
+async function renderConsistencyTab(el, sysId) {
+  el.innerHTML = `
+    <div style="padding:8px 0 14px">
+      <p style="font-size:13px;color:var(--t2);margin-bottom:12px">
+        Prüft alle Anforderungen dieses Systems auf inhaltliche Widersprüche (z.B. sich gegenseitig ausschließende Vorgaben).
+      </p>
+      <button class="btn-primary" id="btn-consistency-check" onclick="runConsistencyCheck('${sysId}')">
+        🔍 Konsistenz prüfen
+      </button>
+    </div>
+    <div id="consistency-results"></div>`;
 }
 
 function showSmartResult(reqId, result) {

@@ -652,3 +652,5 @@ window.onboardingSaveReqs     = onboardingSaveReqs;
 window.onboardingSkipReqs     = onboardingSkipReqs;
 window.finishOnboarding       = finishOnboarding;
 window.skipOnboarding         = skipOnboarding;
+window.detectPrefix           = detectPrefix;
+window.getMaxCounter          = getMaxCounter;

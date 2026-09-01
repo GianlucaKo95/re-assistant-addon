@@ -104,7 +104,7 @@ async function loadConversation(convId, chatType = 'bc') {
     }
 
     // Chat-Nachrichten neu rendern
-    const container = chatType === 'bc' ? 'bc-chat-msgs' : 'pmc-chat-msgs';
+    const container = chatType === 'bc' ? 'bc-chat-msgs' : 'pm-chat-msgs';
     const msgs = document.getElementById(container);
     if (msgs) {
       msgs.innerHTML = '';
@@ -186,6 +186,7 @@ function toggleConvPanel(chatType = 'bc') {
   if (isOpen) {
     closeConvPanel();
   } else {
+    window._convPanelType = chatType;
     panel.classList.add('open');
     loadConvList(chatType);
   }

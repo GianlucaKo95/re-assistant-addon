@@ -282,7 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('btn-save-cfg')?.addEventListener('click', saveCfg);
   $('btn-test-api')?.addEventListener('click', testApiConnection);
   $('btn-docs')?.addEventListener('click', () => window.api.openExternal('https://docs.anthropic.com'));
-  $('btn-change-pw')?.addEventListener('click', openChangePasswordModal);
+  document.querySelectorAll('[id="btn-change-pw"]').forEach(b => b.addEventListener('click', openChangePasswordModal));
 });
 
 window.doLogin                  = doLogin;

@@ -65,6 +65,17 @@
 
 <!-- ═══ APP ══════════════════════════════════════════════════════════ -->
 <div id="app-screen" style="display:none">
+  <div id="conv-panel">
+    <div id="conv-panel-header">
+      <strong style="font-size:13px">Verlauf</strong>
+      <div style="display:flex;gap:6px">
+        <button class="btn-secondary" style="font-size:11px;padding:4px 9px" onclick="newConversation(window._convPanelType||'bc')">+ Neu</button>
+        <button class="btn-secondary" style="font-size:11px;padding:4px 8px" onclick="closeConvPanel()">✕</button>
+      </div>
+    </div>
+    <div id="conv-list"></div>
+  </div>
+  <div id="conv-panel-overlay" style="display:none" onclick="closeConvPanel()"></div>
   <div id="titlebar">
     <div class="wdot r"></div><div class="wdot y"></div><div class="wdot g"></div>
     <div id="tb-title">RE·Assistent</div>
@@ -124,7 +135,7 @@
       <!-- BUSINESS: Chat + Live Reqs -->
       <div class="view" id="view-business-chat">
         <div id="bc-layout">
-          <div id="bc-sidebar"><div class="pane-label">System</div><div id="bc-system-list"></div></div>
+          <div id="bc-sidebar"><div style="display:flex;align-items:center;justify-content:space-between"><div class="pane-label">System</div><button class="btn-secondary" style="font-size:10px;padding:2px 7px" onclick="toggleConvPanel('bc')" title="Verlauf">📜</button></div><div id="bc-system-list"></div></div>
           <div id="bc-main">
             <div id="bc-chat-msgs" class="chat-msgs"></div>
             <div class="chat-foot">
@@ -291,7 +302,7 @@
       <!-- PM: Chat -->
       <div class="view" id="view-pm-chat">
         <div id="pm-chat-layout">
-          <div id="pmc-sidebar"><div class="pane-label">Meine Systeme</div><div id="pmc-system-list"></div></div>
+          <div id="pmc-sidebar"><div style="display:flex;align-items:center;justify-content:space-between"><div class="pane-label">Meine Systeme</div><button class="btn-secondary" style="font-size:10px;padding:2px 7px" onclick="toggleConvPanel('pmc')" title="Verlauf">📜</button></div><div id="pmc-system-list"></div></div>
           <div id="pmc-main">
             <div id="pm-chat-msgs" class="chat-msgs"></div>
             <div class="chat-foot">
@@ -344,31 +355,6 @@
           <button class="btn-secondary" id="btn-kanban-refresh">↻ Aktualisieren</button></div>
         <div id="kanban-bar" class="filter-bar"><select id="kanban-sys-sel"><option value="">Alle Systeme</option></select></div>
         <div id="kanban-board-wrap" class="scroll-body" style="flex:1"></div>
-      </div>
-
-      <!-- PM: Jira -->
-      <div class="view" id="view-pm-jira">
-        <div class="view-header"><div><h2>Jira Integration</h2><p class="view-sub">Requirements exportieren oder bestehende Backlogs importieren und analysieren</p></div></div>
-        <div id="jira-layout">
-          <div id="jira-config-pane">
-            <div class="sg"><div class="sg-head">Verbindung</div><div class="sg-body">
-              <div class="frow"><label>Jira URL</label><input type="text" id="jira-url" placeholder="https://company.atlassian.net"/></div>
-              <div class="frow"><label>E-Mail</label><input type="text" id="jira-email" placeholder="user@company.com"/></div>
-              <div class="frow"><label>API Token</label><input type="password" id="jira-token" autocomplete="off" placeholder="API Token …"/></div>
-              <button class="btn-primary" id="btn-jira-connect">Verbinden</button>
-              <div id="jira-status"></div>
-            </div></div>
-            <div class="sg" id="jira-project-pane" style="display:none"><div class="sg-head">Projekt &amp; Aktionen</div><div class="sg-body">
-              <div class="frow"><label>Projekt</label><select id="jira-project-sel"><option value="">Projekt wählen …</option></select></div>
-              <div class="frow"><label>System (für Export)</label><select id="jira-sys-sel"><option value="">System wählen …</option></select></div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button class="btn-primary" id="btn-jira-export">↑ Nach Jira exportieren</button>
-                <button class="btn-secondary" id="btn-jira-import">↓ Aus Jira importieren</button>
-              </div>
-            </div></div>
-          </div>
-          <div id="jira-results-pane"><div class="empty-state"><div class="es-icon">🔗</div><h3>Jira verbinden</h3><p>Zugangsdaten eingeben und verbinden.</p></div></div>
-        </div>
       </div>
 
       <!-- DEV: My Work -->
@@ -634,6 +620,7 @@
           </div>
         </div>
         <div id="audit-filters" class="filter-bar">
+          <select id="audit-sys-filter" class="filter-select"><option value="">Alle Systeme</option></select>
           <select id="audit-filter-action" onchange="loadAuditLogView()" class="filter-select">
             <option value="">Alle Aktionen</option>
             <option value="create">Erstellt</option>
@@ -824,6 +811,8 @@
             <div id="cfg-msg"></div>
             <div id="api-test-result" style="margin-top:8px"></div>
           </div></div>
+          <div class="sg" id="apikey-admin-section" style="display:none"><div class="sg-head">API-Key Verwaltung</div><div class="sg-body" id="apikey-admin-wrap"></div></div>
+          <div class="sg"><div class="sg-head">Mein API-Key</div><div class="sg-body" id="apikey-user-wrap"></div></div>
           <div class="sg"><div class="sg-head">Jira-Integration (global)</div><div class="sg-body">
             <div class="frow"><label>Jira URL</label><input type="text" id="cfg-jira-url" placeholder="https://company.atlassian.net"/></div>
             <div class="frow"><label>E-Mail</label><input type="text" id="cfg-jira-email" placeholder="user@company.com"/></div>

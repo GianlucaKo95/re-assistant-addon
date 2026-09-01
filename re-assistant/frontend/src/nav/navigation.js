@@ -125,10 +125,16 @@ const VIEW_LOADERS = {
   'req-analysis':  () => { typeof loadReqAnalysis === "function" && loadReqAnalysis(); },
   'qs-trends':  () => { typeof loadQSTrends === "function" && loadQSTrends(); },
   'sprint-planning':  () => { typeof loadSprintPlanning === "function" && loadSprintPlanning(); },
-  'pm-jira':  () => { typeof loadPMJira === "function" && loadPMJira(); },
   'notification-settings':  () => { typeof loadNotificationSettings === "function" && loadNotificationSettings(); },
   'token-dashboard':  () => { typeof loadTokenDashboard === "function" && loadTokenDashboard(); },
-  'settings':         () => { typeof applyApiSectionVisibility === 'function' && applyApiSectionVisibility(); typeof loadDbStatus === 'function' && loadDbStatus(); },
+  'settings':         () => {
+    typeof applyApiSectionVisibility === 'function' && applyApiSectionVisibility();
+    typeof loadDbStatus === 'function' && loadDbStatus();
+    const adminSection = document.getElementById('apikey-admin-section');
+    if (adminSection) adminSection.style.display = S.user?.role === 'admin' ? '' : 'none';
+    typeof loadApiKeyAdmin === 'function' && loadApiKeyAdmin();
+    typeof renderApiKeySection === 'function' && renderApiKeySection();
+  },
 };
 
 // ── Build Nav ─────────────────────────────────────────────────
