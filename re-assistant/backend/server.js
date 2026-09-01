@@ -3457,11 +3457,16 @@ app.post('/api/requirements/:id/submit-review', requireAuth, async (req, res) =>
     if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
     if (req_.frozen) return res.status(400).json({ error: 'Anforderung ist eingefroren' });
 
+    const user = await queryOne('SELECT name FROM users WHERE id=$1', [req.session.userId]);
     await query(
       `UPDATE requirements SET review_status='in_review', last_changed_by=$1, updated_at=NOW() WHERE id=$2`,
       [req.session.userId, req.params.id]
     );
-    await writeAuditLog(req.session.userId, 'submit_review', 'requirement', req.params.id, req_.title);
+    await writeAuditLog({
+      action: 'submit_review', entityType: 'requirement', entityId: req.params.id,
+      entityName: req_.title, systemId: req_.system_id,
+      userId: req.session.userId, userName: user?.name || '',
+    });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -3488,8 +3493,12 @@ app.post('/api/requirements/:id/review-decision', requireAuth, async (req, res) 
       [newStatus, comment || '', req.session.userId, user?.name || '', req.params.id]
     );
 
-    await writeAuditLog(req.session.userId, 'review_' + decision, 'requirement', req.params.id,
-      req_.title + (comment ? ' — ' + comment.substring(0, 100) : ''));
+    await writeAuditLog({
+      action: 'review_' + decision, entityType: 'requirement', entityId: req.params.id,
+      entityName: req_.title, systemId: req_.system_id,
+      userId: req.session.userId, userName: user?.name || '',
+      details: { comment: comment || '' },
+    });
     res.json({ ok: true, status: newStatus });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -3581,8 +3590,13 @@ app.post('/api/requirements/bulk', requireAuth, async (req, res) => {
       updated++;
     }
 
-    await writeAuditLog(req.session.userId, 'bulk_' + operation, 'requirement', safeIds.join(','),
-      `${updated} Anforderungen: ${operation}${value ? ' = ' + value : ''}`);
+    const bulkUser = await queryOne('SELECT name FROM users WHERE id=$1', [req.session.userId]);
+    await writeAuditLog({
+      action: 'bulk_' + operation, entityType: 'requirement', entityId: safeIds.join(','),
+      entityName: `${updated} Anforderungen: ${operation}${value ? ' = ' + value : ''}`,
+      userId: req.session.userId, userName: bulkUser?.name || '',
+      details: { operation, value, ids: safeIds, updated },
+    });
 
     res.json({ ok: true, updated, skipped: safeIds.length - updated });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -3604,7 +3618,11 @@ app.post('/api/requirements/:id/freeze', requireAuth, async (req, res) => {
       'UPDATE requirements SET frozen=TRUE, frozen_at=NOW(), frozen_by=$1, frozen_by_name=$2, updated_at=NOW() WHERE id=$3',
       [req.session.userId, user?.name || '', req.params.id]
     );
-    await writeAuditLog(req.session.userId, 'freeze', 'requirement', req.params.id, req_.title);
+    await writeAuditLog({
+      action: 'freeze', entityType: 'requirement', entityId: req.params.id,
+      entityName: req_.title, systemId: req_.system_id,
+      userId: req.session.userId, userName: user?.name || '',
+    });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -3614,7 +3632,7 @@ app.post('/api/requirements/:id/unfreeze', requireAuth, async (req, res) => {
     const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
     if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
 
-    const user = await queryOne('SELECT role FROM users WHERE id=$1', [req.session.userId]);
+    const user = await queryOne('SELECT name, role FROM users WHERE id=$1', [req.session.userId]);
     if (!['admin','businessanalyst'].includes(user?.role))
       return res.status(403).json({ error: 'Nur BA/Admin darf Anforderungen freigeben' });
 
@@ -3622,7 +3640,11 @@ app.post('/api/requirements/:id/unfreeze', requireAuth, async (req, res) => {
       'UPDATE requirements SET frozen=FALSE, frozen_at=NULL, frozen_by=NULL, frozen_by_name=NULL, updated_at=NOW() WHERE id=$1',
       [req.params.id]
     );
-    await writeAuditLog(req.session.userId, 'unfreeze', 'requirement', req.params.id, req_.title);
+    await writeAuditLog({
+      action: 'unfreeze', entityType: 'requirement', entityId: req.params.id,
+      entityName: req_.title, systemId: req_.system_id,
+      userId: req.session.userId, userName: user?.name || '',
+    });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
