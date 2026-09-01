@@ -44,6 +44,7 @@ import './features/realtime.js';
 import './features/notification-settings.js';
 import './features/acceptance-criteria.js';
 import './features/review-workflow.js';
+import './features/workflow.js';
 import './features/mentions.js';
 import './features/pipeline.js';
 import './features/consistency.js';

@@ -87,7 +87,20 @@ async function loadKanbanBoard() {
 
     wrap.innerHTML = `
       <div class="kanban-board">
-        data.states.map(state => "<div class="kanban-col" data-status="' + (state.id) + '">             <div class="kanban-col-head" style="border-top:3px solid ' + (state.color) + '">               <span style="color:' + (state.color) + '">' + (state.icon) + ' ' + (state.label) + '</span>               <span class="kanban-count" style="background:' + (state.color) + '22;color:' + (state.color) + ';                 border-radius:99px;padding:1px 8px;font-size:11px">                 ' + ((data.board[state.id] || []).length) + '               </span>             </div>             <div class="kanban-cards" data-status="' + (state.id) + '">               ' + ((data.board[state.id] || []).map(req => kanbanCard(req, state.color)).join('')) + '               ' + (!(data.board[state.id] || []).length                 ? '<div style="padding:20px;text-align:center;color:var(--t3);font-size:12px">Keine Anforderungen</div>'                 : '') + '             </div>").join('')}
+        ${data.states.map(state => {
+          const list = data.board[state.id] || [];
+          return `<div class="kanban-col" data-status="${state.id}">
+            <div class="kanban-col-head" style="border-top:3px solid ${state.color}">
+              <span style="color:${state.color}">${state.icon} ${state.label}</span>
+              <span class="kanban-count" style="background:${state.color}22;color:${state.color};
+                border-radius:99px;padding:1px 8px;font-size:11px">${list.length}</span>
+            </div>
+            <div class="kanban-cards" data-status="${state.id}">
+              ${list.map(req => kanbanCard(req, state.color)).join('')}
+              ${!list.length ? '<div style="padding:20px;text-align:center;color:var(--t3);font-size:12px">Keine Anforderungen</div>' : ''}
+            </div>
+          </div>`;
+        }).join('')}
       </div>`;
 
     // Event-Listener auf Karten
@@ -194,8 +207,9 @@ async function loadKanbanView() {
   }
 
   // Event-Listener
-  sel?.addEventListener('change', loadKanbanBoard);
-  $('btn-kanban-refresh')?.addEventListener('click', loadKanbanBoard);
+  if (sel) sel.onchange = loadKanbanBoard;
+  const refreshBtn = $('btn-kanban-refresh');
+  if (refreshBtn) refreshBtn.onclick = loadKanbanBoard;
 
   await loadKanbanBoard();
 }

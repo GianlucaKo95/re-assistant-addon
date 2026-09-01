@@ -3636,6 +3636,102 @@ app.post('/api/requirements/:id/check-frozen', requireAuth, async (req, res) => 
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Kanban / Workflow-Status ────────────────────────────────────
+// Spiegelt frontend/src/features/workflow.js — Labels/Farben/Icons
+// müssen mit WORKFLOW_STATES dort synchron bleiben.
+const WORKFLOW_STATES = [
+  { id:'backlog',           label:'Im Backlog',       color:'#8b949e', icon:'📋' },
+  { id:'refinement',        label:'Refinement',        color:'#58a6ff', icon:'🔍' },
+  { id:'business_analysis', label:'Business Analyse',  color:'#a371f7', icon:'📊' },
+  { id:'in_progress',       label:'In Umsetzung',      color:'#3fb950', icon:'⚡' },
+  { id:'testing',           label:'Testing',           color:'#e3b341', icon:'🧪' },
+  { id:'done',              label:'Abgeschlossen',     color:'#56d364', icon:'✅' },
+  { id:'cancelled',         label:'Abgebrochen',       color:'#f85149', icon:'❌' },
+];
+const WORKFLOW_PERMISSIONS = {
+  admin:           ['backlog','refinement','business_analysis','in_progress','testing','done','cancelled'],
+  projectmanager:  ['backlog','refinement','business_analysis','in_progress','testing','done','cancelled'],
+  businessanalyst: ['backlog','refinement','business_analysis','testing'],
+  business:        ['backlog','refinement'],
+  developer:       ['in_progress','testing','done'],
+};
+
+app.get('/api/kanban', requireAuth, async (req, res) => {
+  try {
+    const { systemId } = req.query;
+    const conditions = ['(r.archived IS FALSE OR r.archived IS NULL)'];
+    const params = [];
+    if (systemId) { conditions.push(`r.system_id=$${params.length + 1}`); params.push(systemId); }
+
+    const rows = await queryAll(
+      `SELECT r.id, r.title, r.priority, r.workflow_status, r.system_id,
+              s.name as system_name, u.name as assignee_name
+       FROM requirements r
+       LEFT JOIN systems s ON r.system_id = s.id
+       LEFT JOIN users   u ON r.assigned_to = u.id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY r.updated_at DESC`,
+      params
+    );
+
+    const board = {};
+    for (const st of WORKFLOW_STATES) board[st.id] = [];
+    for (const row of rows) {
+      const key = board[row.workflow_status] ? row.workflow_status : 'backlog';
+      board[key].push(row);
+    }
+    res.json({ states: WORKFLOW_STATES, board });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/requirements/:id/workflow', requireAuth, async (req, res) => {
+  try {
+    const { status, comment } = req.body;
+    if (!WORKFLOW_STATES.some(s => s.id === status))
+      return res.status(400).json({ error: 'Ungültiger Status' });
+
+    const user = await queryOne('SELECT name, role FROM users WHERE id=$1', [req.session.userId]);
+    if (!(WORKFLOW_PERMISSIONS[user?.role] || []).includes(status))
+      return res.status(403).json({ error: 'Keine Berechtigung für diesen Status' });
+
+    const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
+    if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
+    if (req_.frozen) return res.status(400).json({ error: 'Anforderung ist eingefroren' });
+
+    const fromStatus = req_.workflow_status;
+    const saved = await queryOne(
+      `UPDATE requirements SET workflow_status=$1, last_changed_by=$2, updated_at=NOW()
+       WHERE id=$3 RETURNING *`,
+      [status, req.session.userId, req.params.id]
+    );
+    await query(
+      `INSERT INTO workflow_history (req_id, from_status, to_status, changed_by, comment)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [req.params.id, fromStatus, status, req.session.userId, comment || null]
+    );
+    await writeAuditLog({
+      action: 'workflow_status_change', entityType: 'requirement',
+      entityId: req.params.id, entityName: req_.title, systemId: req_.system_id,
+      userId: req.session.userId, userName: user?.name || '',
+      details: { from: fromStatus, to: status, comment: comment || '' },
+    });
+    ws.broadcastReqUpdate(mapReq(saved), req.session.userId);
+    res.json({ ok: true, status });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/requirements/:id/workflow/history', requireAuth, async (req, res) => {
+  try {
+    const rows = await queryAll(
+      `SELECT wh.*, u.name as user_name FROM workflow_history wh
+       LEFT JOIN users u ON wh.changed_by = u.id
+       WHERE wh.req_id=$1 ORDER BY wh.changed_at DESC`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── SPA Fallback ──────────────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
