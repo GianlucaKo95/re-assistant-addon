@@ -3,6 +3,7 @@
  */
 import './features/theme.js';  // Zuerst — verhindert Flash of Dark Content
 import './core/helpers.js';    // $ global verfügbar machen
+import './csp-compat.js';      // CSP-Kompatibilität für HA Ingress — nach helpers.js, vor allen onclick-Attributen
 import './features/service-worker.js';
 
 import './styles.css';
