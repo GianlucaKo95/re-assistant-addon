@@ -36,6 +36,7 @@ const ICONS = {
   check2:   icoSvg('<circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/>'),
   tmpl:     icoSvg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>'),
   kanban:   icoSvg('<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>'),
+  network:  icoSvg('<circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><line x1="12" y1="7.5" x2="6" y2="17"/><line x1="12" y1="7.5" x2="18" y2="17"/>'),
 };
 
 // ── NAV-Konfiguration ─────────────────────────────────────────
@@ -60,6 +61,7 @@ const NAV = {
     { id:'ba-diagrams',     icon:ICONS.diagram,  label:'Diagramme'         },
     { id:'ba-workshop',     icon:ICONS.workshop, label:'Workshop'          },
     { id:'dependencies',    icon:ICONS.deps,     label:'Abhängigkeiten'    },
+    { id:'req-network',     icon:ICONS.network,  label:'Netzwerk'          },
     { id:'templates',       icon:ICONS.tmpl,     label:'Vorlagen'          },
     { id:'review-workflow',   icon:ICONS.check,    label:'Review'            },
     { id:'business-chat',     icon:ICONS.chat,     label:'Chat & Prozesse'   },
@@ -74,6 +76,7 @@ const NAV = {
     { id:'kanban',          icon:ICONS.kanban,  label:'Kanban-Board'    },
     { id:'pm-integrations', icon:ICONS.integr,  label:'Integrationen'   },
     { id:'dependencies',    icon:ICONS.deps,    label:'Abhängigkeiten'  },
+    { id:'req-network',     icon:ICONS.network, label:'Netzwerk'        },
     { id:'review-workflow',  icon:ICONS.check,   label:'Review & Freigabe'},
     { id:'traceability',     icon:ICONS.deps,    label:'Traceability'    },
     { id:'audit-log',        icon:ICONS.list,    label:'Audit-Log'       },
@@ -106,6 +109,7 @@ const VIEW_LOADERS = {
   'kanban':           () => typeof loadKanbanView === 'function' && loadKanbanView(),
   'pm-integrations':  () => typeof loadPMIntegrations === 'function' && loadPMIntegrations(),
   'dependencies':       () => typeof loadDependencies === 'function' && loadDependencies(),
+  'req-network':        () => typeof loadReqNetwork === 'function' && loadReqNetwork(),
   'review-workflow':    () => typeof loadReviewDashboard === 'function' && loadReviewDashboard(),
   'import':             () => typeof loadImportView === 'function' && loadImportView(),
   'traceability':       () => typeof loadTraceability === 'function' && loadTraceability(),

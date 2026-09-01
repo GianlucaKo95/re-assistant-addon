@@ -151,6 +151,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);font-
 .btn-primary:hover{opacity:.85}.btn-primary:disabled{opacity:.35;cursor:not-allowed}
 .btn-secondary{padding:7px 14px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);color:var(--t1);font-size:13px;font-weight:500;font-family:var(--font);cursor:pointer;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
 .btn-secondary:hover{background:var(--s3);border-color:var(--b2)}
+.btn-secondary.active{background:rgba(157,123,245,.15);border-color:rgba(157,123,245,.35);color:var(--aa)}
 .btn-danger{padding:7px 14px;background:var(--redbg);border:1px solid rgba(248,113,113,.25);border-radius:var(--r);color:var(--red);font-size:13px;font-weight:500;font-family:var(--font);cursor:pointer}
 
 /* FORMS */
@@ -1192,6 +1193,19 @@ select option:hover {
 
 #req-network-canvas g:hover circle {
   stroke-width: 2.5px;
+  filter: brightness(1.2);
+}
+
+#backlog-network-canvas svg {
+  display: block;
+}
+
+#backlog-network-canvas circle {
+  transition: r 0.15s, stroke-width 0.15s, opacity 0.15s;
+}
+
+#backlog-network-canvas .net-node:hover circle {
+  stroke-width: 3px;
   filter: brightness(1.2);
 }
 

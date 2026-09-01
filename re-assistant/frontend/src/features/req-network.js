@@ -142,10 +142,6 @@ async function renderNetwork() {
     }
   });
 
-  // D3 laden falls nicht vorhanden
-  if (!window.d3) {
-    await loadD3();
-  }
   if (!window.d3) {
     wrap.innerHTML = '<div class="empty-state"><h3>D3.js nicht verfügbar</h3></div>';
     return;
@@ -337,14 +333,9 @@ function showNodeDetail(node) {
         <strong style="color:${req.qualityScore>=7?'var(--grn)':req.qualityScore>=4?'var(--amb)':'var(--red)'}">${req.qualityScore}/10</strong>
       </div>` : ''}
     <div style="display:flex;gap:8px;margin-top:14px">
-      <button class="btn-primary" style="font-size:12px" id="btn-net-open-req">📝 Anforderung öffnen</button>
       <button class="btn-secondary" style="font-size:12px" id="btn-net-close">Schließen</button>
     </div>`);
   setTimeout(() => {
-    document.getElementById('btn-net-open-req')?.addEventListener('click', () => {
-      closeModal();
-      switchView('business-reqs');
-    });
     document.getElementById('btn-net-close')?.addEventListener('click', closeModal);
   }, 0);
 }
@@ -357,17 +348,6 @@ function toggleNetworkFullscreen() {
   const btn = $('btn-network-fullscreen');
   if (btn) btn.textContent = view.classList.contains('network-fullscreen') ? '⊠ Verkleinern' : '⛶ Vollbild';
   setTimeout(renderNetwork, 100);
-}
-
-// ── D3 dynamisch laden ────────────────────────────────────────
-async function loadD3() {
-  return new Promise((resolve) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js';
-    s.onload = resolve;
-    s.onerror = resolve;
-    document.head.appendChild(s);
-  });
 }
 
 // ── Debounce für Suche ────────────────────────────────────────

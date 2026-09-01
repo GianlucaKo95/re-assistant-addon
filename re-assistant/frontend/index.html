@@ -334,8 +334,12 @@
       <!-- PM: Backlog Builder -->
       <div class="view" id="view-pm-backlog">
         <div class="view-header"><div><h2>Backlog Builder</h2><p class="view-sub">Epics, Features und Stories automatisch strukturieren — Export nach Jira</p></div><button class="btn-primary" id="btn-gen-backlog">⚡ Backlog generieren</button></div>
-        <div id="backlog-sys-bar" class="filter-bar"><select id="backlog-sys-sel"><option value="">System wählen …</option></select><select id="backlog-method"><option value="auto">Automatisch</option><option value="full">Epics + Features + Stories</option><option value="epics">Nur Epics</option></select></div>
+        <div id="backlog-sys-bar" class="filter-bar"><select id="backlog-sys-sel"><option value="">System wählen …</option></select><select id="backlog-method"><option value="auto">Automatisch</option><option value="full">Epics + Features + Stories</option><option value="epics">Nur Epics</option></select><div style="display:flex;gap:0;margin-left:auto"><button class="btn-secondary active" id="btn-backlog-view-list" style="border-radius:var(--r) 0 0 var(--r)">☰ Liste</button><button class="btn-secondary" id="btn-backlog-view-network" style="border-radius:0 var(--r) var(--r) 0;border-left:none">🕸 Netzwerk</button></div></div>
         <div id="backlog-area" class="scroll-body" style="flex:1"></div>
+        <div id="backlog-network-wrap" style="flex:1;flex-direction:column;position:relative;overflow:hidden;display:none">
+          <div id="backlog-network-legend" style="padding:10px 20px;border-bottom:1px solid var(--b1);flex-shrink:0"></div>
+          <div id="backlog-network-canvas" style="flex:1;position:relative;overflow:hidden"></div>
+        </div>
         <div id="backlog-foot" class="view-footer" style="display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--b1);background:rgba(7,7,15,.9);flex-shrink:0">
           <button class="btn-secondary" id="btn-bl-export-md">↓ Markdown</button>
           <button class="btn-secondary" id="btn-bl-export-jira">→ Nach Jira exportieren</button>
@@ -858,6 +862,28 @@
         <div id="dep-toolbar" class="filter-bar"><select id="dep-view-mode"><option value="list">Listenansicht</option><option value="matrix">Matrix</option></select><button class="btn-secondary" id="btn-add-dep">+ Abhängigkeit hinzufügen</button></div>
         <div id="dep-content" style="flex:1;overflow:auto;padding:16px 20px"><div class="empty-state"><div class="es-icon">🔗</div><h3>System auswählen</h3><p>Wählen Sie ein System aus und lassen Sie die KI Abhängigkeiten analysieren.</p></div></div>
         <div class="dep-legend"><div class="dep-legend-item"><div class="dep-legend-dot" style="background:var(--red)"></div>Blockiert</div><div class="dep-legend-item"><div class="dep-legend-dot" style="background:var(--amb)"></div>Benötigt</div><div class="dep-legend-item"><div class="dep-legend-dot" style="background:var(--blue)"></div>Verwandt</div></div>
+      </div>
+
+      <!-- ANFORDERUNGS-NETZWERK -->
+      <div class="view" id="view-req-network">
+        <div id="req-network-wrap" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+          <div class="view-header">
+            <div><h2>Anforderungs-Netzwerk</h2><p class="view-sub">Interaktive Netzwerkdarstellung aller Anforderungen — Cluster, Zusammenhänge, Tags</p></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <select id="network-sys-sel" class="filter-select" style="min-width:160px"><option value="">Alle Systeme</option></select>
+              <select id="network-cluster-sel" class="filter-select">
+                <option value="system">Cluster: System</option>
+                <option value="category">Cluster: Kategorie</option>
+                <option value="priority">Cluster: Priorität</option>
+                <option value="status">Cluster: Status</option>
+              </select>
+              <input type="text" id="network-search" class="filter-select" placeholder="🔍 Suchen …" style="min-width:160px"/>
+              <button class="btn-secondary" id="btn-network-reset" title="Simulation neu anordnen">↻</button>
+              <button class="btn-secondary" id="btn-network-fullscreen">⛶ Vollbild</button>
+            </div>
+          </div>
+          <div id="req-network-canvas" style="flex:1;position:relative;overflow:hidden"></div>
+        </div>
       </div>
 
       <!-- VORLAGEN -->
