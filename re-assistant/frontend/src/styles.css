@@ -440,7 +440,8 @@ input::placeholder,textarea::placeholder{color:var(--t3)}
 
 /* ADMIN */
 #users-table-wrap,#systems-list{flex:1;overflow-y:auto;padding:16px 20px}
-.system-card{background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);margin-bottom:12px;overflow:hidden}
+.card{background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);padding:16px 18px;box-shadow:0 3px 10px rgba(0,0,0,.18)}
+.system-card{background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);margin-bottom:12px;overflow:hidden;box-shadow:0 3px 10px rgba(0,0,0,.18)}
 .system-card-head{display:flex;align-items:center;justify-content:space-between;padding:13px 17px;border-bottom:1px solid var(--b1)}
 .system-card-body{padding:13px 17px}
 .doc-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;padding:3px 8px;color:var(--t2);margin:2px}
