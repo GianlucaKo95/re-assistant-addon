@@ -235,12 +235,18 @@
         </div>
       </div>
 
-      <!-- WORD-ANALYSE (ohne Systembindung) -->
+      <!-- WORD-ANALYSE (mit oder ohne Systembindung) -->
       <div class="view" id="view-word-analysis">
-        <div class="view-header"><div><h2>Word-Analyse</h2><p class="view-sub">Word-Dokument hochladen — KI extrahiert Requirements direkt aus dem Text, ohne Systemkontext</p></div><select id="wa-sys-select" class="filter-select" style="min-width:220px"><option value="">Zielsystem wählen (zum Speichern) …</option></select></div>
+        <div class="view-header"><div><h2>Word-Analyse</h2><p class="view-sub">Word-Dokument hochladen — KI extrahiert Requirements direkt aus dem Text</p></div><select id="wa-sys-select" class="filter-select" style="min-width:220px"><option value="">Zielsystem wählen (optional, zum Speichern) …</option></select></div>
         <div id="wa-layout">
           <div id="wa-left">
-            <div class="pane-label" style="padding:12px 14px 6px">Word-Dokument (.docx)</div>
+            <div class="pane-label" style="padding:12px 14px 6px">Systemzugehörigkeit</div>
+            <div style="display:flex;gap:0;padding:0 12px 12px">
+              <button class="btn-secondary active" id="btn-wa-scope-none" style="flex:1;justify-content:center;border-radius:var(--r) 0 0 var(--r)">🆕 Neu</button>
+              <button class="btn-secondary" id="btn-wa-scope-system" style="flex:1;justify-content:center;border-radius:0 var(--r) var(--r) 0;border-left:none">🔗 Vorhandenes System</button>
+            </div>
+            <div id="wa-scope-hint" style="padding:0 12px 12px;font-size:11px;color:var(--t3);line-height:1.5">Neue, noch keinem System zugeordnete Anforderung — Analyse nutzt ausschließlich den Dokumentinhalt.</div>
+            <div class="pane-label" style="padding:0 14px 6px">Word-Dokument (.docx)</div>
             <div style="padding:0 12px 12px">
               <button class="btn-secondary" style="width:100%;justify-content:center" id="btn-wa-pick">📄 Datei auswählen …</button>
             </div>

@@ -2,23 +2,47 @@
 const $ = window.$ || (id => document.getElementById(id));
 /**
  * features/word-analysis.js
- * Word-Analyse ohne Systembindung — .docx hochladen, KI extrahiert Requirements
- * direkt aus dem Dokumenttext (kein Stakeholder-/RAG-/Systemkontext).
- * Zum Übernehmen der Ergebnisse wird erst beim Speichern ein Zielsystem gewählt.
+ * Word-Analyse — .docx hochladen, KI extrahiert Requirements direkt aus dem Dokumenttext.
+ * Zwei Modi (Umschalter "Systemzugehörigkeit"):
+ *  - "Neu": eigenständig, ohne Stakeholder-/RAG-/Systemkontext.
+ *  - "Vorhandenes System": Pflichtauswahl eines Systems VOR der Analyse; dessen
+ *    Stakeholder/Use-Cases/Qualitätsziele/RAG-Zusammenfassung fließen in den Prompt ein
+ *    (wie bei der system-gebundenen Dokumentenanalyse). Dasselbe System dient danach
+ *    auch als Ziel beim Übernehmen der Ergebnisse.
  */
 
 let _waText = '';
 let _waFileName = '';
+let _waScope = 'none'; // 'none' | 'system'
 
 async function loadWordAnalysis() {
   S.systems = S.systems?.length ? S.systems : await window.api.getSystems();
   const sel = $('wa-sys-select');
   if (sel) {
-    sel.innerHTML = '<option value="">Zielsystem wählen (zum Speichern) …</option>' +
+    sel.innerHTML = '<option value="">Zielsystem wählen (optional, zum Speichern) …</option>' +
       S.systems.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
   }
   $('btn-wa-pick').onclick = pickWordFile;
   $('btn-wa-analyze').onclick = runWordAnalysis;
+  $('btn-wa-scope-none').onclick   = () => setWaScope('none');
+  $('btn-wa-scope-system').onclick = () => setWaScope('system');
+  if (sel) sel.onchange = () => { if (_waScope === 'system') sel.style.outline = sel.value ? '' : '1px solid var(--red)'; };
+  setWaScope(_waScope);
+}
+
+function setWaScope(scope) {
+  _waScope = scope;
+  $('btn-wa-scope-none').classList.toggle('active', scope === 'none');
+  $('btn-wa-scope-system').classList.toggle('active', scope === 'system');
+  const sel = $('wa-sys-select');
+  const hint = $('wa-scope-hint');
+  if (scope === 'system') {
+    hint.textContent = 'Anforderung gehört zu einem vorhandenen System — die Analyse bezieht dessen Stakeholder, Use Cases, Qualitätsziele und RAG-Kontext mit ein.';
+    if (sel) sel.style.outline = sel.value ? '' : '1px solid var(--red)';
+  } else {
+    hint.textContent = 'Neue, noch keinem System zugeordnete Anforderung — Analyse nutzt ausschließlich den Dokumentinhalt.';
+    if (sel) sel.style.outline = '';
+  }
 }
 
 async function pickWordFile() {
@@ -60,23 +84,53 @@ async function pickWordFile() {
 async function runWordAnalysis() {
   if (!_waText) { toast('⚠ Zuerst ein Word-Dokument hochladen'); return; }
 
+  const sysId = $('wa-sys-select')?.value || '';
+  if (_waScope === 'system' && !sysId) {
+    toast('⚠ Bitte ein vorhandenes System auswählen');
+    $('wa-sys-select').style.outline = '1px solid var(--red)';
+    return;
+  }
+
   const btn = $('btn-wa-analyze');
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> Analysiere …';
   $('wa-results').innerHTML = '<div class="empty-state"><div class="spin"></div><p>Analysiere Dokument …</p></div>';
 
+  // Bei Systembindung: denselben RE-Kontext einbeziehen wie die system-gebundene Dokumentenanalyse
+  let shCtx = '', ucCtx = '', qgCtx = '', ragCtx = '';
+  if (_waScope === 'system' && sysId) {
+    try {
+      const [shs, ucs, qgs, cache] = await Promise.all([
+        fetch(`api/systems/${sysId}/stakeholders`,  {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+        fetch(`api/systems/${sysId}/use-cases`,     {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+        fetch(`api/systems/${sysId}/quality-goals`, {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+        fetch(`api/embeddings/summary?systemId=${sysId}`, {credentials:'include'}).then(r=>r.json()).catch(()=>null),
+      ]);
+      if (shs.length) shCtx = 'Stakeholder: ' + shs.map(s => s.name + ' (' + s.role + ')').join(', ');
+      if (ucs.length) ucCtx = 'Bekannte Use Cases: ' + ucs.map(u => u.title).join(', ');
+      if (qgs.length) qgCtx = 'Qualitätsziele: ' + qgs.map(g => g.iso_char + ': ' + g.description).join(' | ');
+      if (cache?.summary) ragCtx = 'SYSTEMÜBERBLICK (KI-analysiert):\n' + cache.summary.substring(0, 5000);
+    } catch(e) {}
+  }
+  const boundToSystem = _waScope === 'system' && (shCtx || ucCtx || qgCtx || ragCtx);
+
   const schema = '{"requirements":[{"title":"Beginnt mit Verb","description":"vollständig und messbar","category":"Funktional|Nicht-Funktional|Sicherheit|Performance|Schnittstelle","priority":"high|medium|low","confidence":"high|medium|low","rationale":"Warum wichtig?","acceptance_criteria_text":"Gegeben...Wenn...Dann..."}],"assumptions":[{"text":"...","impact":"hoch|mittel|niedrig"}],"risks":[{"text":"...","probability":"hoch|mittel|niedrig","impact":"hoch|mittel|niedrig","mitigation":"Gegenmaßnahme"}],"gaps":["Vermutlich fehlende Anforderung basierend auf dem Dokument..."],"qualityIssues":[{"type":"Widerspruch|Mehrdeutigkeit|Fehlende Angabe|Unvollständigkeit|Unrealistisch/nicht verifizierbar","severity":"hoch|mittel|niedrig","description":"Was genau ist das Problem und warum?","quote":"Wörtliches Zitat der betroffenen Textstelle(n)","suggestion":"Konkreter Verbesserungsvorschlag"}],"summary":"Zusammenfassung"}';
 
   const prompt = [
-    'Du bist CPRE-zertifizierter Requirements Engineer. Analysiere das folgende Dokument eigenständig.',
-    'WICHTIG: Es liegt KEIN zusätzlicher Systemkontext vor — keine bekannten Stakeholder, Use Cases oder Qualitätsziele. Arbeite ausschließlich mit dem Dokumenteninhalt.',
+    'Du bist CPRE-zertifizierter Requirements Engineer. Analysiere das folgende Dokument.',
+    boundToSystem
+      ? 'Das Dokument gehört zu einem bekannten System — beziehe den folgenden Systemkontext aktiv mit ein (Stakeholder-Zuordnung, Abgleich mit bekannten Use Cases/Qualitätszielen).'
+      : 'WICHTIG: Es liegt KEIN zusätzlicher Systemkontext vor — keine bekannten Stakeholder, Use Cases oder Qualitätsziele. Arbeite ausschließlich mit dem Dokumenteninhalt.',
+    boundToSystem ? shCtx : '', boundToSystem ? ucCtx : '', boundToSystem ? qgCtx : '', boundToSystem ? ragCtx : '',
     '',
     'EXTRAHIERE:',
     '1. Anforderungen — explizit UND implizit, mit Akzeptanzkriterien',
     '2. Annahmen — implizite Voraussetzungen, die das Dokument nicht ausspricht',
     '3. Risiken — mit konkreten Gegenmaßnahmen',
     '4. Lücken — Anforderungen, die aus dem Dokumenteninhalt heraus vermutlich fehlen',
-    '5. Qualitätsprüfung — prüfe den Text kritisch auf Widersprüche, Mehrdeutigkeiten, fehlende Angaben und unrealistische oder nicht verifizierbare Formulierungen. Zitiere für jeden Fund die betroffene Textstelle wörtlich — keine Vermutungen ohne Beleg im Text.',
+    boundToSystem
+      ? '5. Qualitätsprüfung — prüfe den Text kritisch auf Widersprüche (auch zu Stakeholdern/Use Cases/Qualitätszielen oben, falls vorhanden), Mehrdeutigkeiten, fehlende Angaben und unrealistische oder nicht verifizierbare Formulierungen. Zitiere für jeden Fund die betroffene Textstelle wörtlich — keine Vermutungen ohne Beleg im Text.'
+      : '5. Qualitätsprüfung — prüfe den Text kritisch auf Widersprüche, Mehrdeutigkeiten, fehlende Angaben und unrealistische oder nicht verifizierbare Formulierungen. Zitiere für jeden Fund die betroffene Textstelle wörtlich — keine Vermutungen ohne Beleg im Text.',
     '',
     `DOKUMENT: ${_waFileName}`,
     _waText.substring(0, 12000),
