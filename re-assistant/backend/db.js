@@ -126,6 +126,12 @@ function mapReq(row) {
     reviewedBy:    row.reviewed_by,
     reviewedByName:row.reviewed_by_name,
     reviewedAt:    ts(row.reviewed_at),
+    frozen:        row.frozen        || false,
+    frozenAt:      ts(row.frozen_at),
+    frozenBy:      row.frozen_by,
+    frozenByName:  row.frozen_by_name,
+    acceptanceCriteriaText: row.acceptance_criteria_text || '',
+    acceptance_criteria_text: row.acceptance_criteria_text || '', // Alias: viele bestehende Aufrufer lesen den snake_case-Namen
     assignedTo:    row.assigned_to,
     subcategory:   row.subcategory,
     sourceAnalysis:  row.source_analysis || null,

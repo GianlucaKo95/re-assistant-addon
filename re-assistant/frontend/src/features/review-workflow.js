@@ -14,6 +14,10 @@ const REVIEW_CONFIG = {
   rejected:    { label: 'Abgelehnt', color: 'var(--red)',  icon: '❌' },
 };
 
+// ── Rollen, die Review-Aktionen ausführen dürfen ──────────────
+const SUBMIT_ROLES = ['business','businessanalyst'];
+const DECIDE_ROLES = ['admin','businessanalyst'];
+
 function reviewBadge(status, frozen) {
   const cfg = REVIEW_CONFIG[status] || REVIEW_CONFIG.draft;
   const frozenBadge = frozen
@@ -28,11 +32,11 @@ function reviewBadge(status, frozen) {
 function renderReviewActions(req) {
   const user = S.user;
   const isFrozen = req.frozen;
-  const status = req.review_status || 'draft';
+  const status = req.reviewStatus || 'draft';
 
-  const canSubmit  = !isFrozen && status === 'draft' && ['business','businessanalyst'].includes(user.role);
-  const canDecide  = status === 'in_review' && ['admin','businessanalyst'].includes(user.role);
-  const canFreeze  = status === 'approved'  && ['admin','businessanalyst'].includes(user.role);
+  const canSubmit  = !isFrozen && status === 'draft' && SUBMIT_ROLES.includes(user.role);
+  const canDecide  = status === 'in_review' && DECIDE_ROLES.includes(user.role);
+  const canFreeze  = status === 'approved'  && DECIDE_ROLES.includes(user.role);
 
   const btns = [];
 
@@ -50,7 +54,7 @@ function renderReviewActions(req) {
     `<button class="btn-secondary" style="font-size:10px;padding:3px 8px"
       onclick="freezeReq('${req.id}')">🔒 Einfrieren</button>`
   );
-  if (isFrozen && ['admin','businessanalyst'].includes(user.role)) btns.push(
+  if (isFrozen && DECIDE_ROLES.includes(user.role)) btns.push(
     `<button class="btn-secondary" style="font-size:10px;padding:3px 8px"
       onclick="unfreezeReq('${req.id}')">🔓 Freigeben</button>`
   );
@@ -300,33 +304,33 @@ async function openReviewDetail(reqId) {
     .then(r => r.json()).catch(() => null);
   if (!req) { toast('❌ Anforderung nicht gefunden'); return; }
 
-  const status  = req.review_status || 'draft';
-  const cfg     = { draft:'Entwurf', in_review:'In Review', approved:'Genehmigt', rejected:'Abgelehnt' };
-  const canDecide = status === 'in_review' && ['admin','businessanalyst'].includes(S.user?.role);
-  const canSubmit = status === 'draft' && ['business','businessanalyst'].includes(S.user?.role);
+  const status    = req.reviewStatus || 'draft';
+  const isFrozen  = req.frozen;
+  const canSubmit = !isFrozen && status === 'draft' && SUBMIT_ROLES.includes(S.user?.role);
+  const canDecide = !isFrozen && status === 'in_review' && DECIDE_ROLES.includes(S.user?.role);
 
   openModal('🔍 Review: ' + esc(req.title),
     '<div style="margin-bottom:12px">'
     + '<div style="font-size:11px;color:var(--t3);margin-bottom:4px">Status</div>'
     + reviewBadge(status, req.frozen)
     + '</div>'
-    + (req.review_comment ? '<div style="background:var(--s2);border-radius:var(--r);padding:10px;margin-bottom:12px;font-size:12px">'
+    + (req.reviewComment ? '<div style="background:var(--s2);border-radius:var(--r);padding:10px;margin-bottom:12px;font-size:12px">'
         + '<div style="font-size:10px;color:var(--t3);margin-bottom:4px">Kommentar</div>'
-        + esc(req.review_comment) + '</div>' : '')
+        + esc(req.reviewComment) + '</div>' : '')
     + '<div style="margin-bottom:12px">'
     + '<div style="font-size:11px;color:var(--t3);margin-bottom:6px">Beschreibung</div>'
     + '<div style="font-size:12px;color:var(--t2)">' + esc((req.description||'').substring(0,200)) + '</div>'
     + '</div>'
-    + (req.acceptance_criteria_text ? '<div style="background:rgba(63,185,80,.08);border-radius:var(--r);padding:8px 10px;margin-bottom:12px">'
+    + (req.acceptanceCriteriaText ? '<div style="background:rgba(63,185,80,.08);border-radius:var(--r);padding:8px 10px;margin-bottom:12px">'
         + '<div style="font-size:10px;font-weight:600;color:var(--grn);margin-bottom:4px">✅ Akzeptanzkriterien</div>'
-        + req.acceptance_criteria_text.split('\n').filter(Boolean)
+        + req.acceptanceCriteriaText.split('\n').filter(Boolean)
             .map(c => '<div style="font-size:11px;padding:2px 0">' + esc(c) + '</div>').join('')
         + '</div>' : '')
     + '<div class="modal-footer-actions">'
     + (canSubmit ? '<button class="btn-primary" onclick="submitForReview(\'' + reqId + '\');closeModal()">📤 Zur Review einreichen</button>' : '')
     + (canDecide ? '<button class="btn-primary" style="background:var(--grn)" onclick="approveReq(\'' + reqId + '\')">✅ Genehmigen</button>' : '')
     + (canDecide ? '<button class="btn-secondary" style="color:var(--red)" onclick="rejectReq(\'' + reqId + '\')">❌ Ablehnen</button>' : '')
-    + (!req.frozen && status === 'approved' && ['admin','businessanalyst'].includes(S.user?.role)
+    + (!isFrozen && status === 'approved' && DECIDE_ROLES.includes(S.user?.role)
         ? '<button class="btn-secondary" onclick="freezeReq(\'' + reqId + '\');closeModal()">🔒 Einfrieren</button>' : '')
     + '<button class="btn-secondary" onclick="closeModal()">Schließen</button>'
     + '</div>'

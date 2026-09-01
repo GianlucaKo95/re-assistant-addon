@@ -954,6 +954,14 @@ app.get('/api/requirements/archived', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/requirements/:id', requireAuth, async (req, res) => {
+  try {
+    const row = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
+    if (!row) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json(mapReq(row));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/requirements/:id/history', requireAuth, async (req, res) => {
   try {
     const row = await queryOne('SELECT history,title FROM requirements WHERE id=$1', [req.params.id]);

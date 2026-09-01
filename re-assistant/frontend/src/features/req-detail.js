@@ -21,11 +21,11 @@ async function openReqDetail(reqId) {
 
 function renderReqDetailPanel(req) {
   const isWatching = (req.watchers || []).includes(S.user?.id);
+  // systemId aus aktiver Selektion befüllen falls fehlt
+  if (!req.systemId && S.activeSystemId) req.systemId = S.activeSystemId;
   const sys = req?.systemId
     ? (S.systems || []).find(s => s.id === req.systemId)
     : null;
-  // systemId aus aktiver Selektion befüllen falls fehlt
-  if (!req.systemId && S.activeSystemId) req.systemId = S.activeSystemId;
 
   // Slide-in Panel
   let panel = document.getElementById('req-detail-panel');
