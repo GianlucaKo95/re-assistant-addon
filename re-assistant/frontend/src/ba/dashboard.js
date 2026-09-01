@@ -26,9 +26,22 @@ async function loadBaDashboard() {
   const wrap = $('ba-dashboard-wrap');
   if (!wrap) return;
 
+  const qsPct   = withQS ? Math.max(0, Math.min(100, Math.round(avgQS))) : 0; // avgQS ist bereits 0–100
+  const circQS  = 2 * Math.PI * 40;
+  const dashQS  = (qsPct/100 * circQS).toFixed(1);
+  const qsColor = qsPct >= 70 ? '#3ecf8e' : qsPct >= 40 ? '#f2b84b' : '#f7685b';
+
   wrap.innerHTML = `
     <!-- Stats -->
     <div class="stats-row">
+      <div class="stat-card donut-card">
+        <svg width="82" height="82" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="40" fill="none" stroke="var(--s3)" stroke-width="9"/>
+          <circle cx="50" cy="50" r="40" fill="none" stroke="${qsColor}" stroke-width="9" stroke-linecap="round"
+            stroke-dasharray="${dashQS} ${circQS.toFixed(1)}" transform="rotate(-90 50 50)"/>
+        </svg>
+        <div class="donut-card-label"><span class="stat-n">${avgQS}</span><span class="stat-l">Ø QS-Score</span></div>
+      </div>
       <div class="stat-card accent">
         <span class="stat-n">${totalReqs}</span>
         <span class="stat-l">Anforderungen</span>
@@ -36,10 +49,6 @@ async function loadBaDashboard() {
       <div class="stat-card">
         <span class="stat-n">${openReqs}</span>
         <span class="stat-l">Offen</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-n">${avgQS}</span>
-        <span class="stat-l">Ø QS-Score</span>
       </div>
       <div class="stat-card${lowQS > 0 ? ' accent' : ''}">
         <span class="stat-n" style="${lowQS > 0 ? 'color:var(--red)' : ''}">${lowQS}</span>
@@ -71,8 +80,8 @@ async function loadBaDashboard() {
         ].map(item => `
           <div onclick="switchView('${item.view}')" style="
             background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);
-            padding:14px;cursor:pointer;transition:all .15s;
-          " onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background='var(--s1)'">
+            padding:14px;cursor:pointer;transition:all .15s;box-shadow:0 3px 10px rgba(0,0,0,.18);
+          " onmouseover="this.style.background='var(--s2)';this.style.transform='translateY(-2px)'" onmouseout="this.style.background='var(--s1)';this.style.transform='none'">
             <div style="font-size:22px;margin-bottom:8px">${item.icon}</div>
             <div style="font-size:13px;font-weight:600">${item.label}</div>
             <div style="font-size:11px;color:var(--t3);margin-top:2px">${item.sub}</div>
