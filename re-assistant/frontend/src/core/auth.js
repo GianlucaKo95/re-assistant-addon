@@ -124,7 +124,7 @@ function applySettingsToForm() {
   // Grok/Groq Keys nicht aus localStorage
   setVal('cfg-grok-model',   S.settings.grokModel   || 'grok-3-mini');
   // Groq Key nicht aus localStorage
-  setVal('cfg-groq-model',   S.settings.groqModel   || 'llama-3.3-70b-versatile');
+  setVal('cfg-groq-model',   S.settings.groqModel   || 'openai/gpt-oss-120b');
   const isGrok = provider === 'grok';
   const isGroq = provider === 'groq';
   const aw = document.getElementById('cfg-anthropic-wrap');
@@ -153,7 +153,7 @@ async function saveCfg() {
   S.settings.provider  = provider;
   S.settings.model     = $('cfg-model')?.value      || 'claude-sonnet-4-6';
   S.settings.grokModel = $('cfg-grok-model')?.value  || 'grok-3-mini';
-  S.settings.groqModel = $('cfg-groq-model')?.value  || 'llama-3.3-70b-versatile';
+  S.settings.groqModel = $('cfg-groq-model')?.value  || 'openai/gpt-oss-120b';
   // Explizit sicherstellen dass keine Keys in S.settings landen
   delete S.settings.apiKey;
   delete S.settings.grokApiKey;

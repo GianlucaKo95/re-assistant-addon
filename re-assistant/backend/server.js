@@ -214,9 +214,13 @@ const PROVIDER_MODELS = {
     powerful:  'claude-opus-4-6',
   },
   groq: {
-    fast:      'llama-3.1-8b-instant',       // schnell, günstig
-    balanced:  'llama-3.3-70b-versatile',    // Hauptmodell
-    powerful:  'llama-3.3-70b-versatile',    // Groq hat kein stärkeres
+    // Stand: Groqs Llama-3.x-Modelle sind laut console.groq.com/docs/models
+    // inzwischen "Enterprise"/Contact-Sales — auf Standard-Keys 404. Die
+    // offenen GPT-OSS-Modelle (OpenAI-Gewichte, von Groq gehostet) sind die
+    // aktuell auf Standard-Tarifen nutzbaren Production-Modelle.
+    fast:      'openai/gpt-oss-20b',          // schnell, günstig (1000 t/s)
+    balanced:  'openai/gpt-oss-120b',         // Hauptmodell (500 t/s)
+    powerful:  'openai/gpt-oss-120b',         // stärkstes auf Standard-Tarif
   },
   grok: {
     fast:      'grok-3-mini',                // schnell
