@@ -159,13 +159,19 @@ async function saveCfg() {
   delete S.settings.grokApiKey;
   delete S.settings.groqApiKey;
 
-  // Key ans Backend senden
-  const keyBody = { provider };
+  // Key + Modell-Override ans Backend senden — das Modell ist bewusst
+  // IMMER Teil des Requests (nicht nur bei neuem Key), da Provider gelegentlich
+  // Modell-IDs abkündigen/umbenennen und der Admin das jederzeit anpassen können soll.
+  // Nur Admins dürfen /api/apikey/global überhaupt aufrufen (requireAdmin) — für
+  // alle anderen Rollen ist dieser Abschnitt ohnehin deaktiviert (siehe
+  // applyApiSectionVisibility), aber saveCfg() wird von allen Rollen für den
+  // Rest der Einstellungen (Jira, Sprache, …) genutzt, also hier explizit gaten.
+  const keyBody = { provider, model: S.settings.model, grokModel: S.settings.grokModel, groqModel: S.settings.groqModel };
   if (apiKey)     keyBody.apiKey     = apiKey;
   if (grokApiKey) keyBody.grokApiKey = grokApiKey;
   if (groqApiKey) keyBody.groqApiKey = groqApiKey;
 
-  if (apiKey || grokApiKey || groqApiKey) {
+  if (S.user?.role === 'admin') {
     try {
       const res  = await fetch('api/apikey/global', {
         method:'POST', credentials:'include',

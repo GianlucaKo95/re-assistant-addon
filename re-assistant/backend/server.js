@@ -109,7 +109,7 @@ async function resolveApiConfig(userId) {
   if (mode === 'per_user' && userId) {
     const user = await queryOne('SELECT api_key, ai_provider FROM users WHERE id=$1', [userId]);
     if (user?.api_key) {
-      return { key: user.api_key, provider: user.ai_provider || 'anthropic' };
+      return { key: user.api_key, provider: user.ai_provider || 'anthropic', model: null };
     }
   }
 
@@ -118,11 +118,17 @@ async function resolveApiConfig(userId) {
   const globalAnth = (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value || null;
   const globalGrok = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value || null;
   const globalGroq = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value || null;
+  // Admin-Modell-Override — Provider ändern gelegentlich ihre verfügbaren
+  // Modell-IDs (deprecaten/benennen um); statt bei jeder Änderung eine neue
+  // Version dieser App zu brauchen, kann das Modell hier überschrieben werden.
+  const globalModel     = (await queryOne("SELECT value FROM app_settings WHERE key='global_model'"))?.value || null;
+  const globalGrokModel = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_model'"))?.value || null;
+  const globalGroqModel = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_model'"))?.value || null;
 
-  if (globalProv === 'grok'  && globalGrok) return { key: globalGrok, provider: 'grok' };
-  if (globalProv === 'groq'  && globalGroq) return { key: globalGroq, provider: 'groq' };
-  if (globalAnth) return { key: globalAnth, provider: 'anthropic' };
-  return { key: null, provider: 'anthropic' };
+  if (globalProv === 'grok'  && globalGrok) return { key: globalGrok, provider: 'grok', model: globalGrokModel };
+  if (globalProv === 'groq'  && globalGroq) return { key: globalGroq, provider: 'groq', model: globalGroqModel };
+  if (globalAnth) return { key: globalAnth, provider: 'anthropic', model: globalModel };
+  return { key: null, provider: 'anthropic', model: null };
 }
 
 // ── Cache-Build nutzt immer das stärkste verfügbare Modell ────
@@ -132,23 +138,26 @@ async function resolveApiConfigForCacheBuild() {
   const globalAnth = (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value || null;
   const globalGrok = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value || null;
   const globalGroq = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value || null;
+  const globalModel     = (await queryOne("SELECT value FROM app_settings WHERE key='global_model'"))?.value || null;
+  const globalGrokModel = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_model'"))?.value || null;
+  const globalGroqModel = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_model'"))?.value || null;
 
   // Anthropic Sonnet: beste Code-Analyse-Qualität
   if (globalAnth) {
     log('info', 'Cache-Build: Nutze Anthropic Sonnet (beste Code-Analyse-Qualität)');
-    return { key: globalAnth, provider: 'anthropic' };
+    return { key: globalAnth, provider: 'anthropic', model: globalModel };
   }
   // Grok-3: zweitbeste Option
   if (globalGrok) {
     log('info', 'Cache-Build: Nutze Grok-3 (kein Anthropic-Key vorhanden)');
-    return { key: globalGrok, provider: 'grok' };
+    return { key: globalGrok, provider: 'grok', model: globalGrokModel };
   }
   // Groq Llama-70B: funktioniert, aber eingeschränkte Code-Analyse-Tiefe
   if (globalGroq) {
     log('info', 'Cache-Build: Nutze Groq Llama-70B (Tipp: Anthropic-Key für bessere Ergebnisse)');
-    return { key: globalGroq, provider: 'groq' };
+    return { key: globalGroq, provider: 'groq', model: globalGroqModel };
   }
-  return { key: null, provider: 'anthropic' };
+  return { key: null, provider: 'anthropic', model: null };
 }
 
 // Rückwärtskompatibel
@@ -912,14 +921,14 @@ Bestehende:\n${rows.slice(0,15).map(r=>`- [${r.id}] ${r.title}: ${(r.description
 
           let apiUrl, apiHeaders, apiBody;
           if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
-            const model = resolveModel(apiCfg.provider, 'balanced');
+            const model = resolveModel(apiCfg.provider, 'balanced', apiCfg.model);
             apiUrl = apiCfg.provider === 'groq' ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://api.x.ai/v1/chat/completions';
             apiHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key };
             apiBody = { model, messages: [{ role: 'user', content: prompt }], max_tokens: 600 };
           } else {
             apiUrl = 'https://api.anthropic.com/v1/messages';
             apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
-            apiBody = { model: resolveModel(apiCfg.provider, 'fast'), max_tokens: 600, messages: [{ role: 'user', content: prompt }] };
+            apiBody = { model: resolveModel(apiCfg.provider, 'fast', apiCfg.model), max_tokens: 600, messages: [{ role: 'user', content: prompt }] };
           }
 
           const response = await fetch(apiUrl, { method: 'POST', headers: apiHeaders, body: JSON.stringify(apiBody) });
@@ -1528,10 +1537,13 @@ app.get('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
   const hasAnthKey = !!(await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value;
   const hasGrokKey = !!(await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value;
   const hasGroqKey = !!(await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value;
-  res.json({ provider, hasAnthKey, hasGrokKey, hasGroqKey });
+  const model      = (await queryOne("SELECT value FROM app_settings WHERE key='global_model'"))?.value || null;
+  const grokModel  = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_model'"))?.value || null;
+  const groqModel  = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_model'"))?.value || null;
+  res.json({ provider, hasAnthKey, hasGrokKey, hasGroqKey, model, grokModel, groqModel });
 });
 app.post('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
-  const { apiKey, provider, grokApiKey } = req.body;
+  const { apiKey, provider, grokApiKey, model, grokModel, groqModel: groqModelIn } = req.body;
   const prov = provider || 'anthropic';
   // Validierung
   if (prov === 'anthropic' && apiKey && !apiKey.startsWith('sk-ant')) {
@@ -1548,6 +1560,10 @@ app.post('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
   if (apiKey)     await query("INSERT INTO app_settings (key,value) VALUES ('global_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [apiKey]);
   if (grokApiKey) await query("INSERT INTO app_settings (key,value) VALUES ('global_grok_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [grokApiKey]);
   if (groqApiKey) await query("INSERT INTO app_settings (key,value) VALUES ('global_groq_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [groqApiKey]);
+  // Modell-Override — leerer String löscht ihn wieder (zurück auf Default)
+  if (model !== undefined)      await query("INSERT INTO app_settings (key,value) VALUES ('global_model',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [model || null]);
+  if (grokModel !== undefined)  await query("INSERT INTO app_settings (key,value) VALUES ('global_grok_model',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [grokModel || null]);
+  if (groqModelIn !== undefined) await query("INSERT INTO app_settings (key,value) VALUES ('global_groq_model',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [groqModelIn || null]);
 
   // Falls jetzt erstmals ein Key vorhanden ist: alle "ready_no_ai"-Caches neu aufbauen
   if (apiKey || grokApiKey || groqApiKey) {
@@ -1856,7 +1872,7 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
 
     if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
       // Grok (xAI) + Groq — beide OpenAI-kompatibel
-      const defaultModel = resolveModel(apiCfg.provider, 'balanced');
+      const defaultModel = resolveModel(apiCfg.provider, 'balanced', apiCfg.model);
       // Wenn Client ein claude-Modell schickt aber Provider ist grok/groq → ignorieren
       const model = (cleanBody.model && !cleanBody.model.startsWith('claude'))
         ? cleanBody.model
@@ -2202,14 +2218,14 @@ Bestehende:
 ${rows.slice(0,15).map(r=>`- [${r.id}] ${r.title}`).join('\n')}`;
     let apiUrl, apiHeaders, apiBody;
     if (apiCfg.provider!=='anthropic') {
-      const model = resolveModel(apiCfg.provider, 'balanced');
+      const model = resolveModel(apiCfg.provider, 'balanced', apiCfg.model);
       apiUrl = apiCfg.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'https://api.x.ai/v1/chat/completions';
       apiHeaders={'Content-Type':'application/json','Authorization':'Bearer '+apiCfg.key};
       apiBody={model,messages:[{role:'user',content:prompt}],max_tokens:600};
     } else {
       apiUrl='https://api.anthropic.com/v1/messages';
       apiHeaders={'Content-Type':'application/json','x-api-key':apiCfg.key,'anthropic-version':'2023-06-01'};
-      apiBody={model: resolveModel(apiCfg.provider, 'fast'),max_tokens:600,messages:[{role:'user',content:prompt}]};
+      apiBody={model: resolveModel(apiCfg.provider, 'fast', apiCfg.model),max_tokens:600,messages:[{role:'user',content:prompt}]};
     }
     const response = await fetch(apiUrl,{method:'POST',headers:apiHeaders,body:JSON.stringify(apiBody)});
     const data = await response.json();
@@ -2276,14 +2292,14 @@ Anforderung: ${req_.title}
 ${req_.description||''}`;
     let apiUrl,apiHeaders,apiBody;
     if(apiCfg.provider!=='anthropic'){
-      const model=resolveModel(apiCfg.provider, 'balanced');
+      const model=resolveModel(apiCfg.provider, 'balanced', apiCfg.model);
       apiUrl=apiCfg.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'https://api.x.ai/v1/chat/completions';
       apiHeaders={'Content-Type':'application/json','Authorization':'Bearer '+apiCfg.key};
       apiBody={model,messages:[{role:'user',content:prompt}],max_tokens:1000};
     } else {
       apiUrl='https://api.anthropic.com/v1/messages';
       apiHeaders={'Content-Type':'application/json','x-api-key':apiCfg.key,'anthropic-version':'2023-06-01'};
-      apiBody={model: resolveModel(apiCfg.provider, 'fast'),max_tokens:1000,messages:[{role:'user',content:prompt}]};
+      apiBody={model: resolveModel(apiCfg.provider, 'fast', apiCfg.model),max_tokens:1000,messages:[{role:'user',content:prompt}]};
     }
     const response=await fetch(apiUrl,{method:'POST',headers:apiHeaders,body:JSON.stringify(apiBody)});
     const data=await response.json();
@@ -2503,7 +2519,7 @@ async function fetchWithTimeout(url, opts, timeoutMs = 25000) {
 async function aiCall(apiCfg, prompt, maxTokens = 400, timeoutMs = 30000, retries = 1) {
   let apiUrl, apiHeaders, apiBody;
   if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
-    const model = resolveModel(apiCfg.provider, 'balanced');
+    const model = resolveModel(apiCfg.provider, 'balanced', apiCfg.model);
     apiUrl = apiCfg.provider === 'groq'
       ? 'https://api.groq.com/openai/v1/chat/completions'
       : 'https://api.x.ai/v1/chat/completions';
@@ -2512,7 +2528,7 @@ async function aiCall(apiCfg, prompt, maxTokens = 400, timeoutMs = 30000, retrie
   } else {
     apiUrl = 'https://api.anthropic.com/v1/messages';
     apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
-    apiBody = { model: resolveModel(apiCfg.provider, 'fast'), max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] };
+    apiBody = { model: resolveModel(apiCfg.provider, 'fast', apiCfg.model), max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] };
   }
 
   let lastErr;
@@ -2912,14 +2928,14 @@ app.post('/api/apikey/test', requireAuth, requireAdmin, async (req, res) => {
     let apiUrl, apiHeaders, apiBody, model;
 
     if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
-      model  = resolveModel(apiCfg.provider, 'balanced');
+      model  = resolveModel(apiCfg.provider, 'balanced', apiCfg.model);
       apiUrl = apiCfg.provider === 'groq'
         ? 'https://api.groq.com/openai/v1/chat/completions'
         : 'https://api.x.ai/v1/chat/completions';
       apiHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key };
       apiBody    = { model, messages: [{ role: 'user', content: 'Antworte nur mit OK' }], max_tokens: 5 };
     } else {
-      model      = resolveModel(apiCfg.provider, 'fast');
+      model      = resolveModel(apiCfg.provider, 'fast', apiCfg.model);
       apiUrl     = 'https://api.anthropic.com/v1/messages';
       apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
       apiBody    = { model, max_tokens: 5, messages: [{ role: 'user', content: 'Antworte nur mit OK' }] };
@@ -3404,7 +3420,7 @@ app.post('/api/ai/chat/stream', requireAuth, async (req, res) => {
 
     } else {
       // Groq/Grok: OpenAI-kompatibles Streaming
-      const model = resolveModel(apiCfg.provider, 'balanced');
+      const model = resolveModel(apiCfg.provider, 'balanced', apiCfg.model);
       const baseUrl = apiCfg.provider === 'groq'
         ? 'https://api.groq.com/openai/v1/chat/completions'
         : 'https://api.x.ai/v1/chat/completions';

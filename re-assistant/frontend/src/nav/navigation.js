@@ -195,9 +195,14 @@ async function applyApiSectionVisibility() {
         const sel = document.getElementById('cfg-provider');
         if (sel && data.provider) {
           sel.value = data.provider;
-          // sichtbare Felder entsprechend dem SERVER-Provider umschalten
+          // sichtbare Felder + Modell-Overrides entsprechend dem SERVER-Stand
+          // umschalten (nicht aus localStorage — der Admin-Override in
+          // app_settings ist die Quelle der Wahrheit, siehe /api/apikey/global)
           if (typeof applySettingsToForm === 'function') {
-            S.settings.provider = data.provider;
+            S.settings.provider  = data.provider;
+            if (data.model)     S.settings.model     = data.model;
+            if (data.grokModel) S.settings.grokModel = data.grokModel;
+            if (data.groqModel) S.settings.groqModel = data.groqModel;
             applySettingsToForm();
           }
         }
