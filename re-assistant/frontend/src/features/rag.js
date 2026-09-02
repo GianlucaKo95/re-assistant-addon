@@ -72,6 +72,9 @@ async function semanticSearch(systemId, query, topK = 5, signal) {
       body: JSON.stringify({ systemId, query, topK })
     });
     const data = await res.json();
+    if (data.truncated) {
+      log_rag(`⚠ Suche nur über ${data.scannedChunks}/${data.totalChunks} Chunks (System-Limit erreicht) — Ergebnisse ggf. unvollständig`);
+    }
     return data.results || [];
   } catch(e) {
     return [];

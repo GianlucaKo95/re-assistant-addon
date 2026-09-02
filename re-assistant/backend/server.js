@@ -1234,14 +1234,19 @@ app.post('/api/embeddings/search', requireAuth, async (req, res) => {
     const totalChunks = parseInt(chunkCountRow?.c || 0);
     if (totalChunks === 0) return res.json({ results: [], fallback: true });
 
-    // Bei sehr großen Systemen: Hard-Limit um Hänger zu vermeiden
-    const MAX_CHUNKS = 2000;
+    // Bei sehr großen Systemen: Hard-Limit um Hänger zu vermeiden.
+    // ORDER BY chunk_index ASC (ohne Partition) sortiert über alle Dokumente
+    // hinweg "rund"-artig — der erste Chunk jedes Dokuments kommt vor dem
+    // zweiten Chunk irgendeines Dokuments — daher bleibt jedes Dokument auch
+    // bei Kappung repräsentiert, nur sehr lange Einzeldokumente verlieren Tiefe.
+    const MAX_CHUNKS = 5000;
     const chunks = await queryAll(
       `SELECT * FROM embeddings WHERE system_id=$1 ORDER BY chunk_index ASC LIMIT $2`,
       [systemId, MAX_CHUNKS]
     );
     if (!chunks.length) return res.json({ results: [], fallback: true });
-    if (totalChunks > MAX_CHUNKS) {
+    const truncated = totalChunks > MAX_CHUNKS;
+    if (truncated) {
       log('warning', `embeddings/search: System ${systemId} hat ${totalChunks} Chunks — limitiert auf ${MAX_CHUNKS}`);
     }
 
@@ -1281,7 +1286,7 @@ app.post('/api/embeddings/search', requireAuth, async (req, res) => {
       }
     }
 
-    res.json({ results, fallback: false });
+    res.json({ results, fallback: false, truncated, totalChunks, scannedChunks: chunks.length });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1305,15 +1310,49 @@ async function getSemanticEmbedding(text) {
   return enhancedTextVector(text);
 }
 
-// Verbesserter lokaler Vektor: 512-dimensional, N-Gramme, Code-Tokens
+// Häufige Funktionswörter (DE+EN) — tragen kaum Bedeutung, verwässern aber
+// die Hash-Vektoren stark, da sie in praktisch jedem Chunk vorkommen.
+const STOPWORDS = new Set([
+  'der','die','das','den','dem','des','ein','eine','einer','eines','einem','einen',
+  'und','oder','aber','doch','sondern','denn','als','wie','dass','ob','wenn','weil',
+  'ist','sind','war','waren','wird','werden','wurde','wurden','sein','seine','seiner','ihrer','ihre','ihr',
+  'hat','haben','hatte','hatten','kann','können','muss','müssen','soll','sollen','darf','dürfen','wird',
+  'für','von','mit','auf','im','in','zu','zum','zur','an','am','bei','aus','nach','über','unter','durch',
+  'sich','nicht','auch','nur','noch','schon','sehr','mehr','so','dann','hier','dort','es','er','sie',
+  'wir','ihr','man','ich','du','uns','euch','diese','dieser','dieses','diesem','diesen','alle','alles',
+  'the','a','an','and','or','but','if','of','to','in','on','at','for','with','by','from','as',
+  'is','are','was','were','be','been','being','has','have','had','do','does','did','will','would',
+  'can','could','shall','should','may','might','must','this','that','these','those','it','its',
+]);
+
+// Sehr einfache Endungsnormalisierung für deutsche Flexionsformen (kein
+// vollständiger Stemmer) — sorgt z.B. dafür, dass "Anforderung" und
+// "Anforderungen" auf denselben Hash-Bucket treffen statt als unabhängige
+// Tokens behandelt zu werden.
+const DE_SUFFIXES = ['ungen','heiten','keiten','ung','heit','keit','lich','ern','en','er','es','em','e','n','s'];
+function normalizeWord(w) {
+  w = w.toLowerCase().replace(/ä/g,'a').replace(/ö/g,'o').replace(/ü/g,'u').replace(/ß/g,'ss');
+  if (w.length > 6) {
+    for (const suf of DE_SUFFIXES) {
+      if (w.endsWith(suf) && w.length - suf.length >= 4) { w = w.slice(0, -suf.length); break; }
+    }
+  }
+  return w;
+}
+
+// Verbesserter lokaler Vektor: 512-dimensional, N-Gramme, Code-Tokens,
+// Stopwort-Filterung + leichte deutsche Normalisierung.
 function enhancedTextVector(text) {
   const vec = new Array(512).fill(0);
   // Code-Tokens extrahieren (Funktionsnamen, Klassen, Imports)
   const codeTokens = text.match(/(?:function|class|async|import|export|const|let|var)\s+(\w+)|\b(\w+)(?=\s*[=(\[{])/g) || [];
-  const words = [
+  const raw = [
     ...text.toLowerCase().split(/\W+/).filter(w => w.length > 1),
     ...codeTokens.map(t => t.trim().toLowerCase()),
   ];
+  // Stopwörter raus, Rest normalisieren — bewusst NACH der Stopwort-Prüfung
+  // (auf der Rohform), damit die Liste exakt matcht.
+  const words = raw.filter(w => !STOPWORDS.has(w)).map(normalizeWord);
 
   // Unigramme + Bigramme
   for (let i = 0; i < words.length; i++) {
