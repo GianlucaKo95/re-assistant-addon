@@ -2238,3 +2238,72 @@ body.bulk-mode .req-card:hover {
     padding: 6px 10px;
   }
 }
+
+/* ── Mobile Bottom-Bar (≤768px) ──────────────────────────────────
+   Ersetzt die linke Icon-Sidebar auf Handy-Breite durch eine echte
+   Bottom-Bar: #leftnav wird ausgeblendet, #mobile-bottombar (Sibling
+   von #app-layout, normaler Flow — kein position:fixed nötig, da
+   #app-screen bereits eine Flex-Spalte ist) übernimmt die Navigation.
+   Zeigt pro Rolle die wichtigsten Einträge (NAV_MOBILE_CORE in
+   navigation.js) plus ein "Mehr"-Menü für den Rest. */
+#mobile-bottombar { display: none; }
+
+@media (max-width: 768px) {
+  #leftnav { display: none !important; }
+
+  #mobile-bottombar {
+    display: flex;
+    flex-shrink: 0;
+    justify-content: space-around;
+    align-items: stretch;
+    background: rgba(6, 6, 14, .99);
+    border-top: 1px solid var(--b1);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  [data-theme="light"] #mobile-bottombar {
+    background: var(--s1);
+    border-top-color: var(--b1);
+  }
+
+  .mb-btn {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 7px 2px 6px;
+    background: none;
+    border: none;
+    color: var(--t3);
+    cursor: pointer;
+  }
+  .mb-btn svg { width: 19px; height: 19px; flex-shrink: 0; }
+  .mb-btn.active { color: var(--aa); }
+  .mb-label {
+    font-size: 9.5px;
+    line-height: 1.1;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mb-more-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 8px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--b1);
+    color: var(--t1);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .mb-more-item:last-child { border-bottom: none; }
+  .mb-more-item svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--t3); }
+}

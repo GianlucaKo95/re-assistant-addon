@@ -38,6 +38,21 @@ const ICONS = {
   kanban:   icoSvg('<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>'),
   network:  icoSvg('<circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><line x1="12" y1="7.5" x2="6" y2="17"/><line x1="12" y1="7.5" x2="18" y2="17"/>'),
   wordDoc:  icoSvg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13l1.5 6 1.5-4.5L12.5 19 14 13"/>'),
+  more:     icoSvg('<circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/>'),
+  settings: icoSvg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
+};
+
+// Mobile Bottom-Bar: pro Rolle nur die meistgenutzten Einträge direkt
+// zeigen (eine Bottom-Bar verträgt ~4-5 Slots), der Rest kommt ins
+// "Mehr"-Menü. Reihenfolge/Auswahl bewusst redaktionell, nicht die
+// ersten N aus NAV — bei 13-15 Einträgen (BA/PM) wäre "die ersten 4"
+// zufällig statt sinnvoll.
+const NAV_MOBILE_CORE = {
+  admin:           ['admin-users', 'admin-systems', 'admin-license'],
+  business:        ['business-chat', 'business-reqs', 'import', 'templates'],
+  businessanalyst: ['ba-dashboard', 'req-analysis', 'ba-quality', 'ba-docanalysis'],
+  projectmanager:  ['pm-dashboard', 'pm-chat', 'pm-backlog', 'kanban'],
+  developer:       ['dev-work', 'my-tasks'],
 };
 
 // ── NAV-Konfiguration ─────────────────────────────────────────
@@ -159,6 +174,38 @@ function buildNav() {
       <span class="ln-tooltip">${n.label}</span>
     </button>`
   ).join('');
+  buildMobileNav();
+}
+
+// ── Mobile Bottom-Bar ─────────────────────────────────────────
+function buildMobileNav() {
+  const bar = $('mobile-bottombar');
+  if (!bar) return;
+  const items = NAV[S.user.role] || [];
+  // NAV enthält mind. einen bekannten Duplikat-Eintrag (req-analysis bei
+  // businessanalyst) — für die Desktop-Sidebar harmlos (zwei identische
+  // Icons), im "Mehr"-Menü wäre eine doppelte Zeile aber sichtbar falsch.
+  const seen = new Set();
+  const unique = items.filter(n => (seen.has(n.id) ? false : (seen.add(n.id), true)));
+  const coreIds = NAV_MOBILE_CORE[S.user.role] || unique.slice(0, 4).map(n => n.id);
+  const core = coreIds.map(id => unique.find(n => n.id === id)).filter(Boolean);
+  const overflow = unique.filter(n => !coreIds.includes(n.id));
+
+  const btn = n => `<button class="mb-btn" id="mbnav-${n.id}" onclick="switchView('${n.id}')">${n.icon}<span class="mb-label">${n.label}</span></button>`;
+
+  bar.innerHTML = core.map(btn).join('')
+    + (overflow.length ? `<button class="mb-btn" id="mbnav-more" onclick="openMobileMore()">${ICONS.more}<span class="mb-label">Mehr</span></button>` : '')
+    + `<button class="mb-btn" id="mbnav-settings" onclick="switchView('settings')">${ICONS.settings}<span class="mb-label">Einstellungen</span></button>`;
+
+  S._mobileOverflow = overflow;
+}
+
+function openMobileMore() {
+  const overflow = S._mobileOverflow || [];
+  const html = overflow.map(n =>
+    `<button class="mb-more-item" onclick="switchView('${n.id}');closeModal()">${n.icon}<span>${n.label}</span></button>`
+  ).join('');
+  openModal('Mehr', html);
 }
 
 // ── Switch View ───────────────────────────────────────────────
@@ -171,9 +218,12 @@ async function switchView(id) {
   if (v) v.classList.add('active');
 
   // Nav-Buttons
-  document.querySelectorAll('.ln-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.ln-btn, .mb-btn').forEach(b => b.classList.remove('active'));
   const nb = $('nav-' + id);
   if (nb) nb.classList.add('active');
+  const mb = $('mbnav-' + id);
+  if (mb) mb.classList.add('active');
+  else if ((S._mobileOverflow || []).some(n => n.id === id)) $('mbnav-more')?.classList.add('active');
 
   // Loader aufrufen
   const loader = VIEW_LOADERS[id];
@@ -249,6 +299,7 @@ async function applyApiSectionVisibility() {
   }
 }
 
-window.buildNav    = buildNav;
-window.switchView  = switchView;
-window.ICONS       = ICONS;
+window.buildNav       = buildNav;
+window.switchView     = switchView;
+window.ICONS          = ICONS;
+window.openMobileMore = openMobileMore;
