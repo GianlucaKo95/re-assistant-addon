@@ -3,11 +3,12 @@ FROM ${BUILD_FROM}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# System-Pakete: nginx, node, postgresql (komplett, inkl. Server)
+# System-Pakete: nginx, node, postgresql (komplett, inkl. Server + pgvector
+# für echte ANN-Vektorsuche statt JS-seitigem Scan)
 RUN apk add --no-cache \
     nginx bash curl \
     nodejs npm \
-    postgresql postgresql-client postgresql-contrib \
+    postgresql postgresql-client postgresql-contrib postgresql-pgvector \
     python3 make g++
 
 # PostgreSQL Datenverzeichnis wird zur Laufzeit in run.sh erstellt

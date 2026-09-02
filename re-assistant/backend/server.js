@@ -13,7 +13,7 @@ const bcrypt   = require('bcryptjs');
 const crypto   = require('crypto');
 const http     = require('http');
 
-const { pool, query, queryOne, queryAll, withTransaction, mapUser, mapSystem, mapReq, mapGeneric, healthCheck } = require('./db');
+const { pool, query, queryOne, queryAll, withTransaction, mapUser, mapSystem, mapReq, mapGeneric, healthCheck, pgvectorEnabled, toVectorLiteral } = require('./db');
 const dna     = require('./dna');
 const tracker = require('./token-tracker');
 const notif = require('./notifications');
@@ -506,14 +506,7 @@ app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req
             const chunks = chunkTextBackend(text, file.originalname);
             if (chunks.length) {
               await query('DELETE FROM embeddings WHERE doc_id=$1', [docId]);
-              for (let i = 0; i < chunks.length; i++) {
-                const vec = simpleTextVector(chunks[i].text);
-                const chunkFnName = chunks[i].functionName || null;
-              await query(
-                  'INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding,function_name) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING',
-                  [req.params.id, docId, file.originalname, i, chunks[i].text, JSON.stringify(vec), chunkFnName]
-                );
-              }
+              await indexChunks(req.params.id, docId, file.originalname, chunks);
               log('info', `RAG: ${file.originalname} → ${chunks.length} Chunks indexiert`);
             }
           } catch(e) { log('warning', 'RAG-Indexierung: ' + e.message); }
@@ -1216,14 +1209,25 @@ app.post('/api/embeddings/store', requireAuth, async (req, res) => {
     const { systemId, docId, docName, chunks } = req.body;
     if (!systemId||!docId||!Array.isArray(chunks)) return res.status(400).json({ error:'Ungültige Eingabe' });
     await query('DELETE FROM embeddings WHERE doc_id=$1', [docId]);
-    for (let i=0; i<chunks.length; i++) {
-      const vec = simpleTextVector(chunks[i].text);
-      await query('INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding) VALUES ($1,$2,$3,$4,$5,$6)',
-        [systemId, docId, docName, i, chunks[i].text, JSON.stringify(vec)]);
-    }
+    await indexChunks(systemId, docId, docName, chunks);
     res.json({ ok:true, chunks:chunks.length });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
+// Merged "pro Dokument mindestens einmal vertreten" + "beste Chunks insgesamt"
+// — gemeinsame Merge-Logik für den pgvector- und den JS-Fallback-Pfad.
+function mergeSearchResults(perDocBest, topOverall, topK) {
+  const seen = new Set();
+  const results = [];
+  for (const c of [...perDocBest, ...topOverall]) {
+    const key = c.docId + '_' + c.text.substring(0, 30);
+    if (!seen.has(key) && results.length < topK) {
+      seen.add(key);
+      results.push(c);
+    }
+  }
+  return results;
+}
 
 app.post('/api/embeddings/search', requireAuth, async (req, res) => {
   try {
@@ -1234,6 +1238,51 @@ app.post('/api/embeddings/search', requireAuth, async (req, res) => {
     const totalChunks = parseInt(chunkCountRow?.c || 0);
     if (totalChunks === 0) return res.json({ results: [], fallback: true });
 
+    // Echter LLM-gestützter Vektor sofern API-Key konfiguriert, sonst
+    // automatischer Fallback auf den lokalen Hash-Vektor (siehe
+    // getSemanticEmbedding) — gleiche Vektorform wie beim Indexieren.
+    const queryVec = await getSemanticEmbedding(q2);
+
+    // ── pgvector: echter ANN-Index statt JS-seitigem Scan ─────────
+    if (await pgvectorEnabled()) {
+      const availRow = await queryOne(
+        'SELECT COUNT(*) as c FROM embeddings WHERE system_id=$1 AND embedding_vec IS NOT NULL', [systemId]
+      );
+      const availCount = parseInt(availRow?.c || 0);
+      if (availCount > 0) {
+        const vecLiteral = toVectorLiteral(queryVec);
+        const [perDocBestRows, topOverallRows] = await Promise.all([
+          queryAll(
+            `SELECT DISTINCT ON (doc_id) doc_id AS "docId", doc_name AS "docName", chunk_text AS text,
+                    1 - (embedding_vec <=> $2::vector) AS score
+             FROM embeddings
+             WHERE system_id=$1 AND embedding_vec IS NOT NULL
+             ORDER BY doc_id, embedding_vec <=> $2::vector`,
+            [systemId, vecLiteral]
+          ),
+          queryAll(
+            `SELECT doc_id AS "docId", doc_name AS "docName", chunk_text AS text,
+                    1 - (embedding_vec <=> $2::vector) AS score
+             FROM embeddings
+             WHERE system_id=$1 AND embedding_vec IS NOT NULL
+             ORDER BY embedding_vec <=> $2::vector
+             LIMIT $3`,
+            [systemId, vecLiteral, topK]
+          ),
+        ]);
+        perDocBestRows.sort((a, b) => b.score - a.score);
+        const results = mergeSearchResults(perDocBestRows, topOverallRows, topK);
+        const truncated = availCount < totalChunks;
+        if (truncated) {
+          log('warning', `embeddings/search: System ${systemId} — ${totalChunks - availCount} Chunks noch ohne pgvector-Embedding (Reindex empfohlen)`);
+        }
+        return res.json({ results, fallback: false, engine: 'pgvector', truncated, totalChunks, scannedChunks: availCount });
+      }
+      // Keine Zeile hat embedding_vec (noch nicht (re-)indexiert seit dem
+      // pgvector-Rollout) — auf den JS-Scan über die JSONB-Spalte zurückfallen.
+    }
+
+    // ── JS-Fallback: kein pgvector verfügbar oder System noch nicht migriert ──
     // Bei sehr großen Systemen: Hard-Limit um Hänger zu vermeiden.
     // ORDER BY chunk_index ASC (ohne Partition) sortiert über alle Dokumente
     // hinweg "rund"-artig — der erste Chunk jedes Dokuments kommt vor dem
@@ -1249,8 +1298,6 @@ app.post('/api/embeddings/search', requireAuth, async (req, res) => {
     if (truncated) {
       log('warning', `embeddings/search: System ${systemId} hat ${totalChunks} Chunks — limitiert auf ${MAX_CHUNKS}`);
     }
-
-    const queryVec = simpleTextVector(q2);
 
     // Alle Chunks bewerten
     const scored = chunks.map(c => {
@@ -1271,30 +1318,21 @@ app.post('/api/embeddings/search', requireAuth, async (req, res) => {
       }
     }
 
-    // Alle Dokumente mindestens einmal vertreten + beste Chunks oben
-    const perDocBest  = Object.values(byDoc).sort((a, b) => b.score - a.score);
-    const topOverall  = scored.sort((a, b) => b.score - a.score).slice(0, topK);
+    const perDocBest = Object.values(byDoc).sort((a, b) => b.score - a.score);
+    const topOverall = scored.sort((a, b) => b.score - a.score).slice(0, topK);
+    const results = mergeSearchResults(perDocBest, topOverall, topK);
 
-    // Merge: erst per-Doc, dann fill mit top-Overall
-    const seen = new Set();
-    const results = [];
-    for (const c of [...perDocBest, ...topOverall]) {
-      const key = c.docId + '_' + c.text.substring(0, 30);
-      if (!seen.has(key) && results.length < topK) {
-        seen.add(key);
-        results.push(c);
-      }
-    }
-
-    res.json({ results, fallback: false, truncated, totalChunks, scannedChunks: chunks.length });
+    res.json({ results, fallback: false, engine: 'js-scan', truncated, totalChunks, scannedChunks: chunks.length });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Semantische Embeddings via Anthropic Voyage API ──────────
-// Fallback auf erweitertes TF-IDF wenn kein Key vorhanden
-async function getSemanticEmbedding(text) {
+// Fallback auf erweitertes TF-IDF wenn kein Key vorhanden.
+// apiCfg optional vorab auflösbar (siehe indexChunks) — vermeidet bei
+// vielen Chunks pro Dokument N× dieselbe DB-Abfrage für dieselbe Config.
+async function getSemanticEmbedding(text, apiCfg = null) {
   try {
-    const apiCfg = await resolveApiConfig(null);
+    apiCfg = apiCfg || await resolveApiConfig(null);
     if (apiCfg.key) {
       const prompt = 'Extrahiere die 20 wichtigsten semantischen Schlüsselbegriffe aus diesem Text als kommagetrennte Liste. Nur die Begriffe, keine Erklärungen:\n\n' + text.substring(0, 2000);
       const result = await aiCallUnified(apiCfg, prompt, 150, 'fast', 12000, 0);
@@ -1374,15 +1412,39 @@ function enhancedTextVector(text) {
   return vec.map(v => v / mag);
 }
 
-// Synchrones Fallback für sofortige Nutzung (ohne API-Call)
-function simpleTextVector(text) {
-  return enhancedTextVector(text);
-}
 function cosineSimilarity(a, b) {
   if (!a?.length || !b?.length || a.length!==b.length) return 0;
   let dot=0, ma=0, mb=0;
   for (let i=0; i<a.length; i++) { dot+=a[i]*b[i]; ma+=a[i]*a[i]; mb+=b[i]*b[i]; }
   return dot / (Math.sqrt(ma)*Math.sqrt(mb) || 1);
+}
+
+// ── Gemeinsamer Embedding-Insert-Helfer ───────────────────────
+// Nutzt getSemanticEmbedding() (echte LLM-gestützte Vektoren, sofern ein
+// API-Key konfiguriert ist — sonst automatischer Fallback auf den lokalen
+// Hash-Vektor, siehe getSemanticEmbedding) statt des rein lokalen
+// simpleTextVector, und schreibt zusätzlich die pgvector-Spalte
+// embedding_vec mit, wenn die Extension verfügbar ist. Chunks werden in
+// kleinen Batches parallel eingebettet, um bei vielen Chunks nicht
+// sequenziell auf einzelne LLM-Calls zu warten.
+async function indexChunks(systemId, docId, docName, chunks) {
+  if (!chunks?.length) return;
+  const [useVec, apiCfg] = await Promise.all([pgvectorEnabled(), resolveApiConfig(null)]);
+  const BATCH_SIZE = 3;
+  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+    const batch = chunks.slice(i, i + BATCH_SIZE);
+    const vecs = await Promise.all(batch.map(c => getSemanticEmbedding(c.text, apiCfg)));
+    await Promise.all(batch.map((c, bi) => {
+      const idx = i + bi;
+      const vec = vecs[bi];
+      const vecLiteral = useVec ? toVectorLiteral(vec) : null;
+      return query(
+        `INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding,function_name,embedding_vec)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8::vector) ON CONFLICT DO NOTHING`,
+        [systemId, docId, docName, idx, c.text, JSON.stringify(vec), c.functionName || null, vecLiteral]
+      );
+    }));
+  }
 }
 
 // ── QS-TRENDS ─────────────────────────────────────────────────
@@ -3430,14 +3492,7 @@ app.post('/api/systems/:id/rechunk', requireAuth, async (req, res) => {
 
           // Neu chunken mit aktuellem Algorithmus
           const newChunks = chunkTextBackend(fullText, doc.doc_name);
-
-          for (let i = 0; i < newChunks.length; i++) {
-            const vec = await getSemanticEmbedding(newChunks[i].text);
-            await query(
-              'INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding,function_name) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-              [sysId, doc.doc_id, doc.doc_name, i, newChunks[i].text, JSON.stringify(vec), newChunks[i].functionName || null]
-            ).catch(() => {});
-          }
+          await indexChunks(sysId, doc.doc_id, doc.doc_name, newChunks);
           log('info', `Re-Chunked: ${doc.doc_name} → ${newChunks.length} Chunks`);
         }
 
