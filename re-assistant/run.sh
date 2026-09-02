@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
-log "RE-Assistent v4.3.0 startet …"
+log "RE-Assistent v4.3.2 startet …"
 
 # ── Konfiguration ──────────────────────────────────────────────
 # API-Keys werden NUR in der Datenbank gespeichert (app_settings)
@@ -11,7 +11,7 @@ export LANGUAGE="${LANGUAGE:-de}"
 export DATABASE_URL="${DATABASE_URL:-}"
 
 VERSION_FILE="/data/app_version"
-CURRENT_VERSION="4.3.0"
+CURRENT_VERSION="4.3.2"
 BACKUP_DIR="/data/backups"
 mkdir -p "${BACKUP_DIR}"
 

@@ -17,8 +17,10 @@ const needsSSL   = isExternal && (
   /supabase|render\.com|railway\.app|neon\.tech|heroku/.test(dbUrl)
 );
 
+const maskedDbUrl = dbUrl.replace(/:[^:@]*@/, ':***@');
+
 if (isExternal) {
-  console.log('[DB] Externer Modus:', dbUrl.replace(/:[^:@]*@/, ':***@'));
+  console.log('[DB] Externer Modus:', maskedDbUrl);
 } else {
   console.log('[DB] Interner Modus: lokale PostgreSQL');
 }
@@ -211,4 +213,4 @@ function toVectorLiteral(vec) {
   return '[' + vec.join(',') + ']';
 }
 
-module.exports = { pool, query, queryOne, queryAll, withRetry, withTransaction, mapUser, mapSystem, mapReq, mapGeneric, healthCheck, pgvectorEnabled, toVectorLiteral };
+module.exports = { pool, query, queryOne, queryAll, withRetry, withTransaction, mapUser, mapSystem, mapReq, mapGeneric, healthCheck, pgvectorEnabled, toVectorLiteral, isExternal, maskedDbUrl };

@@ -20,16 +20,30 @@ const $ = window.$ || (id => document.getElementById(id));
 })();
 
 async function checkExistingSession() {
+  let user;
   try {
-    const user = await window.api.getMe();
-    if (user && user.id) {
-      S.user = user;
-      $('login-screen').style.display = 'none';
-      $('app-screen').style.display   = 'flex';
-      await initApp();
-    }
+    user = await window.api.getMe();
   } catch(e) {
     // Keine aktive Session — Login-Screen bleibt sichtbar
+    return;
+  }
+  if (user && user.id) {
+    S.user = user;
+    $('login-screen').style.display = 'none';
+    $('app-screen').style.display   = 'flex';
+    // initApp() separat fangen: ein Fehler hier bedeutet NICHT "keine
+    // Session" (die ist bereits bestätigt) — ohne diese Trennung würde ein
+    // Fehler beim App-Aufbau (z.B. ein einzelner fehlgeschlagener Request)
+    // hier still verschluckt und die Seite bliebe leer, mit App-Screen
+    // sichtbar aber ohne Sidebar/Inhalt.
+    try {
+      await initApp();
+    } catch(e) {
+      if (typeof showOfflineBanner === 'function') {
+        showOfflineBanner('App konnte nicht vollständig geladen werden. Bitte "Erneut versuchen" oder Seite neu laden.');
+      }
+      console.error('[initApp] Fehler beim App-Start:', e);
+    }
   }
 }
 
@@ -50,7 +64,17 @@ async function doLogin() {
     S.user = res.user;
     $('login-screen').style.display = 'none';
     $('app-screen').style.display   = 'flex';
-    await initApp();
+    try {
+      await initApp();
+    } catch(e2) {
+      // Login war erfolgreich — ein Fehler hier betrifft den App-Aufbau,
+      // nicht die Anmeldung. login-error ist an dieser Stelle unsichtbar
+      // (login-screen bereits ausgeblendet), daher hier sichtbar melden.
+      if (typeof showOfflineBanner === 'function') {
+        showOfflineBanner('App konnte nicht vollständig geladen werden. Bitte "Erneut versuchen" oder Seite neu laden.');
+      }
+      console.error('[initApp] Fehler beim App-Start:', e2);
+    }
   } catch(e) {
     $('login-error').textContent = 'Server nicht erreichbar. Bitte prüfen Sie die Verbindung.';
   } finally {
@@ -92,8 +116,18 @@ async function initApp() {
     toast('✅ CSV exportiert');
   });
 
-  // Daten laden
-  S.systems = await window.api.getSystems();
+  // Daten laden — Fehler hier dürfen NICHT initApp() abbrechen: sonst
+  // laufen buildNav()/switchView() nie, und Sidebar + Ansicht bleiben
+  // komplett leer (auch wenn Login und Backend völlig gesund sind, z.B.
+  // bei einem einzelnen fehlgeschlagenen /api/systems-Request).
+  try {
+    S.systems = await window.api.getSystems();
+  } catch(e) {
+    S.systems = [];
+    if (typeof showOfflineBanner === 'function') {
+      showOfflineBanner('Systeme konnten nicht geladen werden. Bitte "Erneut versuchen".');
+    }
+  }
   if (['admin','projectmanager'].includes(S.user.role)) {
     S.users = await window.api.getUsers().catch(() => []);
   }
