@@ -13,11 +13,17 @@ const bcrypt   = require('bcryptjs');
 const crypto   = require('crypto');
 const http     = require('http');
 
-const { pool, query, queryOne, queryAll, withTransaction, mapUser, mapSystem, mapReq, mapGeneric, healthCheck, pgvectorEnabled, toVectorLiteral } = require('./db');
+const { pool, query, queryOne, queryAll, withTransaction, mapUser, mapSystem, mapReq, mapGeneric, healthCheck, pgvectorEnabled, toVectorLiteral, isExternal, maskedDbUrl } = require('./db');
 const dna     = require('./dna');
 const tracker = require('./token-tracker');
 const notif = require('./notifications');
 const ws    = require('./websocket');
+
+// Einzige Quelle für die Versionsanzeige innerhalb des Backends — muss bei
+// jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
+// werden (kein automatischer Read aus config.json, da diese Datei nicht in
+// den Container kopiert wird und dem HA Supervisor vorbehalten ist).
+const APP_VERSION = '4.3.2';
 
 const app      = express();
 
@@ -2099,7 +2105,7 @@ app.get('/api/version', async (req, res) => {
     queryOne('SELECT COUNT(*) as c FROM users'),
   ]);
   res.json({
-    version: '4.0.0', mode: 'homeassistant-addon',
+    version: APP_VERSION, mode: 'homeassistant-addon',
     db: { ...db, engine: 'postgresql' }, apiKeyMode: apiMode,
     counts: { requirements: parseInt(reqs?.c||0), systems: parseInt(sys?.c||0), users: parseInt(usr?.c||0) },
   });
@@ -2107,7 +2113,15 @@ app.get('/api/version', async (req, res) => {
 
 app.get('/api/health', async (req, res) => {
   const db = await healthCheck();
-  res.status(db.ok ? 200 : 503).json({ status: db.ok ? 'ok' : 'degraded', ...db });
+  // db verschachtelt UND flach zurückgeben — das Frontend (loadDbStatus in
+  // auth.js) liest data.db.ok/data.dbMode/data.dbUrl, ältere/andere
+  // Konsumenten lasen bisher die flachen Felder (...db). Ohne die
+  // Verschachtelung zeigte die Settings-Seite die interne PostgreSQL
+  // IMMER als "Fehler" an, unabhängig vom tatsächlichen Zustand.
+  res.status(db.ok ? 200 : 503).json({
+    status: db.ok ? 'ok' : 'degraded', ...db,
+    db, dbMode: isExternal ? 'external' : 'internal', dbUrl: maskedDbUrl,
+  });
 });
 
 // ── BACKUP ────────────────────────────────────────────────────
@@ -2123,7 +2137,7 @@ app.get('/api/backup', requireAuth, requireAdmin, async (req, res) => {
     ]);
     res.setHeader('Content-Disposition', `attachment; filename="re-backup-${Date.now()}.json"`);
     res.json({
-      version: '4.0.0', exportedAt: new Date().toISOString(),
+      version: APP_VERSION, exportedAt: new Date().toISOString(),
       users:    users.map(mapUser).map(({password:_p,...u})=>u),
       systems:  systems.map(mapSystem),
       requirements: requirements.map(mapReq),
