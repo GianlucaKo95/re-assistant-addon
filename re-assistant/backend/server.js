@@ -13,7 +13,7 @@ const bcrypt   = require('bcryptjs');
 const crypto   = require('crypto');
 const http     = require('http');
 
-const { pool, query, queryOne, queryAll, withTransaction, mapUser, mapSystem, mapReq, mapGeneric, healthCheck } = require('./db');
+const { pool, query, queryOne, queryAll, withTransaction, mapUser, mapSystem, mapReq, mapGeneric, healthCheck, pgvectorEnabled, toVectorLiteral } = require('./db');
 const dna     = require('./dna');
 const tracker = require('./token-tracker');
 const notif = require('./notifications');
@@ -109,7 +109,7 @@ async function resolveApiConfig(userId) {
   if (mode === 'per_user' && userId) {
     const user = await queryOne('SELECT api_key, ai_provider FROM users WHERE id=$1', [userId]);
     if (user?.api_key) {
-      return { key: user.api_key, provider: user.ai_provider || 'anthropic' };
+      return { key: user.api_key, provider: user.ai_provider || 'anthropic', model: null };
     }
   }
 
@@ -118,11 +118,17 @@ async function resolveApiConfig(userId) {
   const globalAnth = (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value || null;
   const globalGrok = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value || null;
   const globalGroq = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value || null;
+  // Admin-Modell-Override — Provider ändern gelegentlich ihre verfügbaren
+  // Modell-IDs (deprecaten/benennen um); statt bei jeder Änderung eine neue
+  // Version dieser App zu brauchen, kann das Modell hier überschrieben werden.
+  const globalModel     = (await queryOne("SELECT value FROM app_settings WHERE key='global_model'"))?.value || null;
+  const globalGrokModel = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_model'"))?.value || null;
+  const globalGroqModel = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_model'"))?.value || null;
 
-  if (globalProv === 'grok'  && globalGrok) return { key: globalGrok, provider: 'grok' };
-  if (globalProv === 'groq'  && globalGroq) return { key: globalGroq, provider: 'groq' };
-  if (globalAnth) return { key: globalAnth, provider: 'anthropic' };
-  return { key: null, provider: 'anthropic' };
+  if (globalProv === 'grok'  && globalGrok) return { key: globalGrok, provider: 'grok', model: globalGrokModel };
+  if (globalProv === 'groq'  && globalGroq) return { key: globalGroq, provider: 'groq', model: globalGroqModel };
+  if (globalAnth) return { key: globalAnth, provider: 'anthropic', model: globalModel };
+  return { key: null, provider: 'anthropic', model: null };
 }
 
 // ── Cache-Build nutzt immer das stärkste verfügbare Modell ────
@@ -132,23 +138,26 @@ async function resolveApiConfigForCacheBuild() {
   const globalAnth = (await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value || null;
   const globalGrok = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value || null;
   const globalGroq = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value || null;
+  const globalModel     = (await queryOne("SELECT value FROM app_settings WHERE key='global_model'"))?.value || null;
+  const globalGrokModel = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_model'"))?.value || null;
+  const globalGroqModel = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_model'"))?.value || null;
 
   // Anthropic Sonnet: beste Code-Analyse-Qualität
   if (globalAnth) {
     log('info', 'Cache-Build: Nutze Anthropic Sonnet (beste Code-Analyse-Qualität)');
-    return { key: globalAnth, provider: 'anthropic' };
+    return { key: globalAnth, provider: 'anthropic', model: globalModel };
   }
   // Grok-3: zweitbeste Option
   if (globalGrok) {
     log('info', 'Cache-Build: Nutze Grok-3 (kein Anthropic-Key vorhanden)');
-    return { key: globalGrok, provider: 'grok' };
+    return { key: globalGrok, provider: 'grok', model: globalGrokModel };
   }
   // Groq Llama-70B: funktioniert, aber eingeschränkte Code-Analyse-Tiefe
   if (globalGroq) {
     log('info', 'Cache-Build: Nutze Groq Llama-70B (Tipp: Anthropic-Key für bessere Ergebnisse)');
-    return { key: globalGroq, provider: 'groq' };
+    return { key: globalGroq, provider: 'groq', model: globalGroqModel };
   }
-  return { key: null, provider: 'anthropic' };
+  return { key: null, provider: 'anthropic', model: null };
 }
 
 // Rückwärtskompatibel
@@ -205,9 +214,13 @@ const PROVIDER_MODELS = {
     powerful:  'claude-opus-4-6',
   },
   groq: {
-    fast:      'llama-3.1-8b-instant',       // schnell, günstig
-    balanced:  'llama-3.3-70b-versatile',    // Hauptmodell
-    powerful:  'llama-3.3-70b-versatile',    // Groq hat kein stärkeres
+    // Stand: Groqs Llama-3.x-Modelle sind laut console.groq.com/docs/models
+    // inzwischen "Enterprise"/Contact-Sales — auf Standard-Keys 404. Die
+    // offenen GPT-OSS-Modelle (OpenAI-Gewichte, von Groq gehostet) sind die
+    // aktuell auf Standard-Tarifen nutzbaren Production-Modelle.
+    fast:      'openai/gpt-oss-20b',          // schnell, günstig (1000 t/s)
+    balanced:  'openai/gpt-oss-120b',         // Hauptmodell (500 t/s)
+    powerful:  'openai/gpt-oss-120b',         // stärkstes auf Standard-Tarif
   },
   grok: {
     fast:      'grok-3-mini',                // schnell
@@ -506,14 +519,7 @@ app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req
             const chunks = chunkTextBackend(text, file.originalname);
             if (chunks.length) {
               await query('DELETE FROM embeddings WHERE doc_id=$1', [docId]);
-              for (let i = 0; i < chunks.length; i++) {
-                const vec = simpleTextVector(chunks[i].text);
-                const chunkFnName = chunks[i].functionName || null;
-              await query(
-                  'INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding,function_name) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING',
-                  [req.params.id, docId, file.originalname, i, chunks[i].text, JSON.stringify(vec), chunkFnName]
-                );
-              }
+              await indexChunks(req.params.id, docId, file.originalname, chunks);
               log('info', `RAG: ${file.originalname} → ${chunks.length} Chunks indexiert`);
             }
           } catch(e) { log('warning', 'RAG-Indexierung: ' + e.message); }
@@ -919,14 +925,14 @@ Bestehende:\n${rows.slice(0,15).map(r=>`- [${r.id}] ${r.title}: ${(r.description
 
           let apiUrl, apiHeaders, apiBody;
           if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
-            const model = resolveModel(apiCfg.provider, 'balanced');
+            const model = resolveModel(apiCfg.provider, 'balanced', apiCfg.model);
             apiUrl = apiCfg.provider === 'groq' ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://api.x.ai/v1/chat/completions';
             apiHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key };
             apiBody = { model, messages: [{ role: 'user', content: prompt }], max_tokens: 600 };
           } else {
             apiUrl = 'https://api.anthropic.com/v1/messages';
             apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
-            apiBody = { model: resolveModel(apiCfg.provider, 'fast'), max_tokens: 600, messages: [{ role: 'user', content: prompt }] };
+            apiBody = { model: resolveModel(apiCfg.provider, 'fast', apiCfg.model), max_tokens: 600, messages: [{ role: 'user', content: prompt }] };
           }
 
           const response = await fetch(apiUrl, { method: 'POST', headers: apiHeaders, body: JSON.stringify(apiBody) });
@@ -1216,14 +1222,25 @@ app.post('/api/embeddings/store', requireAuth, async (req, res) => {
     const { systemId, docId, docName, chunks } = req.body;
     if (!systemId||!docId||!Array.isArray(chunks)) return res.status(400).json({ error:'Ungültige Eingabe' });
     await query('DELETE FROM embeddings WHERE doc_id=$1', [docId]);
-    for (let i=0; i<chunks.length; i++) {
-      const vec = simpleTextVector(chunks[i].text);
-      await query('INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding) VALUES ($1,$2,$3,$4,$5,$6)',
-        [systemId, docId, docName, i, chunks[i].text, JSON.stringify(vec)]);
-    }
+    await indexChunks(systemId, docId, docName, chunks);
     res.json({ ok:true, chunks:chunks.length });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
+// Merged "pro Dokument mindestens einmal vertreten" + "beste Chunks insgesamt"
+// — gemeinsame Merge-Logik für den pgvector- und den JS-Fallback-Pfad.
+function mergeSearchResults(perDocBest, topOverall, topK) {
+  const seen = new Set();
+  const results = [];
+  for (const c of [...perDocBest, ...topOverall]) {
+    const key = c.docId + '_' + c.text.substring(0, 30);
+    if (!seen.has(key) && results.length < topK) {
+      seen.add(key);
+      results.push(c);
+    }
+  }
+  return results;
+}
 
 app.post('/api/embeddings/search', requireAuth, async (req, res) => {
   try {
@@ -1234,18 +1251,66 @@ app.post('/api/embeddings/search', requireAuth, async (req, res) => {
     const totalChunks = parseInt(chunkCountRow?.c || 0);
     if (totalChunks === 0) return res.json({ results: [], fallback: true });
 
-    // Bei sehr großen Systemen: Hard-Limit um Hänger zu vermeiden
-    const MAX_CHUNKS = 2000;
+    // Echter LLM-gestützter Vektor sofern API-Key konfiguriert, sonst
+    // automatischer Fallback auf den lokalen Hash-Vektor (siehe
+    // getSemanticEmbedding) — gleiche Vektorform wie beim Indexieren.
+    const queryVec = await getSemanticEmbedding(q2);
+
+    // ── pgvector: echter ANN-Index statt JS-seitigem Scan ─────────
+    if (await pgvectorEnabled()) {
+      const availRow = await queryOne(
+        'SELECT COUNT(*) as c FROM embeddings WHERE system_id=$1 AND embedding_vec IS NOT NULL', [systemId]
+      );
+      const availCount = parseInt(availRow?.c || 0);
+      if (availCount > 0) {
+        const vecLiteral = toVectorLiteral(queryVec);
+        const [perDocBestRows, topOverallRows] = await Promise.all([
+          queryAll(
+            `SELECT DISTINCT ON (doc_id) doc_id AS "docId", doc_name AS "docName", chunk_text AS text,
+                    1 - (embedding_vec <=> $2::vector) AS score
+             FROM embeddings
+             WHERE system_id=$1 AND embedding_vec IS NOT NULL
+             ORDER BY doc_id, embedding_vec <=> $2::vector`,
+            [systemId, vecLiteral]
+          ),
+          queryAll(
+            `SELECT doc_id AS "docId", doc_name AS "docName", chunk_text AS text,
+                    1 - (embedding_vec <=> $2::vector) AS score
+             FROM embeddings
+             WHERE system_id=$1 AND embedding_vec IS NOT NULL
+             ORDER BY embedding_vec <=> $2::vector
+             LIMIT $3`,
+            [systemId, vecLiteral, topK]
+          ),
+        ]);
+        perDocBestRows.sort((a, b) => b.score - a.score);
+        const results = mergeSearchResults(perDocBestRows, topOverallRows, topK);
+        const truncated = availCount < totalChunks;
+        if (truncated) {
+          log('warning', `embeddings/search: System ${systemId} — ${totalChunks - availCount} Chunks noch ohne pgvector-Embedding (Reindex empfohlen)`);
+        }
+        return res.json({ results, fallback: false, engine: 'pgvector', truncated, totalChunks, scannedChunks: availCount });
+      }
+      // Keine Zeile hat embedding_vec (noch nicht (re-)indexiert seit dem
+      // pgvector-Rollout) — auf den JS-Scan über die JSONB-Spalte zurückfallen.
+    }
+
+    // ── JS-Fallback: kein pgvector verfügbar oder System noch nicht migriert ──
+    // Bei sehr großen Systemen: Hard-Limit um Hänger zu vermeiden.
+    // ORDER BY chunk_index ASC (ohne Partition) sortiert über alle Dokumente
+    // hinweg "rund"-artig — der erste Chunk jedes Dokuments kommt vor dem
+    // zweiten Chunk irgendeines Dokuments — daher bleibt jedes Dokument auch
+    // bei Kappung repräsentiert, nur sehr lange Einzeldokumente verlieren Tiefe.
+    const MAX_CHUNKS = 5000;
     const chunks = await queryAll(
       `SELECT * FROM embeddings WHERE system_id=$1 ORDER BY chunk_index ASC LIMIT $2`,
       [systemId, MAX_CHUNKS]
     );
     if (!chunks.length) return res.json({ results: [], fallback: true });
-    if (totalChunks > MAX_CHUNKS) {
+    const truncated = totalChunks > MAX_CHUNKS;
+    if (truncated) {
       log('warning', `embeddings/search: System ${systemId} hat ${totalChunks} Chunks — limitiert auf ${MAX_CHUNKS}`);
     }
-
-    const queryVec = simpleTextVector(q2);
 
     // Alle Chunks bewerten
     const scored = chunks.map(c => {
@@ -1266,30 +1331,21 @@ app.post('/api/embeddings/search', requireAuth, async (req, res) => {
       }
     }
 
-    // Alle Dokumente mindestens einmal vertreten + beste Chunks oben
-    const perDocBest  = Object.values(byDoc).sort((a, b) => b.score - a.score);
-    const topOverall  = scored.sort((a, b) => b.score - a.score).slice(0, topK);
+    const perDocBest = Object.values(byDoc).sort((a, b) => b.score - a.score);
+    const topOverall = scored.sort((a, b) => b.score - a.score).slice(0, topK);
+    const results = mergeSearchResults(perDocBest, topOverall, topK);
 
-    // Merge: erst per-Doc, dann fill mit top-Overall
-    const seen = new Set();
-    const results = [];
-    for (const c of [...perDocBest, ...topOverall]) {
-      const key = c.docId + '_' + c.text.substring(0, 30);
-      if (!seen.has(key) && results.length < topK) {
-        seen.add(key);
-        results.push(c);
-      }
-    }
-
-    res.json({ results, fallback: false });
+    res.json({ results, fallback: false, engine: 'js-scan', truncated, totalChunks, scannedChunks: chunks.length });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Semantische Embeddings via Anthropic Voyage API ──────────
-// Fallback auf erweitertes TF-IDF wenn kein Key vorhanden
-async function getSemanticEmbedding(text) {
+// Fallback auf erweitertes TF-IDF wenn kein Key vorhanden.
+// apiCfg optional vorab auflösbar (siehe indexChunks) — vermeidet bei
+// vielen Chunks pro Dokument N× dieselbe DB-Abfrage für dieselbe Config.
+async function getSemanticEmbedding(text, apiCfg = null) {
   try {
-    const apiCfg = await resolveApiConfig(null);
+    apiCfg = apiCfg || await resolveApiConfig(null);
     if (apiCfg.key) {
       const prompt = 'Extrahiere die 20 wichtigsten semantischen Schlüsselbegriffe aus diesem Text als kommagetrennte Liste. Nur die Begriffe, keine Erklärungen:\n\n' + text.substring(0, 2000);
       const result = await aiCallUnified(apiCfg, prompt, 150, 'fast', 12000, 0);
@@ -1305,15 +1361,49 @@ async function getSemanticEmbedding(text) {
   return enhancedTextVector(text);
 }
 
-// Verbesserter lokaler Vektor: 512-dimensional, N-Gramme, Code-Tokens
+// Häufige Funktionswörter (DE+EN) — tragen kaum Bedeutung, verwässern aber
+// die Hash-Vektoren stark, da sie in praktisch jedem Chunk vorkommen.
+const STOPWORDS = new Set([
+  'der','die','das','den','dem','des','ein','eine','einer','eines','einem','einen',
+  'und','oder','aber','doch','sondern','denn','als','wie','dass','ob','wenn','weil',
+  'ist','sind','war','waren','wird','werden','wurde','wurden','sein','seine','seiner','ihrer','ihre','ihr',
+  'hat','haben','hatte','hatten','kann','können','muss','müssen','soll','sollen','darf','dürfen','wird',
+  'für','von','mit','auf','im','in','zu','zum','zur','an','am','bei','aus','nach','über','unter','durch',
+  'sich','nicht','auch','nur','noch','schon','sehr','mehr','so','dann','hier','dort','es','er','sie',
+  'wir','ihr','man','ich','du','uns','euch','diese','dieser','dieses','diesem','diesen','alle','alles',
+  'the','a','an','and','or','but','if','of','to','in','on','at','for','with','by','from','as',
+  'is','are','was','were','be','been','being','has','have','had','do','does','did','will','would',
+  'can','could','shall','should','may','might','must','this','that','these','those','it','its',
+]);
+
+// Sehr einfache Endungsnormalisierung für deutsche Flexionsformen (kein
+// vollständiger Stemmer) — sorgt z.B. dafür, dass "Anforderung" und
+// "Anforderungen" auf denselben Hash-Bucket treffen statt als unabhängige
+// Tokens behandelt zu werden.
+const DE_SUFFIXES = ['ungen','heiten','keiten','ung','heit','keit','lich','ern','en','er','es','em','e','n','s'];
+function normalizeWord(w) {
+  w = w.toLowerCase().replace(/ä/g,'a').replace(/ö/g,'o').replace(/ü/g,'u').replace(/ß/g,'ss');
+  if (w.length > 6) {
+    for (const suf of DE_SUFFIXES) {
+      if (w.endsWith(suf) && w.length - suf.length >= 4) { w = w.slice(0, -suf.length); break; }
+    }
+  }
+  return w;
+}
+
+// Verbesserter lokaler Vektor: 512-dimensional, N-Gramme, Code-Tokens,
+// Stopwort-Filterung + leichte deutsche Normalisierung.
 function enhancedTextVector(text) {
   const vec = new Array(512).fill(0);
   // Code-Tokens extrahieren (Funktionsnamen, Klassen, Imports)
   const codeTokens = text.match(/(?:function|class|async|import|export|const|let|var)\s+(\w+)|\b(\w+)(?=\s*[=(\[{])/g) || [];
-  const words = [
+  const raw = [
     ...text.toLowerCase().split(/\W+/).filter(w => w.length > 1),
     ...codeTokens.map(t => t.trim().toLowerCase()),
   ];
+  // Stopwörter raus, Rest normalisieren — bewusst NACH der Stopwort-Prüfung
+  // (auf der Rohform), damit die Liste exakt matcht.
+  const words = raw.filter(w => !STOPWORDS.has(w)).map(normalizeWord);
 
   // Unigramme + Bigramme
   for (let i = 0; i < words.length; i++) {
@@ -1335,15 +1425,39 @@ function enhancedTextVector(text) {
   return vec.map(v => v / mag);
 }
 
-// Synchrones Fallback für sofortige Nutzung (ohne API-Call)
-function simpleTextVector(text) {
-  return enhancedTextVector(text);
-}
 function cosineSimilarity(a, b) {
   if (!a?.length || !b?.length || a.length!==b.length) return 0;
   let dot=0, ma=0, mb=0;
   for (let i=0; i<a.length; i++) { dot+=a[i]*b[i]; ma+=a[i]*a[i]; mb+=b[i]*b[i]; }
   return dot / (Math.sqrt(ma)*Math.sqrt(mb) || 1);
+}
+
+// ── Gemeinsamer Embedding-Insert-Helfer ───────────────────────
+// Nutzt getSemanticEmbedding() (echte LLM-gestützte Vektoren, sofern ein
+// API-Key konfiguriert ist — sonst automatischer Fallback auf den lokalen
+// Hash-Vektor, siehe getSemanticEmbedding) statt des rein lokalen
+// simpleTextVector, und schreibt zusätzlich die pgvector-Spalte
+// embedding_vec mit, wenn die Extension verfügbar ist. Chunks werden in
+// kleinen Batches parallel eingebettet, um bei vielen Chunks nicht
+// sequenziell auf einzelne LLM-Calls zu warten.
+async function indexChunks(systemId, docId, docName, chunks) {
+  if (!chunks?.length) return;
+  const [useVec, apiCfg] = await Promise.all([pgvectorEnabled(), resolveApiConfig(null)]);
+  const BATCH_SIZE = 3;
+  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+    const batch = chunks.slice(i, i + BATCH_SIZE);
+    const vecs = await Promise.all(batch.map(c => getSemanticEmbedding(c.text, apiCfg)));
+    await Promise.all(batch.map((c, bi) => {
+      const idx = i + bi;
+      const vec = vecs[bi];
+      const vecLiteral = useVec ? toVectorLiteral(vec) : null;
+      return query(
+        `INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding,function_name,embedding_vec)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8::vector) ON CONFLICT DO NOTHING`,
+        [systemId, docId, docName, idx, c.text, JSON.stringify(vec), c.functionName || null, vecLiteral]
+      );
+    }));
+  }
 }
 
 // ── QS-TRENDS ─────────────────────────────────────────────────
@@ -1427,10 +1541,13 @@ app.get('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
   const hasAnthKey = !!(await queryOne("SELECT value FROM app_settings WHERE key='global_api_key'"))?.value;
   const hasGrokKey = !!(await queryOne("SELECT value FROM app_settings WHERE key='global_grok_api_key'"))?.value;
   const hasGroqKey = !!(await queryOne("SELECT value FROM app_settings WHERE key='global_groq_api_key'"))?.value;
-  res.json({ provider, hasAnthKey, hasGrokKey, hasGroqKey });
+  const model      = (await queryOne("SELECT value FROM app_settings WHERE key='global_model'"))?.value || null;
+  const grokModel  = (await queryOne("SELECT value FROM app_settings WHERE key='global_grok_model'"))?.value || null;
+  const groqModel  = (await queryOne("SELECT value FROM app_settings WHERE key='global_groq_model'"))?.value || null;
+  res.json({ provider, hasAnthKey, hasGrokKey, hasGroqKey, model, grokModel, groqModel });
 });
 app.post('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
-  const { apiKey, provider, grokApiKey } = req.body;
+  const { apiKey, provider, grokApiKey, model, grokModel, groqModel: groqModelIn } = req.body;
   const prov = provider || 'anthropic';
   // Validierung
   if (prov === 'anthropic' && apiKey && !apiKey.startsWith('sk-ant')) {
@@ -1447,6 +1564,10 @@ app.post('/api/apikey/global', requireAuth, requireAdmin, async (req, res) => {
   if (apiKey)     await query("INSERT INTO app_settings (key,value) VALUES ('global_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [apiKey]);
   if (grokApiKey) await query("INSERT INTO app_settings (key,value) VALUES ('global_grok_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [grokApiKey]);
   if (groqApiKey) await query("INSERT INTO app_settings (key,value) VALUES ('global_groq_api_key',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [groqApiKey]);
+  // Modell-Override — leerer String löscht ihn wieder (zurück auf Default)
+  if (model !== undefined)      await query("INSERT INTO app_settings (key,value) VALUES ('global_model',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [model || null]);
+  if (grokModel !== undefined)  await query("INSERT INTO app_settings (key,value) VALUES ('global_grok_model',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [grokModel || null]);
+  if (groqModelIn !== undefined) await query("INSERT INTO app_settings (key,value) VALUES ('global_groq_model',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [groqModelIn || null]);
 
   // Falls jetzt erstmals ein Key vorhanden ist: alle "ready_no_ai"-Caches neu aufbauen
   if (apiKey || grokApiKey || groqApiKey) {
@@ -1755,7 +1876,7 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
 
     if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
       // Grok (xAI) + Groq — beide OpenAI-kompatibel
-      const defaultModel = resolveModel(apiCfg.provider, 'balanced');
+      const defaultModel = resolveModel(apiCfg.provider, 'balanced', apiCfg.model);
       // Wenn Client ein claude-Modell schickt aber Provider ist grok/groq → ignorieren
       const model = (cleanBody.model && !cleanBody.model.startsWith('claude'))
         ? cleanBody.model
@@ -2101,14 +2222,14 @@ Bestehende:
 ${rows.slice(0,15).map(r=>`- [${r.id}] ${r.title}`).join('\n')}`;
     let apiUrl, apiHeaders, apiBody;
     if (apiCfg.provider!=='anthropic') {
-      const model = resolveModel(apiCfg.provider, 'balanced');
+      const model = resolveModel(apiCfg.provider, 'balanced', apiCfg.model);
       apiUrl = apiCfg.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'https://api.x.ai/v1/chat/completions';
       apiHeaders={'Content-Type':'application/json','Authorization':'Bearer '+apiCfg.key};
       apiBody={model,messages:[{role:'user',content:prompt}],max_tokens:600};
     } else {
       apiUrl='https://api.anthropic.com/v1/messages';
       apiHeaders={'Content-Type':'application/json','x-api-key':apiCfg.key,'anthropic-version':'2023-06-01'};
-      apiBody={model: resolveModel(apiCfg.provider, 'fast'),max_tokens:600,messages:[{role:'user',content:prompt}]};
+      apiBody={model: resolveModel(apiCfg.provider, 'fast', apiCfg.model),max_tokens:600,messages:[{role:'user',content:prompt}]};
     }
     const response = await fetch(apiUrl,{method:'POST',headers:apiHeaders,body:JSON.stringify(apiBody)});
     const data = await response.json();
@@ -2175,14 +2296,14 @@ Anforderung: ${req_.title}
 ${req_.description||''}`;
     let apiUrl,apiHeaders,apiBody;
     if(apiCfg.provider!=='anthropic'){
-      const model=resolveModel(apiCfg.provider, 'balanced');
+      const model=resolveModel(apiCfg.provider, 'balanced', apiCfg.model);
       apiUrl=apiCfg.provider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'https://api.x.ai/v1/chat/completions';
       apiHeaders={'Content-Type':'application/json','Authorization':'Bearer '+apiCfg.key};
       apiBody={model,messages:[{role:'user',content:prompt}],max_tokens:1000};
     } else {
       apiUrl='https://api.anthropic.com/v1/messages';
       apiHeaders={'Content-Type':'application/json','x-api-key':apiCfg.key,'anthropic-version':'2023-06-01'};
-      apiBody={model: resolveModel(apiCfg.provider, 'fast'),max_tokens:1000,messages:[{role:'user',content:prompt}]};
+      apiBody={model: resolveModel(apiCfg.provider, 'fast', apiCfg.model),max_tokens:1000,messages:[{role:'user',content:prompt}]};
     }
     const response=await fetch(apiUrl,{method:'POST',headers:apiHeaders,body:JSON.stringify(apiBody)});
     const data=await response.json();
@@ -2402,7 +2523,7 @@ async function fetchWithTimeout(url, opts, timeoutMs = 25000) {
 async function aiCall(apiCfg, prompt, maxTokens = 400, timeoutMs = 30000, retries = 1) {
   let apiUrl, apiHeaders, apiBody;
   if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
-    const model = resolveModel(apiCfg.provider, 'balanced');
+    const model = resolveModel(apiCfg.provider, 'balanced', apiCfg.model);
     apiUrl = apiCfg.provider === 'groq'
       ? 'https://api.groq.com/openai/v1/chat/completions'
       : 'https://api.x.ai/v1/chat/completions';
@@ -2411,7 +2532,7 @@ async function aiCall(apiCfg, prompt, maxTokens = 400, timeoutMs = 30000, retrie
   } else {
     apiUrl = 'https://api.anthropic.com/v1/messages';
     apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
-    apiBody = { model: resolveModel(apiCfg.provider, 'fast'), max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] };
+    apiBody = { model: resolveModel(apiCfg.provider, 'fast', apiCfg.model), max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] };
   }
 
   let lastErr;
@@ -2811,14 +2932,14 @@ app.post('/api/apikey/test', requireAuth, requireAdmin, async (req, res) => {
     let apiUrl, apiHeaders, apiBody, model;
 
     if (apiCfg.provider === 'grok' || apiCfg.provider === 'groq') {
-      model  = resolveModel(apiCfg.provider, 'balanced');
+      model  = resolveModel(apiCfg.provider, 'balanced', apiCfg.model);
       apiUrl = apiCfg.provider === 'groq'
         ? 'https://api.groq.com/openai/v1/chat/completions'
         : 'https://api.x.ai/v1/chat/completions';
       apiHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiCfg.key };
       apiBody    = { model, messages: [{ role: 'user', content: 'Antworte nur mit OK' }], max_tokens: 5 };
     } else {
-      model      = resolveModel(apiCfg.provider, 'fast');
+      model      = resolveModel(apiCfg.provider, 'fast', apiCfg.model);
       apiUrl     = 'https://api.anthropic.com/v1/messages';
       apiHeaders = { 'Content-Type': 'application/json', 'x-api-key': apiCfg.key, 'anthropic-version': '2023-06-01' };
       apiBody    = { model, max_tokens: 5, messages: [{ role: 'user', content: 'Antworte nur mit OK' }] };
@@ -3303,7 +3424,7 @@ app.post('/api/ai/chat/stream', requireAuth, async (req, res) => {
 
     } else {
       // Groq/Grok: OpenAI-kompatibles Streaming
-      const model = resolveModel(apiCfg.provider, 'balanced');
+      const model = resolveModel(apiCfg.provider, 'balanced', apiCfg.model);
       const baseUrl = apiCfg.provider === 'groq'
         ? 'https://api.groq.com/openai/v1/chat/completions'
         : 'https://api.x.ai/v1/chat/completions';
@@ -3391,14 +3512,7 @@ app.post('/api/systems/:id/rechunk', requireAuth, async (req, res) => {
 
           // Neu chunken mit aktuellem Algorithmus
           const newChunks = chunkTextBackend(fullText, doc.doc_name);
-
-          for (let i = 0; i < newChunks.length; i++) {
-            const vec = await getSemanticEmbedding(newChunks[i].text);
-            await query(
-              'INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding,function_name) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-              [sysId, doc.doc_id, doc.doc_name, i, newChunks[i].text, JSON.stringify(vec), newChunks[i].functionName || null]
-            ).catch(() => {});
-          }
+          await indexChunks(sysId, doc.doc_id, doc.doc_name, newChunks);
           log('info', `Re-Chunked: ${doc.doc_name} → ${newChunks.length} Chunks`);
         }
 

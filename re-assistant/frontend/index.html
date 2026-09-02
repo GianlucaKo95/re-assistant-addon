@@ -788,11 +788,13 @@
                 <span class="fhint">Wird verschlüsselt in der Datenbank gespeichert.</span>
               </div>
               <div class="frow"><label>Modell</label>
-                <select id="cfg-model">
+                <input type="text" id="cfg-model" list="cfg-model-list" placeholder="claude-sonnet-4-6"/>
+                <datalist id="cfg-model-list">
                   <option value="claude-sonnet-4-6">Claude Sonnet 4.6 — empfohlen</option>
                   <option value="claude-opus-4-6">Claude Opus 4.6</option>
                   <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
-                </select>
+                </datalist>
+                <span class="fhint">Falls Anthropic ein Modell umbenennt/abkündigt, hier die aktuelle Modell-ID eintragen.</span>
               </div>
             </div>
             <div id="cfg-groq-wrap" style="display:none">
@@ -805,12 +807,14 @@
                 <span class="fhint">Kostenlos unter <a href="https://console.groq.com" target="_blank" style="color:var(--aa)">console.groq.com</a></span>
               </div>
               <div class="frow"><label>Modell</label>
-                <select id="cfg-groq-model">
-                  <option value="llama-3.3-70b-versatile">Llama 3.3 70B — empfohlen</option>
-                  <option value="llama-3.1-8b-instant">Llama 3.1 8B — schnellstes</option>
-                  <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
-                  <option value="gemma2-9b-it">Gemma 2 9B</option>
-                </select>
+                <input type="text" id="cfg-groq-model" list="cfg-groq-model-list" placeholder="openai/gpt-oss-120b"/>
+                <datalist id="cfg-groq-model-list">
+                  <option value="openai/gpt-oss-120b">GPT-OSS 120B — empfohlen</option>
+                  <option value="openai/gpt-oss-20b">GPT-OSS 20B — schnellstes</option>
+                  <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Enterprise-Tarif nötig)</option>
+                  <option value="llama-3.1-8b-instant">Llama 3.1 8B (Enterprise-Tarif nötig)</option>
+                </datalist>
+                <span class="fhint">Groq ändert seine verfügbaren Modelle häufiger — bei "model does not exist" hier die aktuelle Modell-ID von <a href="https://console.groq.com/docs/models" target="_blank" style="color:var(--aa)">console.groq.com/docs/models</a> eintragen.</span>
               </div>
             </div>
             <div id="cfg-grok-wrap" style="display:none">
@@ -823,11 +827,13 @@
                 <span class="fhint">Kostenlos unter <a href="https://console.x.ai" target="_blank" style="color:var(--aa)">console.x.ai</a></span>
               </div>
               <div class="frow"><label>Modell</label>
-                <select id="cfg-grok-model">
+                <input type="text" id="cfg-grok-model" list="cfg-grok-model-list" placeholder="grok-3-mini"/>
+                <datalist id="cfg-grok-model-list">
                   <option value="grok-3-mini">Grok 3 Mini — empfohlen</option>
                   <option value="grok-3">Grok 3</option>
                   <option value="grok-2">Grok 2</option>
-                </select>
+                </datalist>
+                <span class="fhint">Falls xAI ein Modell umbenennt/abkündigt, hier die aktuelle Modell-ID eintragen.</span>
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">

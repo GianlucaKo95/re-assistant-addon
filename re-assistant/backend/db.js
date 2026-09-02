@@ -176,4 +176,28 @@ async function healthCheck() {
   } catch(e) { return { ok: false, error: e.message }; }
 }
 
-module.exports = { pool, query, queryOne, queryAll, withRetry, withTransaction, mapUser, mapSystem, mapReq, mapGeneric, healthCheck };
+// ── pgvector-Verfügbarkeit ────────────────────────────────────
+// Wird einmal geprüft und gecacht (Extension ändert sich nicht zur
+// Laufzeit) — entscheidet, ob Embedding-Suche über einen echten
+// HNSW-Index läuft oder auf den JS-seitigen Scan zurückfällt.
+let _pgvectorCache = null;
+async function pgvectorEnabled() {
+  if (_pgvectorCache !== null) return _pgvectorCache;
+  try {
+    const row = await queryOne(`SELECT 1 FROM pg_extension WHERE extname='vector'`);
+    _pgvectorCache = !!row;
+  } catch(e) {
+    _pgvectorCache = false;
+  }
+  return _pgvectorCache;
+}
+
+// Formt einen JS-Zahlen-Array in ein pgvector-Textliteral ("[0.1,0.2,...]")
+// — der reine "pg"-Treiber kennt den vector-Typ nicht nativ, pgvector
+// akzeptiert diese Textform aber direkt per ::vector-Cast.
+function toVectorLiteral(vec) {
+  if (!Array.isArray(vec) || !vec.length) return null;
+  return '[' + vec.join(',') + ']';
+}
+
+module.exports = { pool, query, queryOne, queryAll, withRetry, withTransaction, mapUser, mapSystem, mapReq, mapGeneric, healthCheck, pgvectorEnabled, toVectorLiteral };
