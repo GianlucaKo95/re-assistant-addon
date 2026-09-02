@@ -184,7 +184,18 @@ let _pgvectorCache = null;
 async function pgvectorEnabled() {
   if (_pgvectorCache !== null) return _pgvectorCache;
   try {
-    const row = await queryOne(`SELECT 1 FROM pg_extension WHERE extname='vector'`);
+    // Prüft Extension UND Spalte — falls die Migration nur teilweise
+    // durchlief (z.B. Transaktion mit Fehler in der Backfill-UPDATE
+    // zurückgerollt), darf "verfügbar" nicht fälschlich true sein, sonst
+    // referenziert jedes INSERT eine nicht existierende Spalte.
+    const row = await queryOne(
+      `SELECT 1 FROM pg_extension e
+       WHERE e.extname = 'vector'
+         AND EXISTS (
+           SELECT 1 FROM information_schema.columns c
+           WHERE c.table_name = 'embeddings' AND c.column_name = 'embedding_vec'
+         )`
+    );
     _pgvectorCache = !!row;
   } catch(e) {
     _pgvectorCache = false;

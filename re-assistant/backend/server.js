@@ -1450,12 +1450,17 @@ async function indexChunks(systemId, docId, docName, chunks) {
     await Promise.all(batch.map((c, bi) => {
       const idx = i + bi;
       const vec = vecs[bi];
-      const vecLiteral = useVec ? toVectorLiteral(vec) : null;
-      return query(
-        `INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding,function_name,embedding_vec)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8::vector) ON CONFLICT DO NOTHING`,
-        [systemId, docId, docName, idx, c.text, JSON.stringify(vec), c.functionName || null, vecLiteral]
-      );
+      const params = [systemId, docId, docName, idx, c.text, JSON.stringify(vec), c.functionName || null];
+      // embedding_vec-Spalte NUR referenzieren wenn pgvector wirklich verfügbar
+      // ist — sonst existiert die Spalte gar nicht und JEDES Insert würde mit
+      // "column does not exist" fehlschlagen (kompletter Indexierungsausfall).
+      const sql = useVec
+        ? `INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding,function_name,embedding_vec)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8::vector) ON CONFLICT DO NOTHING`
+        : `INSERT INTO embeddings (system_id,doc_id,doc_name,chunk_index,chunk_text,embedding,function_name)
+           VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`;
+      if (useVec) params.push(toVectorLiteral(vec));
+      return query(sql, params);
     }));
   }
 }
