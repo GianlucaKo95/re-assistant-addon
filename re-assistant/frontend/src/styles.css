@@ -530,35 +530,11 @@ input::placeholder,textarea::placeholder{color:var(--t3)}
 /* ── Tablet / großes Phone (≤768px) ─────────────────────────── */
 @media (max-width: 768px) {
 
-  /* App-Shell */
-  #app{flex-direction:column}
-
-  /* Linke Navigation — als Bottom-Bar */
-  #leftnav{
-    width:100% !important;
-    min-width:unset !important;
-    height:56px;
-    flex-direction:row;
-    justify-content:space-around;
-    padding:0 8px;
-    border-right:none;
-    border-top:1px solid var(--b1);
-    position:fixed;
-    bottom:0; left:0; right:0;
-    z-index:150;
-    order:2;
-  }
-  .ln-btn{width:44px;height:44px;border-radius:10px}
-  .ln-tooltip{display:none}
-  #ln-logo{display:none}
-  .ln-spacer{display:none}
-
-  /* Main content — Platz für Bottom-Bar */
-  #main-content{
-    padding-bottom:56px;
-    overflow-y:auto;
-    height:calc(100vh - 44px);
-  }
+  /* Linke Navigation: kompakte Icon-Sidebar (siehe Redesign-Regeln
+     weiter unten) — hier bewusst nicht mehr definiert, ein alter
+     Bottom-Bar-Versuch (position:fixed/width:100%) überschrieb sie
+     sonst per !important und passte ohnehin nicht mehr zur echten
+     #ln-items/#ln-brand/#ln-bottom-Struktur. */
 
   /* Topbar */
   #topbar{padding:0 12px;gap:8px}
@@ -695,11 +671,6 @@ input::placeholder,textarea::placeholder{color:var(--t3)}
 
 /* ── Kleines Phone (≤480px) ──────────────────────────────────── */
 @media (max-width: 480px) {
-  /* Noch kompaktere Navigation */
-  #leftnav{height:50px}
-  .ln-btn{width:40px;height:40px}
-  #main-content{padding-bottom:50px;height:calc(100vh - 44px)}
-
   /* Chat noch kompakter */
   #bc-layout,#pm-chat-layout{height:calc(100vh - 94px)}
   #bc-chat-area{height:calc(100vh - 94px)}
@@ -812,9 +783,6 @@ select option:hover {
 }
 
 @media (max-width: 768px) {
-  /* Mobile: Sidebar verstecken */
-  #leftnav { display: none !important; }
-
   /* Views volle Breite */
   .view { padding: 12px !important; }
   .view-header { flex-direction: column; gap: 10px; align-items: flex-start !important; }
@@ -2269,4 +2237,73 @@ body.bulk-mode .req-card:hover {
     font-size: 11px;
     padding: 6px 10px;
   }
+}
+
+/* ── Mobile Bottom-Bar (≤768px) ──────────────────────────────────
+   Ersetzt die linke Icon-Sidebar auf Handy-Breite durch eine echte
+   Bottom-Bar: #leftnav wird ausgeblendet, #mobile-bottombar (Sibling
+   von #app-layout, normaler Flow — kein position:fixed nötig, da
+   #app-screen bereits eine Flex-Spalte ist) übernimmt die Navigation.
+   Zeigt pro Rolle die wichtigsten Einträge (NAV_MOBILE_CORE in
+   navigation.js) plus ein "Mehr"-Menü für den Rest. */
+#mobile-bottombar { display: none; }
+
+@media (max-width: 768px) {
+  #leftnav { display: none !important; }
+
+  #mobile-bottombar {
+    display: flex;
+    flex-shrink: 0;
+    justify-content: space-around;
+    align-items: stretch;
+    background: rgba(6, 6, 14, .99);
+    border-top: 1px solid var(--b1);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  [data-theme="light"] #mobile-bottombar {
+    background: var(--s1);
+    border-top-color: var(--b1);
+  }
+
+  .mb-btn {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 7px 2px 6px;
+    background: none;
+    border: none;
+    color: var(--t3);
+    cursor: pointer;
+  }
+  .mb-btn svg { width: 19px; height: 19px; flex-shrink: 0; }
+  .mb-btn.active { color: var(--aa); }
+  .mb-label {
+    font-size: 9.5px;
+    line-height: 1.1;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mb-more-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 8px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--b1);
+    color: var(--t1);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .mb-more-item:last-child { border-bottom: none; }
+  .mb-more-item svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--t3); }
 }
