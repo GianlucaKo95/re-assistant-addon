@@ -23,7 +23,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.5';
+const APP_VERSION = '4.3.6';
 
 const app      = express();
 
@@ -2782,11 +2782,30 @@ async function buildSystemContextCache(systemId) {
       return parts.slice(0, Math.min(parts.length - 1, 3)).join('/');
     };
 
-    const groups = {};
+    const groupsRaw = {};
     for (const s of allSummaries) {
       const g = groupOf(s.doc_name);
-      if (!groups[g]) groups[g] = [];
-      groups[g].push(s);
+      if (!groupsRaw[g]) groupsRaw[g] = [];
+      groupsRaw[g].push(s);
+    }
+
+    // Große Gruppen aufteilen — z.B. bei flachen Uploads ohne Ordnerstruktur
+    // landen ALLE Dateien in einer einzigen "(root)"-Gruppe. Ohne diese
+    // Aufteilung wird die Dateiliste unten vor dem KI-Call stumpf auf 8000
+    // Zeichen gekappt, wodurch die meisten Dateien (durch die alphabetische
+    // Sortierung praktisch willkürlich) aus der Zusammenfassung fallen.
+    const MAX_FILES_PER_GROUP = 8;
+    const groups = {};
+    for (const [name, files] of Object.entries(groupsRaw)) {
+      if (files.length <= MAX_FILES_PER_GROUP) {
+        groups[name] = files;
+        continue;
+      }
+      const parts = Math.ceil(files.length / MAX_FILES_PER_GROUP);
+      for (let i = 0; i < files.length; i += MAX_FILES_PER_GROUP) {
+        const part = Math.floor(i / MAX_FILES_PER_GROUP) + 1;
+        groups[`${name} (Teil ${part}/${parts})`] = files.slice(i, i + MAX_FILES_PER_GROUP);
+      }
     }
     const groupNames = Object.keys(groups).sort();
     log('info', `Cache: ${allSummaries.length} Dateien in ${groupNames.length} Gruppen`);
