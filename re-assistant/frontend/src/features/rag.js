@@ -6,63 +6,6 @@ const $ = window.$ || (id => document.getElementById(id));
  * Dokumente chunken, Embeddings speichern, semantische Suche für KI-Chats.
  */
 
-// ── Chunking ──────────────────────────────────────────────────
-function chunkDocument(text, docName, chunkSize = 800, overlap = 100) {
-  const sentences = text.split(/(?<=[.!?])\s+/);
-  const chunks    = [];
-  let current     = '';
-  let charCount   = 0;
-
-  for (const sentence of sentences) {
-    if (charCount + sentence.length > chunkSize && current.length > 0) {
-      chunks.push({ text: current.trim(), docName });
-      // Overlap: letzte 100 Zeichen in nächsten Chunk übernehmen
-      const overlapText = current.slice(-overlap);
-      current   = overlapText + ' ' + sentence;
-      charCount = current.length;
-    } else {
-      current   += (current ? ' ' : '') + sentence;
-      charCount += sentence.length;
-    }
-  }
-  if (current.trim()) chunks.push({ text: current.trim(), docName });
-  return chunks;
-}
-
-// ── Dokument indexieren ───────────────────────────────────────
-async function indexDocument(systemId, doc) {
-  if (!doc?.content || doc.content.length < 50) return;
-  const chunks = chunkDocument(doc.content, doc.name);
-  if (!chunks.length) return;
-
-  try {
-    const res = await fetch('api/embeddings/store', {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ systemId, docId: doc.id, docName: doc.name, chunks })
-    });
-    const data = await res.json();
-    if (data.ok) log_rag(`✓ Indexiert: ${doc.name} (${chunks.length} Chunks)`);
-    return data;
-  } catch(e) {
-    log_rag(`✗ Indexierung fehlgeschlagen: ${doc.name} — ${e.message}`);
-  }
-}
-
-// ── System-Dokumente alle indexieren ─────────────────────────
-async function indexSystemDocs(systemId, onProgress) {
-  const sys = S.systems.find(s => s.id === systemId);
-  if (!sys?.docs?.length) return { indexed: 0 };
-
-  let indexed = 0;
-  for (const doc of sys.docs) {
-    if (onProgress) onProgress(doc.name, indexed, sys.docs.length);
-    await indexDocument(systemId, doc);
-    indexed++;
-  }
-  return { indexed };
-}
-
 // ── Semantische Suche ─────────────────────────────────────────
 async function semanticSearch(systemId, query, topK = 5, signal) {
   try {
@@ -284,20 +227,27 @@ async function showRAGStatus(systemId) {
     const docCount      = sys.docs?.length || 0;
     const indexedDocs   = status.indexedDocs || 0;
     const totalChunks   = status.totalChunks || 0;
+    const missingIds    = new Set((status.missingDocs||[]).map(d => d.id));
 
     const docListHtml = docCount
       ? '<div style="max-height:160px;overflow-y:auto;border:1px solid var(--b1);border-radius:8px;margin-bottom:14px">'
-        + (sys.docs||[]).map(d =>
-            '<div style="padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:12px">'
-            + '<span>' + esc(d.name) + '</span>'
-            + '<span style="color:var(--t3)">' + ((d.size||0)/1024).toFixed(1) + ' KB</span>'
-            + '</div>'
-          ).join('')
+        + (sys.docs||[]).map(d => {
+            const missing = missingIds.has(d.id);
+            return '<div style="padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;gap:8px;font-size:12px">'
+            + '<span>' + (missing ? '⚠ ' : '') + esc(d.name) + '</span>'
+            + '<span style="color:' + (missing ? 'var(--amb)' : 'var(--t3)') + '">'
+            + (missing ? 'nicht indexiert' : ((d.size||0)/1024).toFixed(1) + ' KB')
+            + '</span></div>';
+          }).join('')
         + '</div>'
       : '<p style="font-size:12px;color:var(--t3)">Keine Dokumente hochgeladen.</p>';
 
-    const indexBtn = docCount
-      ? '<button class="btn-primary" style="flex:1" onclick="closeModal();runIndexing(\'' + systemId + '\')">⚡ Jetzt indexieren</button>'
+    // "Jetzt indexieren" kann es hier nicht geben — der Originaltext wird
+    // beim Upload nicht gespeichert (siehe server.js), eine fehlgeschlagene
+    // Indexierung lässt sich also nur durch erneutes Hochladen derselben
+    // Datei beheben, nicht per Knopfdruck ohne neue Dateiauswahl.
+    const reuploadBtn = missingIds.size
+      ? '<button class="btn-primary" style="flex:1" onclick="closeModal();addFiles(\'' + systemId + '\')">⚠ ' + missingIds.size + ' fehlende Datei(en) erneut hochladen</button>'
       : '';
 
     const body = '<div style="margin-bottom:16px">'
@@ -308,13 +258,15 @@ async function showRAGStatus(systemId) {
       + '<div style="font-size:11px;color:var(--t3);margin-top:2px">' + docCount + ' Dokument(e) · ' + indexedDocs + ' indexiert · ' + totalChunks + ' Chunks</div>'
       + '</div></div></div>'
       + '<div style="font-size:12px;color:var(--t2);margin-bottom:14px">'
-      + (hasEmbeddings
-          ? 'Die KI nutzt semantische Ähnlichkeit um relevante Passagen zu finden — auch wenn die exakten Wörter nicht übereinstimmen.'
-          : 'Indexieren Sie die Dokumente damit die KI präziser auf Ihren Dokumentationsinhalt eingehen kann.')
+      + (missingIds.size
+          ? 'Für ' + missingIds.size + ' Dokument(e) ist die Indexierung beim Hochladen fehlgeschlagen (z.B. durch eine kurzzeitige Störung). Der Text wird nicht separat gespeichert — nur ein erneuter Upload derselben Datei behebt das.'
+          : hasEmbeddings
+            ? 'Die KI nutzt semantische Ähnlichkeit um relevante Passagen zu finden — auch wenn die exakten Wörter nicht übereinstimmen.'
+            : 'Laden Sie Dokumente hoch, damit die KI präziser auf Ihren Dokumentationsinhalt eingehen kann.')
       + '</div>'
       + docListHtml
       + '<div style="display:flex;gap:8px">'
-      + indexBtn
+      + reuploadBtn
       + '<button class="btn-secondary" style="flex:1" onclick="closeModal()">Schließen</button>'
       + '</div>';
 
@@ -322,25 +274,6 @@ async function showRAGStatus(systemId) {
   } catch(e) {
     toast('❌ Status-Abfrage fehlgeschlagen');
   }
-}
-
-async function runIndexing(systemId) {
-  const sys = S.systems.find(s => s.id === systemId);
-  if (!sys?.docs?.length) { toast('ℹ Keine Dokumente vorhanden'); return; }
-
-  // Progress-Toast
-  const toastEl = document.getElementById('toast');
-  if (toastEl) { toastEl.innerHTML = `⚡ Indexiere ${sys.docs.length} Dokument(e) …`; toastEl.classList.add('show'); }
-
-  const result = await indexSystemDocs(systemId, (name, done, total) => {
-    if (toastEl) toastEl.innerHTML = `⚡ ${done+1}/${total}: ${name}`;
-  });
-
-  setTimeout(() => toastEl?.classList.remove('show'), 3000);
-  toast(`✅ ${result.indexed} Dokument(e) indexiert — Semantische Suche aktiv`);
-
-  if (typeof addNotif === 'function')
-    addNotif('📚', 'Wissens-Index aktualisiert', `${result.indexed} Dokumente für "${sys.name}"`, () => {});
 }
 
 function log_rag(msg) {
@@ -380,8 +313,4 @@ window.buildRAGContext   = buildRAGContext;
 window.getDetailLevel    = getDetailLevel;
 window.buildFullContext  = buildFullContext;
 window.semanticSearch    = semanticSearch;
-window.indexDocument     = indexDocument;
-window.indexSystemDocs   = indexSystemDocs;
 window.showRAGStatus     = showRAGStatus;
-window.runIndexing       = runIndexing;
-window.chunkDocument     = chunkDocument;

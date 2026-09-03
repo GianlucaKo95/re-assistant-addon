@@ -1,6 +1,6 @@
 {
   "name": "RE-Assistent",
-  "version": "4.3.3",
+  "version": "4.3.4",
   "slug": "re_assistant",
   "description": "KI-gestütztes Requirements Engineering — PostgreSQL, WebSockets, Enterprise-ready.",
   "url": "https://github.com/GianlucaKo95/re-assistant-addon",
@@ -17,13 +17,15 @@
     "admin_password": "admin123",
     "language": "de",
     "log_level": "info",
-    "database_url": ""
+    "database_url": "",
+    "trusted_proxy_hops": 1
   },
   "schema": {
     "admin_password": "str",
     "language": "list(de|en)",
     "log_level": "list(trace|debug|info|notice|warning|error|fatal)",
-    "database_url": "str?"
+    "database_url": "str?",
+    "trusted_proxy_hops": "int(0,10)"
   },
   "map": [
     "data:rw"
@@ -32,7 +34,8 @@
     "ADMIN_PASSWORD": "{{admin_password}}",
     "LANGUAGE": "{{language}}",
     "LOG_LEVEL": "{{log_level}}",
-    "DATABASE_URL": "{{database_url}}"
+    "DATABASE_URL": "{{database_url}}",
+    "TRUSTED_PROXY_HOPS": "{{trusted_proxy_hops}}"
   },
   "ports": {
     "3000/tcp": 3000

@@ -228,11 +228,6 @@ async function addFolder(systemId) {
   S.systems = await window.api.getSystems();
   renderSystems();
   toast(`✅ ${res.added?.length || 0} Datei(en) aus Ordner hochgeladen`);
-  if (typeof indexSystemDocs === 'function') {
-    indexSystemDocs(systemId).then(r => {
-      if (r.indexed > 0) toast(`🧠 ${r.indexed} Dokument(e) indexiert`);
-    });
-  }
 }
 
 async function addFiles(systemId) {
@@ -244,11 +239,6 @@ async function addFiles(systemId) {
   S.systems = await window.api.getSystems();
   renderSystems();
   toast(`✅ ${res.added?.length || 0} Datei(en) hochgeladen`);
-  if (typeof indexSystemDocs === 'function') {
-    indexSystemDocs(systemId).then(r => {
-      if (r.indexed > 0) toast(`🧠 ${r.indexed} Dokument(e) indexiert`);
-    });
-  }
 }
 
 async function remDoc(sysId, docId) {

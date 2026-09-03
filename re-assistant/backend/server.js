@@ -23,9 +23,22 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.3';
+const APP_VERSION = '4.3.4';
 
 const app      = express();
+
+// ── Trust Proxy ───────────────────────────────────────────────
+// Das Add-on hat IMMER genau einen eigenen Reverse-Proxy-Hop davor (das
+// interne nginx aus nginx.conf, das X-Forwarded-For korrekt per
+// $proxy_add_x_forwarded_for weiterreicht) — das ist der sichere
+// Standardwert. Läuft die Instanz zusätzlich hinter einem EIGENEN externen
+// Reverse-Proxy (eigene Domain, TLS-Terminierung), muss die Add-on-Option
+// "trusted_proxy_hops" entsprechend erhöht werden (siehe config.json) —
+// sonst validiert express-rate-limit den X-Forwarded-For-Header nicht
+// (ERR_ERL_UNEXPECTED_X_FORWARDED_FOR) und limitiert im Zweifel alle
+// Nutzer gemeinsam über eine falsch ermittelte IP.
+const trustedProxyHops = parseInt(process.env.TRUSTED_PROXY_HOPS, 10);
+app.set('trust proxy', Number.isFinite(trustedProxyHops) && trustedProxyHops >= 0 ? trustedProxyHops : 1);
 
 // ── Rate-Limiting ─────────────────────────────────────────────
 const apiLimiter = rateLimit({
@@ -502,12 +515,26 @@ app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req
   try {
     const sys = mapSystem(await queryOne('SELECT * FROM systems WHERE id=$1', [req.params.id]));
     if (!sys) return res.status(404).json({ error: 'System nicht gefunden' });
-    const docs  = sys.docs || [];
+    let docs    = sys.docs || [];
     const added = [];
     const indexed = [];
 
+    // Bereits indexierte Doc-IDs — ein reiner Namensabgleich würde einen
+    // erneuten Upload einer Datei, deren Indexierung beim ersten Mal
+    // fehlgeschlagen ist (0 Embeddings), fälschlich als "schon vorhanden"
+    // überspringen und den Nutzer ohne jede Rückmeldung im gleichen
+    // kaputten Zustand belassen.
+    const indexedRows = await queryAll('SELECT DISTINCT doc_id FROM embeddings WHERE system_id=$1', [req.params.id]);
+    const indexedIds  = new Set(indexedRows.map(r => r.doc_id));
+
     for (const file of (req.files||[])) {
-      if (docs.find(d => d.name === file.originalname)) continue;
+      const existing = docs.find(d => d.name === file.originalname);
+      if (existing) {
+        if (indexedIds.has(existing.id)) continue; // echtes Duplikat — bereits erfolgreich indexiert
+        // Nie erfolgreich indexierte, alte Metadaten entfernen — der
+        // erneute Upload unten läuft dann wie ein frischer Upload.
+        docs = docs.filter(d => d.id !== existing.id);
+      }
 
       // Text extrahieren
       const text = await extractFileText(file);
@@ -1210,14 +1237,22 @@ app.get('/api/systems/:id/rag-status', requireAuth, async (req, res) => {
   try {
     const sys      = mapSystem(await queryOne('SELECT * FROM systems WHERE id=$1', [req.params.id]));
     if (!sys) return res.status(404).json({ error: 'System nicht gefunden' });
-    const chunks   = await queryOne('SELECT COUNT(*) as c FROM embeddings WHERE system_id=$1', [req.params.id]);
-    const docCount = await queryOne('SELECT COUNT(DISTINCT doc_id) as c FROM embeddings WHERE system_id=$1', [req.params.id]);
+    const chunks     = await queryOne('SELECT COUNT(*) as c FROM embeddings WHERE system_id=$1', [req.params.id]);
+    const indexedRows = await queryAll('SELECT DISTINCT doc_id FROM embeddings WHERE system_id=$1', [req.params.id]);
+    const indexedIds  = new Set(indexedRows.map(r => r.doc_id));
+    // Dokumente ohne jeden Embedding-Eintrag — z.B. weil die Hintergrund-
+    // Indexierung beim Upload fehlgeschlagen ist. Der Originaltext wird
+    // beim Upload nicht gespeichert, also lässt sich das NUR durch
+    // erneutes Hochladen derselben Datei beheben, nicht durch einen
+    // "Jetzt indexieren"-Knopf ohne neue Dateiauswahl.
+    const missingDocs = (sys.docs||[]).filter(d => !indexedIds.has(d.id)).map(d => ({ id: d.id, name: d.name }));
     res.json({
       systemId:    req.params.id,
       totalChunks: parseInt(chunks?.c || 0),
-      indexedDocs: parseInt(docCount?.c || 0),
+      indexedDocs: indexedIds.size,
       totalDocs:   (sys.docs||[]).length,
       ready:       parseInt(chunks?.c || 0) > 0,
+      missingDocs,
     });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
