@@ -23,7 +23,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.6';
+const APP_VERSION = '4.3.7';
 
 const app      = express();
 
@@ -2850,6 +2850,16 @@ async function buildSystemContextCache(systemId) {
       .map(g => `### ${g}\n${groupSummaries[g]}`)
       .join('\n\n');
 
+    // 35000 Zeichen (~8-9k Tokens) war hier viel zu knapp bemessen — bei
+    // Systemen mit vielen Gruppen (z.B. nach der Gruppen-Aufteilung ab 8
+    // Dateien) übersteigt groupsCombined das schnell, und da groupNames
+    // alphabetisch sortiert ist, fielen später sortierte Module komplett
+    // aus der finalen Zusammenfassung (z.B. "(root)" landet durch die
+    // Klammer immer ganz vorne). Die genutzten Modelle (Claude/Groq
+    // gpt-oss-120b) haben Kontextfenster von 128k+ Tokens, daher hier
+    // deutlich großzügiger budgetieren statt blind zu kappen.
+    const FINAL_PROMPT_CONTEXT_CHARS = 120000;
+
     const finalPrompt = 'Du bist ein erfahrener Software-Architekt und Senior-Entwickler mit 20 Jahren Erfahrung.'
       + ' Erstelle eine präzise, technisch tiefgehende Systemdokumentation auf Deutsch.'
       + ' Nutze AUSSCHLIESSLICH Informationen aus den Modul-Zusammenfassungen — keine Vermutungen.'
@@ -2879,7 +2889,7 @@ async function buildSystemContextCache(systemId) {
       + '\n\n## 8. Besonderheiten & technische Highlights'
       + '\nBesondere Implementierungen, Optimierungen, bekannte Eigenheiten.'
       + '\n\nModul-Zusammenfassungen:\n'
-      + groupsCombined.substring(0, 35000)
+      + groupsCombined.substring(0, FINAL_PROMPT_CONTEXT_CHARS)
       + '\n\nWICHTIG: Nutze AUSSCHLIESSLICH Informationen aus den Zusammenfassungen.'
       + ' Nenne echte Dateinamen, Funktionsnamen, Library-Namen. Keine Platzhalter. Keine Floskeln.';
 
@@ -2890,7 +2900,7 @@ async function buildSystemContextCache(systemId) {
       finalSummary = await aiCallUnified(apiCfg, finalPrompt, 8000, 'balanced', 120000, 1);
     } catch(e) {
       log('warning', `Cache: Finale Zusammenfassung fehlgeschlagen, nutze Modul-Zusammenfassungen: ${e.message}`);
-      finalSummary = `Systemübersicht (automatisch zusammengestellt aus ${allSummaries.length} Dateien in ${groupNames.length} Modulen):\n\n${groupsCombined.substring(0, 35000)}`;
+      finalSummary = `Systemübersicht (automatisch zusammengestellt aus ${allSummaries.length} Dateien in ${groupNames.length} Modulen):\n\n${groupsCombined.substring(0, FINAL_PROMPT_CONTEXT_CHARS)}`;
     }
 
     const topicMatches = finalSummary.match(/\*\*([^*]+)\*\*/g) || [];
