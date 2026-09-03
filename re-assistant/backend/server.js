@@ -23,7 +23,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.7';
+const APP_VERSION = '4.3.8';
 
 const app      = express();
 
@@ -293,7 +293,19 @@ async function aiCallUnified(apiCfg, prompt, maxTokens = 1000, tier = 'balanced'
       if (!response.ok) {
         const errText = await response.text().catch(() => '');
         if ((response.status === 429 || response.status >= 500) && attempt < retries) {
-          await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+          // 429 (Rate Limit) braucht einen deutlich längeren Backoff als 5xx —
+          // TPM-Limits (siehe z.B. Groqs 8000-Token/Min-Grenze auf dem
+          // kostenlosen Tier) erholen sich über zig Sekunden, nicht 1.5s.
+          // Retry-After-Header nutzen falls vorhanden, sonst konservativ warten.
+          let waitMs;
+          if (response.status === 429) {
+            const retryAfterSec = parseFloat(response.headers.get('retry-after'));
+            waitMs = Number.isFinite(retryAfterSec) ? retryAfterSec * 1000 : 8000 * (attempt + 1);
+            waitMs = Math.min(waitMs, 20000);
+          } else {
+            waitMs = 1500 * (attempt + 1);
+          }
+          await new Promise(r => setTimeout(r, waitMs));
           continue;
         }
         throw new Error(`${apiCfg.provider} ${response.status}: ${errText.substring(0, 200)}`);
@@ -2812,8 +2824,11 @@ async function buildSystemContextCache(systemId) {
     await updateStatus('building', { build_phase: 'groups', groups_total: groupNames.length, groups_done: 0 });
 
     // ── Schritt 3: Pro Gruppe eine Zwischenzusammenfassung ──────
+    // GROUP_BATCH klein halten — Groqs kostenloser Tier begrenzt auf nur
+    // 8000 Tokens/Minute (TPM); 4 parallele Calls reißen dieses Limit
+    // sofort, unabhängig vom Retry-Backoff in aiCallUnified.
     const groupSummaries = {};
-    const GROUP_BATCH = 4;
+    const GROUP_BATCH = 2;
     const groupEntries = Object.entries(groups);
 
     let groupsDone = 0;
@@ -2834,7 +2849,7 @@ async function buildSystemContextCache(systemId) {
           + '\n4. Datenfluss: was kommt rein, was geht raus'
           + '\n\nDateien:\n' + fileList.substring(0, 8000);
         try {
-          groupSummaries[groupName] = await aiCallUnified(apiCfg, prompt, 800, 'balanced', 60000, 1);
+          groupSummaries[groupName] = await aiCallUnified(apiCfg, prompt, 800, 'balanced', 60000, 2);
         } catch(e) {
           log('warning', `Cache: Gruppe ${groupName} fehlgeschlagen: ${e.message}`);
           groupSummaries[groupName] = fileList.substring(0, 500);
@@ -2895,9 +2910,13 @@ async function buildSystemContextCache(systemId) {
 
     await updateStatus('building', { build_phase: 'final' });
 
+    // max_tokens hier bewusst niedriger als früher (8000): auf einem
+    // TPM-begrenzten Tier (z.B. Groq kostenlos: 8000 Tokens/Minute) fordert
+    // ein einzelner Call mit max_tokens=8000 praktisch das GESAMTE
+    // Minutenbudget an — plus Prompt-Tokens reißt das die Grenze fast immer.
     let finalSummary;
     try {
-      finalSummary = await aiCallUnified(apiCfg, finalPrompt, 8000, 'balanced', 120000, 1);
+      finalSummary = await aiCallUnified(apiCfg, finalPrompt, 4000, 'balanced', 120000, 2);
     } catch(e) {
       log('warning', `Cache: Finale Zusammenfassung fehlgeschlagen, nutze Modul-Zusammenfassungen: ${e.message}`);
       finalSummary = `Systemübersicht (automatisch zusammengestellt aus ${allSummaries.length} Dateien in ${groupNames.length} Modulen):\n\n${groupsCombined.substring(0, FINAL_PROMPT_CONTEXT_CHARS)}`;
