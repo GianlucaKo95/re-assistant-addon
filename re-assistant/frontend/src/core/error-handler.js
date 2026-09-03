@@ -44,9 +44,12 @@ async function retryConnection() {
 }
 
 // ── API-Key Prüfung ───────────────────────────────────────────
-function showApiKeyWarning() {
+const PROVIDER_LABELS = { anthropic: 'Anthropic', grok: 'Grok', groq: 'Groq' };
+
+function showApiKeyWarning(provider) {
   const existing = document.getElementById('apikey-warning');
   if (existing) return;
+  const label = PROVIDER_LABELS[provider] || 'KI-Anbieter';
   const warn = document.createElement('div');
   warn.id = 'apikey-warning';
   warn.style.cssText = `
@@ -56,7 +59,7 @@ function showApiKeyWarning() {
     display:flex;align-items:center;justify-content:space-between;
   `;
   warn.innerHTML = `
-    <span>⚠ Kein Anthropic API-Key konfiguriert — KI-Funktionen sind deaktiviert.</span>
+    <span>⚠ Kein ${esc(label)} API-Key konfiguriert — KI-Funktionen sind deaktiviert.</span>
     <div style="display:flex;gap:6px;align-items:center">
       <button onclick="switchView('settings');document.getElementById('apikey-warning').remove();"
         style="background:var(--ambbg);border:1px solid rgba(251,191,36,.4);
@@ -92,9 +95,16 @@ window.callAPI = async function(messages, system, maxTokens) {
   try {
     const res = await _originalCallAPI(messages, system, maxTokens);
     if (!res.ok) {
-      // API-Key fehlt oder ungültig
-      if (res.text?.includes('API-Fehler') || res.text?.includes('401') || res.text?.includes('403')) {
-        showApiKeyWarning();
+      // "Kein Key konfiguriert" nur zeigen, wenn der Server das wirklich so
+      // meldet (res.noKeyConfigured) — ein 401/403 vom Provider selbst (z.B.
+      // ein falscher/abgelaufener Groq-Key, obwohl EIN Key hinterlegt ist)
+      // ist ein anderer Fehler und darf nicht als "kein Key" angezeigt
+      // werden, sonst meldet die Warnung fälschlich einen Provider, der gar
+      // nicht aktiv ist.
+      if (res.noKeyConfigured) {
+        showApiKeyWarning(res.provider);
+      } else if (res.status === 401 || res.status === 403) {
+        toast('⚠ KI-Anbieter hat die Anfrage abgelehnt (' + res.status + ') — Key evtl. ungültig, abgelaufen oder ohne Berechtigung.', 6000);
       }
       // Rate Limit
       if (res.text?.includes('529') || res.text?.includes('rate') || res.text?.includes('overloaded')) {
