@@ -23,7 +23,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.9';
+const APP_VERSION = '4.3.10';
 
 const app      = express();
 
@@ -2878,33 +2878,38 @@ async function buildSystemContextCache(systemId) {
     // deutlich großzügiger budgetieren statt blind zu kappen.
     const FINAL_PROMPT_CONTEXT_CHARS = 120000;
 
-    const finalPrompt = 'Du bist ein erfahrener Software-Architekt und Senior-Entwickler mit 20 Jahren Erfahrung.'
-      + ' Erstelle eine präzise, technisch tiefgehende Systemdokumentation auf Deutsch.'
+    const finalPrompt = 'Du bist sowohl erfahrener Business-Analyst als auch Software-Architekt mit 20 Jahren Erfahrung.'
+      + ' Erstelle eine präzise Systemdokumentation auf Deutsch, die sowohl fachlich-funktional als auch technisch tiefgehend ist.'
       + ' Nutze AUSSCHLIESSLICH Informationen aus den Modul-Zusammenfassungen — keine Vermutungen.'
       + ' Nenne IMMER echte Dateinamen, Funktionsnamen, Bibliotheken und API-Endpunkte aus den Zusammenfassungen.'
       + '\n\nSystem: ' + allSummaries.length + ' Dateien in ' + groupNames.length + ' Modulen.'
-      + '\n\n## 1. Systemüberblick'
+      + '\n\n## 1. Was macht das System? (fachlich, für Nicht-Techniker)'
+      + '\nErkläre in einfacher, nicht-technischer Sprache: Welches Problem löst das System, für wen,'
+      + ' und welchen Nutzen/Mehrwert bietet es? (3-5 Sätze, KEINE Technologienamen oder Frameworks hier.)'
+      + '\nListe danach die wichtigsten Funktionen/Fähigkeiten aus Sicht der Nutzer als Bullet-Liste'
+      + ' (was kann ein Nutzer mit dem System tun — nicht wie ist es implementiert).'
+      + '\n\n## 2. Systemüberblick (technisch)'
       + '\nWas ist das System KONKRET? Technologie-Stack, Zielgruppe, Hauptzweck. (5-8 Sätze)'
       + ' Nenne die wichtigsten verwendeten Technologien und Frameworks.'
-      + '\n\n## 2. Technologie-Stack (vollständig)'
+      + '\n\n## 3. Technologie-Stack (vollständig)'
       + '\n- **Frontend**: alle erkannten Frameworks, Libraries, Build-Tools (mit Versionen)'
       + '\n- **Backend**: Server-Framework, Runtime, Sprache'
       + '\n- **Datenbank**: ORM, Datenbank-Engine, Schema'
       + '\n- **Externe Integrationen**: ALLE erkannten APIs, Protokolle, Services (CalDAV, Bring!, Push, OAuth, etc.)'
       + '\n- **Deployment**: Docker, PWA, TWA, CI/CD, Hosting'
-      + '\n\n## 3. Module & Komponenten (für jedes Modul)'
+      + '\n\n## 4. Module & Komponenten (für jedes Modul)'
       + '\nFormat: **Modulname** (Pfad): Zweck | Hauptfunktionen (mit echten Funktionsnamen) | Abhängigkeiten'
-      + '\n\n## 4. Vollständige Funktionsliste'
+      + '\n\n## 5. Vollständige Funktionsliste'
       + '\nALLE Funktionen gruppiert nach Bereich — keine Auslassungen.'
       + ' Jede Funktion mit: Name, Dateipfad, kurze Beschreibung.'
-      + '\n\n## 5. Datenflüsse & End-to-End-Prozesse'
+      + '\n\n## 6. Datenflüsse & End-to-End-Prozesse'
       + '\nMindestens 5 konkrete Flows: z.B. "Kalendereintrag erstellen: Component → API → DB → CalDAV-Sync"'
       + ' Mit echten Dateinamen und Funktionsnamen.'
-      + '\n\n## 6. API-Endpunkte & Schnittstellen'
+      + '\n\n## 7. API-Endpunkte & Schnittstellen'
       + '\nAlle erkannten API-Routen, externe Protokolle (CalDAV, REST, WebSocket), Auth-Mechanismen.'
-      + '\n\n## 7. Abhängigkeitsketten'
+      + '\n\n## 8. Abhängigkeitsketten'
       + '\nWelche Module importieren welche? Kritische Abhängigkeiten.'
-      + '\n\n## 8. Besonderheiten & technische Highlights'
+      + '\n\n## 9. Besonderheiten & technische Highlights'
       + '\nBesondere Implementierungen, Optimierungen, bekannte Eigenheiten.'
       + '\n\nModul-Zusammenfassungen:\n'
       + groupsCombined.substring(0, FINAL_PROMPT_CONTEXT_CHARS)
@@ -2918,8 +2923,10 @@ async function buildSystemContextCache(systemId) {
     // fordert dort praktisch das GESAMTE Minutenbudget an und reißt die
     // Grenze fast immer. Anthropic/Grok haben dieses enge Limit nicht,
     // dort unnötig zu kürzen würde nur die Vollständigkeit der finalen
-    // Zusammenfassung verschlechtern.
-    const finalMaxTokens = isRateLimitedTier ? 4000 : 8000;
+    // Zusammenfassung verschlechtern. Auf nicht-limitierten Tiers etwas
+    // mehr Budget als zuvor, da der Prompt jetzt einen zusätzlichen
+    // fachlichen Abschnitt (Sektion 1) anfordert.
+    const finalMaxTokens = isRateLimitedTier ? 4000 : 9000;
     let finalSummary;
     try {
       finalSummary = await aiCallUnified(apiCfg, finalPrompt, finalMaxTokens, 'balanced', 120000, 2);
