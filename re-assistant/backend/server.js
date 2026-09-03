@@ -23,7 +23,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.8';
+const APP_VERSION = '4.3.9';
 
 const app      = express();
 
@@ -2824,11 +2824,14 @@ async function buildSystemContextCache(systemId) {
     await updateStatus('building', { build_phase: 'groups', groups_total: groupNames.length, groups_done: 0 });
 
     // ── Schritt 3: Pro Gruppe eine Zwischenzusammenfassung ──────
-    // GROUP_BATCH klein halten — Groqs kostenloser Tier begrenzt auf nur
-    // 8000 Tokens/Minute (TPM); 4 parallele Calls reißen dieses Limit
-    // sofort, unabhängig vom Retry-Backoff in aiCallUnified.
+    // GROUP_BATCH nur für Groq klein halten — dessen kostenloser Tier
+    // begrenzt auf nur 8000 Tokens/Minute (TPM), 4 parallele Calls reißen
+    // das sofort, unabhängig vom Retry-Backoff in aiCallUnified. Anthropic
+    // und Grok haben dieses enge Limit nicht — dort unnötig zu drosseln
+    // verlangsamt den Build nur, ohne einen echten Fehler zu vermeiden.
+    const isRateLimitedTier = apiCfg.provider === 'groq';
     const groupSummaries = {};
-    const GROUP_BATCH = 2;
+    const GROUP_BATCH = isRateLimitedTier ? 2 : 4;
     const groupEntries = Object.entries(groups);
 
     let groupsDone = 0;
@@ -2910,13 +2913,16 @@ async function buildSystemContextCache(systemId) {
 
     await updateStatus('building', { build_phase: 'final' });
 
-    // max_tokens hier bewusst niedriger als früher (8000): auf einem
-    // TPM-begrenzten Tier (z.B. Groq kostenlos: 8000 Tokens/Minute) fordert
-    // ein einzelner Call mit max_tokens=8000 praktisch das GESAMTE
-    // Minutenbudget an — plus Prompt-Tokens reißt das die Grenze fast immer.
+    // max_tokens nur auf einem TPM-begrenzten Tier (Groq kostenlos: 8000
+    // Tokens/Minute) absenken — ein einzelner Call mit max_tokens=8000
+    // fordert dort praktisch das GESAMTE Minutenbudget an und reißt die
+    // Grenze fast immer. Anthropic/Grok haben dieses enge Limit nicht,
+    // dort unnötig zu kürzen würde nur die Vollständigkeit der finalen
+    // Zusammenfassung verschlechtern.
+    const finalMaxTokens = isRateLimitedTier ? 4000 : 8000;
     let finalSummary;
     try {
-      finalSummary = await aiCallUnified(apiCfg, finalPrompt, 4000, 'balanced', 120000, 2);
+      finalSummary = await aiCallUnified(apiCfg, finalPrompt, finalMaxTokens, 'balanced', 120000, 2);
     } catch(e) {
       log('warning', `Cache: Finale Zusammenfassung fehlgeschlagen, nutze Modul-Zusammenfassungen: ${e.message}`);
       finalSummary = `Systemübersicht (automatisch zusammengestellt aus ${allSummaries.length} Dateien in ${groupNames.length} Modulen):\n\n${groupsCombined.substring(0, FINAL_PROMPT_CONTEXT_CHARS)}`;
