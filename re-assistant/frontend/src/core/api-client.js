@@ -95,7 +95,15 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
 
     if (!res.ok) {
       const msg = data?.error?.message || data?.error || `HTTP ${res.status}`;
-      return { ok: false, text: `API-Fehler: ${msg}` };
+      // status/noKeyConfigured/provider durchreichen: nur wenn der Server
+      // wirklich "kein Key konfiguriert" meldet (debugProvider gesetzt) ist
+      // es tatsächlich das — jeder andere 401/403 kommt vom Provider selbst
+      // zurück (falscher/abgelaufener Key, falsches Modell, Rate-Limit) und
+      // darf NICHT als "kein Key" missverstanden werden.
+      return {
+        ok: false, text: `API-Fehler: ${msg}`, status: res.status,
+        noKeyConfigured: !!data?.debugProvider, provider: data?.debugProvider,
+      };
     }
 
     const text = data.content?.find(c => c.type === 'text')?.text || '';

@@ -23,7 +23,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.4';
+const APP_VERSION = '4.3.5';
 
 const app      = express();
 
@@ -760,6 +760,7 @@ app.delete('/api/systems/:sysId/docs/:docId', requireAuth, async (req, res) => {
     const docs = (sys.docs||[]).filter(d => d.id !== req.params.docId);
     await query('UPDATE systems SET docs=$1 WHERE id=$2', [JSON.stringify(docs), req.params.sysId]);
     await query('DELETE FROM embeddings WHERE doc_id=$1', [req.params.docId]);
+    await query('DELETE FROM doc_summaries WHERE doc_id=$1', [req.params.docId]);
     // Cache neu aufbauen nach Löschung
     await query("INSERT INTO system_context_cache (system_id, build_status) VALUES ($1,'outdated') ON CONFLICT (system_id) DO UPDATE SET build_status='outdated'", [req.params.sysId]).catch(() => {});
     setImmediate(() => buildSystemContextCache(req.params.sysId));
@@ -2663,6 +2664,19 @@ async function buildSystemContextCache(systemId) {
       byDoc[c.doc_id].texts.push(c.chunk_text);
     }
     const docIds = Object.keys(byDoc);
+
+    // Verwaiste Datei-Zusammenfassungen entfernen — doc_summaries wird nie
+    // beim Löschen/Ersetzen eines Dokuments aufgeräumt (Bug, siehe
+    // DELETE .../docs/:docId weiter oben). Ohne diese Bereinigung würden
+    // längst gelöschte Dateien (z.B. entfernte SQL-Skripte) für IMMER in
+    // jedem künftigen Systemüberblick auftauchen, weil Schritt 2 unten
+    // sonst blind alle je gecachten Zusammenfassungen verwendet statt nur
+    // die der aktuell vorhandenen Dokumente.
+    await query(
+      'DELETE FROM doc_summaries WHERE system_id=$1 AND doc_id != ALL($2::text[])',
+      [systemId, docIds]
+    ).catch(e => log('warning', `Cache: Aufräumen verwaister Zusammenfassungen fehlgeschlagen: ${e.message}`));
+
     // Fortschritt zurücksetzen — verhindert dass Frontend alte Werte vom ready_no_ai-Build zeigt
     await updateStatus('building', {
       docs_total:     docIds.length,
