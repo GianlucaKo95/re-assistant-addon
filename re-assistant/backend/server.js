@@ -620,6 +620,12 @@ function extractFunctions(text, docName) {
   const funcPatterns = [
     /^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)/,
     /^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:function|\(|\w+\s*=>)/,
+    // Callback-Handler auf einer Member-Expression, z.B. Deno.serve(async
+    // (req) => {, app.get('/x', (req,res) => {, supabase.on('event', () => {
+    // — ohne diesen Pattern fällt so ein Handler (oft die GESAMTE Logik
+    // einer Edge Function) komplett durch alle anderen Muster und landet
+    // unbenannt im "Top-Level"-Bucket statt als eigene, klar benannte Funktion.
+    /^\s*(?:export\s+)?(?:default\s+)?([\w.]+)\s*\(.*=>\s*\{\s*$/,
     /^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{/,
     /^\s*(?:export\s+)?class\s+(\w+)/,
     // Python
@@ -718,11 +724,34 @@ function chunkTextBackend(text, docName, chunkSize = 1800, overlap = 200) {
         .filter((_, i) => !funcLines.has(i))
         .join('\n').trim();
       if (topLevel.length > 100) {
-        chunks.push({
-          text: importHeader + '// Top-Level / Exports / Konfiguration:\n' + topLevel.substring(0, chunkSize),
-          docName,
-          functionName: '__top_level__',
-        });
+        if (topLevel.length <= chunkSize) {
+          chunks.push({
+            text: importHeader + '// Top-Level / Exports / Konfiguration:\n' + topLevel,
+            docName,
+            functionName: '__top_level__',
+          });
+        } else {
+          // Wie bei überlangen Funktionen (oben) in mehrere Chunks aufteilen
+          // statt stumpf bei chunkSize abzuschneiden — sonst geht bei Dateien
+          // mit viel "unerkanntem" Code der Großteil der Datei verloren.
+          // extractFunctions() erkennt nur einfache "name(...) {"-Deklarationen;
+          // sehr verbreitete Callback-Patterns wie Deno.serve(async (req) => {…}),
+          // app.get('/x', (req,res) => {…}) oder .on('event', () => {…}) fallen
+          // NICHT darunter und landen komplett hier im Top-Level-Bucket — bei
+          // einer Edge Function, die im Wesentlichen aus so einem Handler
+          // besteht, wären das vorher >90% der Datei, die nach 1800 Zeichen
+          // gekappt wurden (die eigentliche Business-/Spiellogik).
+          const topLines = topLevel.split('\n');
+          const LINES_PER_CHUNK = 70;
+          for (let i = 0; i < topLines.length; i += LINES_PER_CHUNK - 10) {
+            const slice = topLines.slice(i, i + LINES_PER_CHUNK).join('\n');
+            chunks.push({
+              text: importHeader + `// Top-Level / Exports / Konfiguration (Teil ${Math.floor(i/LINES_PER_CHUNK)+1}):\n` + slice,
+              docName,
+              functionName: '__top_level__',
+            });
+          }
+        }
       }
 
       return chunks.length > 0 ? chunks : [{ text: importHeader + text.substring(0, chunkSize), docName }];
