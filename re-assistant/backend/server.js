@@ -23,7 +23,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.11';
+const APP_VERSION = '4.3.14';
 
 const app      = express();
 
@@ -229,8 +229,8 @@ async function trackReqChanges(oldReq, newReq, userId, userName) {
 const PROVIDER_MODELS = {
   anthropic: {
     fast:      'claude-haiku-4-5-20251001',
-    balanced:  'claude-sonnet-4-6',
-    powerful:  'claude-opus-4-6',
+    balanced:  'claude-sonnet-5',   // günstiger UND neuer als 4.6 ($2/$10 vs $3/$15)
+    powerful:  'claude-opus-5',     // gleicher Preis wie 4.6 ($5/$25), reines Upgrade
   },
   groq: {
     // Stand: Groqs Llama-3.x-Modelle sind laut console.groq.com/docs/models
@@ -503,8 +503,24 @@ app.post('/api/systems/:id/id-schema', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// pdfjs-dist ist ESM-only (kein CJS-Build mehr ab v4) — per dynamischem
+// import() nachladen und cachen, statt bei jedem Aufruf neu zu importieren.
+// Das ältere "pdf-parse"-Paket wurde bewusst NICHT verwendet: sein
+// mitgeliefertes pdf.js (Stand ~2020) scheiterte im Test bereits an einem
+// von pdfkit ganz regulär erzeugten, validen PDF ("bad XRef entry") — und
+// die zuvor getestete pdfjs-dist-Version 3.x trägt eine bekannte
+// High-Severity-Lücke (GHSA-wgrm-67xf-hhpq, beliebige JS-Ausführung beim
+// Öffnen eines präparierten PDFs), was bei nutzergesteuerten Uploads
+// inakzeptabel ist. v4.10.38 (aktuell, gepatcht) + der empfohlene
+// "legacy"-Node-Build sind daher die einzig sichere Kombination hier.
+let _pdfjsLib = null;
+async function getPdfjs() {
+  if (!_pdfjsLib) _pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  return _pdfjsLib;
+}
+
 // ── Textextraktion aus hochgeladenen Dateien ───────────────────
-// .docx → mammoth (echtes XML-Parsing); alles andere → Rohtext (bisheriges Verhalten)
+// .docx → mammoth (echtes XML-Parsing); .pdf → pdfjs-dist; alles andere → Rohtext
 async function extractFileText(file) {
   const ext = (file.originalname.split('.').pop() || '').toLowerCase();
   if (ext === 'docx') {
@@ -513,6 +529,27 @@ async function extractFileText(file) {
       return value || '';
     } catch(e) {
       log('warning', `Word-Textextraktion fehlgeschlagen (${file.originalname}): ${e.message}`);
+      return '';
+    }
+  }
+  if (ext === 'pdf') {
+    // Vorher: PDFs wurden (wie jede andere Datei) als rohe UTF-8-Bytes gelesen —
+    // bei einem binären/komprimierten Format wie PDF ergibt das nur Datenmüll,
+    // der trotzdem "erfolgreich" indexiert wurde, obwohl .pdf im Upload-Dialog
+    // als unterstützter Typ beworben wird.
+    try {
+      const pdfjsLib = await getPdfjs();
+      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(file.buffer), verbosity: 0 }).promise;
+      let text = '';
+      for (let i = 1; i <= doc.numPages; i++) {
+        const page    = await doc.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map(it => it.str).join(' ') + '\n';
+      }
+      await doc.destroy();
+      return text;
+    } catch(e) {
+      log('warning', `PDF-Textextraktion fehlgeschlagen (${file.originalname}): ${e.message}`);
       return '';
     }
   }
@@ -620,6 +657,12 @@ function extractFunctions(text, docName) {
   const funcPatterns = [
     /^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)/,
     /^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:function|\(|\w+\s*=>)/,
+    // Callback-Handler auf einer Member-Expression, z.B. Deno.serve(async
+    // (req) => {, app.get('/x', (req,res) => {, supabase.on('event', () => {
+    // — ohne diesen Pattern fällt so ein Handler (oft die GESAMTE Logik
+    // einer Edge Function) komplett durch alle anderen Muster und landet
+    // unbenannt im "Top-Level"-Bucket statt als eigene, klar benannte Funktion.
+    /^\s*(?:export\s+)?(?:default\s+)?([\w.]+)\s*\(.*=>\s*\{\s*$/,
     /^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{/,
     /^\s*(?:export\s+)?class\s+(\w+)/,
     // Python
@@ -718,11 +761,34 @@ function chunkTextBackend(text, docName, chunkSize = 1800, overlap = 200) {
         .filter((_, i) => !funcLines.has(i))
         .join('\n').trim();
       if (topLevel.length > 100) {
-        chunks.push({
-          text: importHeader + '// Top-Level / Exports / Konfiguration:\n' + topLevel.substring(0, chunkSize),
-          docName,
-          functionName: '__top_level__',
-        });
+        if (topLevel.length <= chunkSize) {
+          chunks.push({
+            text: importHeader + '// Top-Level / Exports / Konfiguration:\n' + topLevel,
+            docName,
+            functionName: '__top_level__',
+          });
+        } else {
+          // Wie bei überlangen Funktionen (oben) in mehrere Chunks aufteilen
+          // statt stumpf bei chunkSize abzuschneiden — sonst geht bei Dateien
+          // mit viel "unerkanntem" Code der Großteil der Datei verloren.
+          // extractFunctions() erkennt nur einfache "name(...) {"-Deklarationen;
+          // sehr verbreitete Callback-Patterns wie Deno.serve(async (req) => {…}),
+          // app.get('/x', (req,res) => {…}) oder .on('event', () => {…}) fallen
+          // NICHT darunter und landen komplett hier im Top-Level-Bucket — bei
+          // einer Edge Function, die im Wesentlichen aus so einem Handler
+          // besteht, wären das vorher >90% der Datei, die nach 1800 Zeichen
+          // gekappt wurden (die eigentliche Business-/Spiellogik).
+          const topLines = topLevel.split('\n');
+          const LINES_PER_CHUNK = 70;
+          for (let i = 0; i < topLines.length; i += LINES_PER_CHUNK - 10) {
+            const slice = topLines.slice(i, i + LINES_PER_CHUNK).join('\n');
+            chunks.push({
+              text: importHeader + `// Top-Level / Exports / Konfiguration (Teil ${Math.floor(i/LINES_PER_CHUNK)+1}):\n` + slice,
+              docName,
+              functionName: '__top_level__',
+            });
+          }
+        }
       }
 
       return chunks.length > 0 ? chunks : [{ text: importHeader + text.substring(0, chunkSize), docName }];

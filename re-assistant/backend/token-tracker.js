@@ -5,14 +5,16 @@
  */
 const { query, queryOne, queryAll } = require('./db');
 
-// Anthropic Preise (USD per 1M Tokens) — Stand 2025
+// Anthropic Preise (USD per 1M Tokens) — Stand 2026
 const MODEL_PRICING = {
-  'claude-opus-4-8':          { input: 15.00,  output: 75.00  },
-  'claude-opus-4-7':          { input: 15.00,  output: 75.00  },
-  'claude-opus-4-6':          { input: 15.00,  output: 75.00  },
+  'claude-opus-5':            { input: 5.00,   output: 25.00  },
+  'claude-opus-4-8':          { input: 5.00,   output: 25.00  },
+  'claude-opus-4-7':          { input: 5.00,   output: 25.00  },
+  'claude-opus-4-6':          { input: 5.00,   output: 25.00  },
+  'claude-sonnet-5':          { input: 2.00,   output: 10.00  },
   'claude-sonnet-4-6':        { input: 3.00,   output: 15.00  },
-  'claude-haiku-4-5-20251001':{ input: 0.80,   output: 4.00   },
-  'default':                  { input: 3.00,   output: 15.00  },
+  'claude-haiku-4-5-20251001':{ input: 1.00,   output: 5.00   },
+  'default':                  { input: 2.00,   output: 10.00  },
 };
 
 function calcCost(model, inputTokens, outputTokens) {

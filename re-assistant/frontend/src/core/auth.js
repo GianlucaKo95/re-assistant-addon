@@ -185,7 +185,7 @@ async function saveCfg() {
 
   // Provider + Modelle in S.settings — KEINE Keys
   S.settings.provider  = provider;
-  S.settings.model     = $('cfg-model')?.value      || 'claude-sonnet-4-6';
+  S.settings.model     = $('cfg-model')?.value      || 'claude-sonnet-5';
   S.settings.grokModel = $('cfg-grok-model')?.value  || 'grok-3-mini';
   S.settings.groqModel = $('cfg-groq-model')?.value  || 'openai/gpt-oss-120b';
   // Explizit sicherstellen dass keine Keys in S.settings landen
