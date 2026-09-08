@@ -23,7 +23,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.11';
+const APP_VERSION = '4.3.12';
 
 const app      = express();
 
@@ -229,8 +229,8 @@ async function trackReqChanges(oldReq, newReq, userId, userName) {
 const PROVIDER_MODELS = {
   anthropic: {
     fast:      'claude-haiku-4-5-20251001',
-    balanced:  'claude-sonnet-4-6',
-    powerful:  'claude-opus-4-6',
+    balanced:  'claude-sonnet-5',   // günstiger UND neuer als 4.6 ($2/$10 vs $3/$15)
+    powerful:  'claude-opus-5',     // gleicher Preis wie 4.6 ($5/$25), reines Upgrade
   },
   groq: {
     // Stand: Groqs Llama-3.x-Modelle sind laut console.groq.com/docs/models

@@ -218,7 +218,7 @@ const API = {
 
 function defaultSettings() {
   // API-Keys werden NICHT in localStorage gespeichert — nur in der DB (app_settings)
-  return { provider:'anthropic', model:'claude-sonnet-4-6', grokModel:'grok-3-mini', groqModel:'llama-3.3-70b-versatile', language:'de', detail:'standard', voiceURI:'', persona:'professional', jiraUrl:'', jiraEmail:'', jiraToken:'' };
+  return { provider:'anthropic', model:'claude-sonnet-5', grokModel:'grok-3-mini', groqModel:'llama-3.3-70b-versatile', language:'de', detail:'standard', voiceURI:'', persona:'professional', jiraUrl:'', jiraEmail:'', jiraToken:'' };
 }
 
 async function get(url) {
