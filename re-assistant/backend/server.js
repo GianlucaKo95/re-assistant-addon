@@ -23,7 +23,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.13';
+const APP_VERSION = '4.3.14';
 
 const app      = express();
 
@@ -503,8 +503,24 @@ app.post('/api/systems/:id/id-schema', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// pdfjs-dist ist ESM-only (kein CJS-Build mehr ab v4) — per dynamischem
+// import() nachladen und cachen, statt bei jedem Aufruf neu zu importieren.
+// Das ältere "pdf-parse"-Paket wurde bewusst NICHT verwendet: sein
+// mitgeliefertes pdf.js (Stand ~2020) scheiterte im Test bereits an einem
+// von pdfkit ganz regulär erzeugten, validen PDF ("bad XRef entry") — und
+// die zuvor getestete pdfjs-dist-Version 3.x trägt eine bekannte
+// High-Severity-Lücke (GHSA-wgrm-67xf-hhpq, beliebige JS-Ausführung beim
+// Öffnen eines präparierten PDFs), was bei nutzergesteuerten Uploads
+// inakzeptabel ist. v4.10.38 (aktuell, gepatcht) + der empfohlene
+// "legacy"-Node-Build sind daher die einzig sichere Kombination hier.
+let _pdfjsLib = null;
+async function getPdfjs() {
+  if (!_pdfjsLib) _pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  return _pdfjsLib;
+}
+
 // ── Textextraktion aus hochgeladenen Dateien ───────────────────
-// .docx → mammoth (echtes XML-Parsing); alles andere → Rohtext (bisheriges Verhalten)
+// .docx → mammoth (echtes XML-Parsing); .pdf → pdfjs-dist; alles andere → Rohtext
 async function extractFileText(file) {
   const ext = (file.originalname.split('.').pop() || '').toLowerCase();
   if (ext === 'docx') {
@@ -513,6 +529,27 @@ async function extractFileText(file) {
       return value || '';
     } catch(e) {
       log('warning', `Word-Textextraktion fehlgeschlagen (${file.originalname}): ${e.message}`);
+      return '';
+    }
+  }
+  if (ext === 'pdf') {
+    // Vorher: PDFs wurden (wie jede andere Datei) als rohe UTF-8-Bytes gelesen —
+    // bei einem binären/komprimierten Format wie PDF ergibt das nur Datenmüll,
+    // der trotzdem "erfolgreich" indexiert wurde, obwohl .pdf im Upload-Dialog
+    // als unterstützter Typ beworben wird.
+    try {
+      const pdfjsLib = await getPdfjs();
+      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(file.buffer), verbosity: 0 }).promise;
+      let text = '';
+      for (let i = 1; i <= doc.numPages; i++) {
+        const page    = await doc.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map(it => it.str).join(' ') + '\n';
+      }
+      await doc.destroy();
+      return text;
+    } catch(e) {
+      log('warning', `PDF-Textextraktion fehlgeschlagen (${file.originalname}): ${e.message}`);
       return '';
     }
   }

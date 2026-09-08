@@ -208,7 +208,17 @@ const API = {
       inp.onchange = () => {
         // Nur unterstützte Code/Dokument-Formate durchlassen
         const allowed = /\.(txt|md|docx|pdf|js|ts|tsx|jsx|py|java|cs|cpp|c|h|go|rb|php|swift|kt|rs|json|csv|yaml|yml|html|css|scss|sql|sh|bash|vue|dart|xml|toml|ini|env|config|r|scala|ex|exs)$/i;
-        const files = Array.from(inp.files).filter(f => allowed.test(f.name));
+        // Generierte/Dependency-Verzeichnisse ausschließen — bisher wurde
+        // nur die Dateiendung geprüft, NICHT der Pfad. Bei einem Projekt mit
+        // node_modules (praktisch jedes JS/TS-Projekt mit package.json)
+        // wären das potenziell tausende .js/.json-Dateien, die den
+        // eigentlich relevanten Quellcode (z.B. eine einzelne Edge Function)
+        // in der Zusammenfassung komplett untergehen lassen.
+        const excludedDir = /(^|[/\\])(node_modules|\.git|dist|build|\.next|\.nuxt|coverage|vendor|target|__pycache__|venv|\.venv)([/\\]|$)/i;
+        const files = Array.from(inp.files).filter(f => {
+          const relPath = f.webkitRelativePath || f.name;
+          return allowed.test(f.name) && !excludedDir.test(relPath);
+        });
         resolve(files);
       };
       inp.click();
