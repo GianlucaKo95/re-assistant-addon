@@ -9,6 +9,8 @@ const path     = require('path');
 const fetch    = require('node-fetch');
 const multer   = require('multer');
 const mammoth  = require('mammoth');
+const chardet  = require('chardet');
+const iconv    = require('iconv-lite');
 const bcrypt   = require('bcryptjs');
 const crypto   = require('crypto');
 const http     = require('http');
@@ -23,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.14';
+const APP_VERSION = '4.3.15';
 
 const app      = express();
 
@@ -554,7 +556,14 @@ async function extractFileText(file) {
     }
   }
   try {
-    return file.buffer.toString('utf-8').replace(/[\x00-\x08\x0E-\x1F\x7F]/g, ' ');
+    // Encoding erkennen statt blind UTF-8 anzunehmen — eine in
+    // Windows-1252/Latin-1 gespeicherte Datei (ältere Exporte, manche
+    // Windows-Editoren) wurde vorher stillschweigend zu Mojibake dekodiert,
+    // ohne jeden Fehler. Für echtes UTF-8/ASCII (der Normalfall bei Code
+    // und modernen Textdateien) verhält sich das identisch zu vorher.
+    const detected = chardet.detect(file.buffer);
+    const encoding = detected && iconv.encodingExists(detected) ? detected : 'utf-8';
+    return iconv.decode(file.buffer, encoding).replace(/[\x00-\x08\x0E-\x1F\x7F]/g, ' ');
   } catch(e) { return ''; }
 }
 
@@ -577,19 +586,37 @@ app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req
     const indexedIds  = new Set(indexedRows.map(r => r.doc_id));
 
     for (const file of (req.files||[])) {
+      // Hash über die rohen Bytes — billig (kein Parsing) und erkennt jede
+      // inhaltliche Änderung. Vorher wurde ein Re-Upload derselben Datei mit
+      // GEÄNDERTEM Inhalt (z.B. eine bearbeitete Edge Function) stillschweigend
+      // als "schon vorhanden" übersprungen, sobald der alte Stand erfolgreich
+      // indexiert war — der neue Inhalt landete nie im Index, ohne jede
+      // Fehlermeldung.
+      const contentHash = crypto.createHash('sha256').update(file.buffer).digest('hex');
       const existing = docs.find(d => d.name === file.originalname);
       if (existing) {
-        if (indexedIds.has(existing.id)) continue; // echtes Duplikat — bereits erfolgreich indexiert
-        // Nie erfolgreich indexierte, alte Metadaten entfernen — der
-        // erneute Upload unten läuft dann wie ein frischer Upload.
+        const alreadyIndexed = indexedIds.has(existing.id);
+        if (alreadyIndexed && existing.contentHash === contentHash) {
+          continue; // echtes Duplikat — identischer Inhalt, bereits erfolgreich indexiert
+        }
+        if (alreadyIndexed && !existing.contentHash) {
+          // Alter Datensatz von vor diesem Fix, ohne gespeicherten Hash —
+          // kein Vergleich möglich, wie bisher als Duplikat behandeln.
+          continue;
+        }
+        // Nie erfolgreich indexiert ODER Inhalt hat sich geändert — alten
+        // Stand (Metadaten + Index + Zusammenfassung) vollständig entfernen,
+        // der Upload unten läuft dann wie ein frischer Upload.
         docs = docs.filter(d => d.id !== existing.id);
+        await query('DELETE FROM embeddings WHERE doc_id=$1', [existing.id]).catch(() => {});
+        await query('DELETE FROM doc_summaries WHERE doc_id=$1', [existing.id]).catch(() => {});
       }
 
       // Text extrahieren
       const text = await extractFileText(file);
 
       const docId = 'd' + Date.now() + Math.floor(Math.random()*10000);
-      const doc   = { id: docId, name: file.originalname, size: file.size, addedAt: Date.now() };
+      const doc   = { id: docId, name: file.originalname, size: file.size, addedAt: Date.now(), contentHash };
       // content NICHT in docs speichern (zu groß) — nur Metadaten
       docs.push(doc);
       added.push(doc);
@@ -2768,6 +2795,11 @@ async function buildSystemContextCache(systemId) {
     // Für Cache-Build: immer das stärkste verfügbare Modell
     const apiCfg = await resolveApiConfigForCacheBuild();
 
+    // Groq (kostenloses Tier: 8000 Tokens/Minute) braucht überall in dieser
+    // Funktion konservativere Prompt-Budgets als Anthropic/Grok — siehe
+    // Schritt 1/3/4 unten.
+    const isRateLimitedTier = apiCfg.provider === 'groq';
+
     // ── Ohne API-Key: einfacher Kontext ohne KI ─────────────────
     if (!apiCfg.key) {
       const simpleContext = Object.values(byDoc)
@@ -2807,8 +2839,15 @@ async function buildSystemContextCache(systemId) {
       const batch = toProcess.slice(i, i + BATCH_SIZE);
       await Promise.all(batch.map(async (docId) => {
         const doc = byDoc[docId];
-        // Mehr Kontext: alle Chunks zusammenführen, bis 8000 Zeichen
-        const content = doc.texts.join('\n').substring(0, 8000);
+        // Alle Chunks der Datei zusammenführen. Die alte pauschale 8000-Zeichen-
+        // Deckelung galt für JEDEN Provider gleich — bei einer umfangreichen
+        // Einzeldatei (z.B. eine Edge Function mit der kompletten Spiellogik)
+        // sah die Datei-Zusammenfassung dadurch nie den hinteren, oft
+        // wichtigsten Teil. Nur bei Groq bleibt es konservativ (TPM-Limit,
+        // siehe isRateLimitedTier weiter oben) — Anthropic/Grok haben dieses
+        // enge Minutenbudget nicht.
+        const PER_FILE_CONTENT_CHARS = isRateLimitedTier ? 8000 : 40000;
+        const content = doc.texts.join('\n').substring(0, PER_FILE_CONTENT_CHARS);
         const isCode = /\.(tsx?|jsx?|py|java|cs|go|rs|sql|sh)$/i.test(doc.name);
         const isCfg  = /\.(json|yaml|yml|toml|env|dockerfile)$/i.test(doc.name.toLowerCase());
 
@@ -2895,7 +2934,7 @@ async function buildSystemContextCache(systemId) {
     // das sofort, unabhängig vom Retry-Backoff in aiCallUnified. Anthropic
     // und Grok haben dieses enge Limit nicht — dort unnötig zu drosseln
     // verlangsamt den Build nur, ohne einen echten Fehler zu vermeiden.
-    const isRateLimitedTier = apiCfg.provider === 'groq';
+    // (isRateLimitedTier ist weiter oben, direkt nach apiCfg, definiert.)
     const groupSummaries = {};
     const GROUP_BATCH = isRateLimitedTier ? 2 : 4;
     const groupEntries = Object.entries(groups);
