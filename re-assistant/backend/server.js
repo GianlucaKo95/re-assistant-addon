@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.15';
+const APP_VERSION = '4.3.16';
 
 const app      = express();
 
@@ -690,6 +690,12 @@ function extractFunctions(text, docName) {
     // einer Edge Function) komplett durch alle anderen Muster und landet
     // unbenannt im "Top-Level"-Bucket statt als eigene, klar benannte Funktion.
     /^\s*(?:export\s+)?(?:default\s+)?([\w.]+)\s*\(.*=>\s*\{\s*$/,
+    // Getter/Setter und static-Methoden — ohne diese Muster haben sie kein
+    // "function"/"async"-Präfix und kein "name(...) {" direkt am
+    // Zeilenanfang, fallen also durch alle anderen Patterns und landen
+    // unbenannt im Top-Level-Bucket statt mit ihrem echten Namen.
+    /^\s*(?:static\s+)?(?:get|set)\s+(\w+)\s*\(/,
+    /^\s*static\s+(?:async\s+)?(\w+)\s*\(/,
     /^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{/,
     /^\s*(?:export\s+)?class\s+(\w+)/,
     // Python
@@ -697,34 +703,94 @@ function extractFunctions(text, docName) {
     /^\s*class\s+(\w+)/,
   ];
 
+  // Erkennt eine über mehrere Zeilen umgebrochene Signatur — z.B. eine
+  // lange Argumentliste (Prettier-typisch), deren öffnender Callback-Pfeil
+  // erst ein paar Zeilen später als "name(" selbst steht (z.B.
+  // "app.get(\n  '/x',\n  async (req,res) => {"). Keines der obigen
+  // einzeiligen Patterns erkennt das, da sie alle einen Abschluss
+  // ("{"/"=>") auf DERSELBEN Zeile verlangen. Bewusst ohne echtes
+  // Klammer-Balancing — ein kurzes, begrenztes Vorausschauen nach dem
+  // ersten Body-Öffner reicht für diesen Zweck (Namenszuordnung, kein
+  // Daten-Erhalt — der ist durch das Top-Level-Chunking bereits
+  // sichergestellt).
+  const MULTILINE_SIG_EXCLUDE = new Set([
+    'if','for','while','switch','catch','with','return','typeof',
+    'new','await','function','else','do','yield',
+  ]);
+  function matchMultilineSignatureStart(idx) {
+    const m = lines[idx].match(/^\s*(?:export\s+)?(?:default\s+)?([\w.]+)\s*\(\s*$/);
+    if (!m || MULTILINE_SIG_EXCLUDE.has(m[1])) return null;
+    const LOOKAHEAD = 6;
+    for (let j = idx + 1; j < Math.min(lines.length, idx + 1 + LOOKAHEAD); j++) {
+      if (/=>\s*\{\s*$/.test(lines[j]) || /\)\s*\{\s*$/.test(lines[j])) return m[1];
+    }
+    return null;
+  }
+
   let currentFunc = null;
   let depth = 0;
   let funcStart = 0;
+  // Depth, auf der der Körper der aktuell "offenen" Klasse liegt — ohne das
+  // würde JEDE Methode jeder Klasse (depth > 0 sobald "class X {" geöffnet
+  // hat) nie erkannt und die gesamte Klasse als ein einziger unbenannter
+  // Block behandelt. Bewusst nur eine aktive Klasse gleichzeitig (kein
+  // Stack) — für verschachtelte/mehrere Top-Level-Klassen pro Datei bleibt
+  // die Erkennung dadurch unvollständig, aber der Normalfall (eine Klasse,
+  // Methoden direkt darin) wird korrekt erfasst.
+  let classBodyDepth = null;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const openBraces  = (line.match(/\{|\(/g) || []).length;
     const closeBraces = (line.match(/\}|\)/g) || []).length;
+    const netDelta = openBraces - closeBraces;
 
-    // Neue Funktion gefunden
-    for (const pattern of funcPatterns) {
-      const m = line.match(pattern);
-      if (m && depth === 0) {
-        if (currentFunc && i - funcStart > 3) {
-          functions.push({
-            name: currentFunc,
-            startLine: funcStart,
-            endLine: i - 1,
-            text: lines.slice(funcStart, i).join('\n'),
-          });
-        }
-        currentFunc = m[1] || m[0].trim().substring(0, 40);
-        funcStart = i;
-        break;
+    // Neue Funktion/Methode gefunden — entweder ganz oben (depth 0) oder
+    // direkt im Körper der aktuell offenen Klasse.
+    const atMatchableDepth = depth === 0 || depth === classBodyDepth;
+    let matchedName = null;
+    if (atMatchableDepth) {
+      for (const pattern of funcPatterns) {
+        const m = line.match(pattern);
+        if (m) { matchedName = m[1] || m[0].trim().substring(0, 40); break; }
+      }
+      if (!matchedName) matchedName = matchMultilineSignatureStart(i);
+    }
+    if (matchedName) {
+      if (currentFunc && i - funcStart > 3) {
+        functions.push({
+          name: currentFunc,
+          startLine: funcStart,
+          endLine: i - 1,
+          text: lines.slice(funcStart, i).join('\n'),
+        });
+      }
+      currentFunc = matchedName;
+      funcStart = i;
+
+      if (depth === 0 && classBodyDepth === null && netDelta > 0 && /^\s*(?:export\s+)?class\s+\w+/.test(line)) {
+        classBodyDepth = depth + netDelta;
       }
     }
-    depth += openBraces - closeBraces;
+
+    depth += netDelta;
     if (depth < 0) depth = 0;
+
+    // Klassenkörper verlassen — die laufende Methode hier abschließen,
+    // sonst würde sie nachfolgenden Code außerhalb der Klasse mit
+    // einschließen.
+    if (classBodyDepth !== null && depth < classBodyDepth) {
+      if (currentFunc) {
+        functions.push({
+          name: currentFunc,
+          startLine: funcStart,
+          endLine: i,
+          text: lines.slice(funcStart, i + 1).join('\n'),
+        });
+        currentFunc = null;
+      }
+      classBodyDepth = null;
+    }
   }
 
   // Letzte Funktion
@@ -2949,13 +3015,20 @@ async function buildSystemContextCache(systemId) {
           return;
         }
         const fileList = files.map(f => '- ' + f.doc_name + ': ' + f.summary).join('\n');
+        // War bisher pauschal 8000 Zeichen für JEDEN Provider — bei einer vollen
+        // Gruppe (MAX_FILES_PER_GROUP=8) mit ausführlichen Datei-Zusammenfassungen
+        // (bis zu ~2400 Zeichen je Datei aus Schritt 1) kommen leicht 15000+
+        // Zeichen zusammen, wodurch alphabetisch später einsortierte Dateien der
+        // Gruppe aus der Gruppen-Zusammenfassung fallen. Nur bei Groq (TPM-Limit)
+        // konservativ bleiben, siehe isRateLimitedTier weiter oben.
+        const GROUP_FILELIST_CHARS = isRateLimitedTier ? 8000 : 24000;
         const prompt = 'Analysiere diese Dateien des Moduls "' + groupName + '" präzise.'
           + '\n\nErstelle eine technische Modul-Beschreibung mit:'
           + '\n1. Modulzweck (konkret, mit Technologien/Bibliotheken)'
           + '\n2. Alle Hauptfunktionen (mit echten Funktionsnamen aus den Zusammenfassungen)'
           + '\n3. Externe Integrationen (APIs, Services, Protokolle wie CalDAV, Bring!, etc.)'
           + '\n4. Datenfluss: was kommt rein, was geht raus'
-          + '\n\nDateien:\n' + fileList.substring(0, 8000);
+          + '\n\nDateien:\n' + fileList.substring(0, GROUP_FILELIST_CHARS);
         try {
           groupSummaries[groupName] = await aiCallUnified(apiCfg, prompt, 800, 'balanced', 60000, 2);
         } catch(e) {
