@@ -9,6 +9,8 @@ const path     = require('path');
 const fetch    = require('node-fetch');
 const multer   = require('multer');
 const mammoth  = require('mammoth');
+const chardet  = require('chardet');
+const iconv    = require('iconv-lite');
 const bcrypt   = require('bcryptjs');
 const crypto   = require('crypto');
 const http     = require('http');
@@ -23,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.14';
+const APP_VERSION = '4.3.16';
 
 const app      = express();
 
@@ -554,7 +556,14 @@ async function extractFileText(file) {
     }
   }
   try {
-    return file.buffer.toString('utf-8').replace(/[\x00-\x08\x0E-\x1F\x7F]/g, ' ');
+    // Encoding erkennen statt blind UTF-8 anzunehmen — eine in
+    // Windows-1252/Latin-1 gespeicherte Datei (ältere Exporte, manche
+    // Windows-Editoren) wurde vorher stillschweigend zu Mojibake dekodiert,
+    // ohne jeden Fehler. Für echtes UTF-8/ASCII (der Normalfall bei Code
+    // und modernen Textdateien) verhält sich das identisch zu vorher.
+    const detected = chardet.detect(file.buffer);
+    const encoding = detected && iconv.encodingExists(detected) ? detected : 'utf-8';
+    return iconv.decode(file.buffer, encoding).replace(/[\x00-\x08\x0E-\x1F\x7F]/g, ' ');
   } catch(e) { return ''; }
 }
 
@@ -577,19 +586,37 @@ app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req
     const indexedIds  = new Set(indexedRows.map(r => r.doc_id));
 
     for (const file of (req.files||[])) {
+      // Hash über die rohen Bytes — billig (kein Parsing) und erkennt jede
+      // inhaltliche Änderung. Vorher wurde ein Re-Upload derselben Datei mit
+      // GEÄNDERTEM Inhalt (z.B. eine bearbeitete Edge Function) stillschweigend
+      // als "schon vorhanden" übersprungen, sobald der alte Stand erfolgreich
+      // indexiert war — der neue Inhalt landete nie im Index, ohne jede
+      // Fehlermeldung.
+      const contentHash = crypto.createHash('sha256').update(file.buffer).digest('hex');
       const existing = docs.find(d => d.name === file.originalname);
       if (existing) {
-        if (indexedIds.has(existing.id)) continue; // echtes Duplikat — bereits erfolgreich indexiert
-        // Nie erfolgreich indexierte, alte Metadaten entfernen — der
-        // erneute Upload unten läuft dann wie ein frischer Upload.
+        const alreadyIndexed = indexedIds.has(existing.id);
+        if (alreadyIndexed && existing.contentHash === contentHash) {
+          continue; // echtes Duplikat — identischer Inhalt, bereits erfolgreich indexiert
+        }
+        if (alreadyIndexed && !existing.contentHash) {
+          // Alter Datensatz von vor diesem Fix, ohne gespeicherten Hash —
+          // kein Vergleich möglich, wie bisher als Duplikat behandeln.
+          continue;
+        }
+        // Nie erfolgreich indexiert ODER Inhalt hat sich geändert — alten
+        // Stand (Metadaten + Index + Zusammenfassung) vollständig entfernen,
+        // der Upload unten läuft dann wie ein frischer Upload.
         docs = docs.filter(d => d.id !== existing.id);
+        await query('DELETE FROM embeddings WHERE doc_id=$1', [existing.id]).catch(() => {});
+        await query('DELETE FROM doc_summaries WHERE doc_id=$1', [existing.id]).catch(() => {});
       }
 
       // Text extrahieren
       const text = await extractFileText(file);
 
       const docId = 'd' + Date.now() + Math.floor(Math.random()*10000);
-      const doc   = { id: docId, name: file.originalname, size: file.size, addedAt: Date.now() };
+      const doc   = { id: docId, name: file.originalname, size: file.size, addedAt: Date.now(), contentHash };
       // content NICHT in docs speichern (zu groß) — nur Metadaten
       docs.push(doc);
       added.push(doc);
@@ -663,6 +690,12 @@ function extractFunctions(text, docName) {
     // einer Edge Function) komplett durch alle anderen Muster und landet
     // unbenannt im "Top-Level"-Bucket statt als eigene, klar benannte Funktion.
     /^\s*(?:export\s+)?(?:default\s+)?([\w.]+)\s*\(.*=>\s*\{\s*$/,
+    // Getter/Setter und static-Methoden — ohne diese Muster haben sie kein
+    // "function"/"async"-Präfix und kein "name(...) {" direkt am
+    // Zeilenanfang, fallen also durch alle anderen Patterns und landen
+    // unbenannt im Top-Level-Bucket statt mit ihrem echten Namen.
+    /^\s*(?:static\s+)?(?:get|set)\s+(\w+)\s*\(/,
+    /^\s*static\s+(?:async\s+)?(\w+)\s*\(/,
     /^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{/,
     /^\s*(?:export\s+)?class\s+(\w+)/,
     // Python
@@ -670,34 +703,94 @@ function extractFunctions(text, docName) {
     /^\s*class\s+(\w+)/,
   ];
 
+  // Erkennt eine über mehrere Zeilen umgebrochene Signatur — z.B. eine
+  // lange Argumentliste (Prettier-typisch), deren öffnender Callback-Pfeil
+  // erst ein paar Zeilen später als "name(" selbst steht (z.B.
+  // "app.get(\n  '/x',\n  async (req,res) => {"). Keines der obigen
+  // einzeiligen Patterns erkennt das, da sie alle einen Abschluss
+  // ("{"/"=>") auf DERSELBEN Zeile verlangen. Bewusst ohne echtes
+  // Klammer-Balancing — ein kurzes, begrenztes Vorausschauen nach dem
+  // ersten Body-Öffner reicht für diesen Zweck (Namenszuordnung, kein
+  // Daten-Erhalt — der ist durch das Top-Level-Chunking bereits
+  // sichergestellt).
+  const MULTILINE_SIG_EXCLUDE = new Set([
+    'if','for','while','switch','catch','with','return','typeof',
+    'new','await','function','else','do','yield',
+  ]);
+  function matchMultilineSignatureStart(idx) {
+    const m = lines[idx].match(/^\s*(?:export\s+)?(?:default\s+)?([\w.]+)\s*\(\s*$/);
+    if (!m || MULTILINE_SIG_EXCLUDE.has(m[1])) return null;
+    const LOOKAHEAD = 6;
+    for (let j = idx + 1; j < Math.min(lines.length, idx + 1 + LOOKAHEAD); j++) {
+      if (/=>\s*\{\s*$/.test(lines[j]) || /\)\s*\{\s*$/.test(lines[j])) return m[1];
+    }
+    return null;
+  }
+
   let currentFunc = null;
   let depth = 0;
   let funcStart = 0;
+  // Depth, auf der der Körper der aktuell "offenen" Klasse liegt — ohne das
+  // würde JEDE Methode jeder Klasse (depth > 0 sobald "class X {" geöffnet
+  // hat) nie erkannt und die gesamte Klasse als ein einziger unbenannter
+  // Block behandelt. Bewusst nur eine aktive Klasse gleichzeitig (kein
+  // Stack) — für verschachtelte/mehrere Top-Level-Klassen pro Datei bleibt
+  // die Erkennung dadurch unvollständig, aber der Normalfall (eine Klasse,
+  // Methoden direkt darin) wird korrekt erfasst.
+  let classBodyDepth = null;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const openBraces  = (line.match(/\{|\(/g) || []).length;
     const closeBraces = (line.match(/\}|\)/g) || []).length;
+    const netDelta = openBraces - closeBraces;
 
-    // Neue Funktion gefunden
-    for (const pattern of funcPatterns) {
-      const m = line.match(pattern);
-      if (m && depth === 0) {
-        if (currentFunc && i - funcStart > 3) {
-          functions.push({
-            name: currentFunc,
-            startLine: funcStart,
-            endLine: i - 1,
-            text: lines.slice(funcStart, i).join('\n'),
-          });
-        }
-        currentFunc = m[1] || m[0].trim().substring(0, 40);
-        funcStart = i;
-        break;
+    // Neue Funktion/Methode gefunden — entweder ganz oben (depth 0) oder
+    // direkt im Körper der aktuell offenen Klasse.
+    const atMatchableDepth = depth === 0 || depth === classBodyDepth;
+    let matchedName = null;
+    if (atMatchableDepth) {
+      for (const pattern of funcPatterns) {
+        const m = line.match(pattern);
+        if (m) { matchedName = m[1] || m[0].trim().substring(0, 40); break; }
+      }
+      if (!matchedName) matchedName = matchMultilineSignatureStart(i);
+    }
+    if (matchedName) {
+      if (currentFunc && i - funcStart > 3) {
+        functions.push({
+          name: currentFunc,
+          startLine: funcStart,
+          endLine: i - 1,
+          text: lines.slice(funcStart, i).join('\n'),
+        });
+      }
+      currentFunc = matchedName;
+      funcStart = i;
+
+      if (depth === 0 && classBodyDepth === null && netDelta > 0 && /^\s*(?:export\s+)?class\s+\w+/.test(line)) {
+        classBodyDepth = depth + netDelta;
       }
     }
-    depth += openBraces - closeBraces;
+
+    depth += netDelta;
     if (depth < 0) depth = 0;
+
+    // Klassenkörper verlassen — die laufende Methode hier abschließen,
+    // sonst würde sie nachfolgenden Code außerhalb der Klasse mit
+    // einschließen.
+    if (classBodyDepth !== null && depth < classBodyDepth) {
+      if (currentFunc) {
+        functions.push({
+          name: currentFunc,
+          startLine: funcStart,
+          endLine: i,
+          text: lines.slice(funcStart, i + 1).join('\n'),
+        });
+        currentFunc = null;
+      }
+      classBodyDepth = null;
+    }
   }
 
   // Letzte Funktion
@@ -2768,6 +2861,11 @@ async function buildSystemContextCache(systemId) {
     // Für Cache-Build: immer das stärkste verfügbare Modell
     const apiCfg = await resolveApiConfigForCacheBuild();
 
+    // Groq (kostenloses Tier: 8000 Tokens/Minute) braucht überall in dieser
+    // Funktion konservativere Prompt-Budgets als Anthropic/Grok — siehe
+    // Schritt 1/3/4 unten.
+    const isRateLimitedTier = apiCfg.provider === 'groq';
+
     // ── Ohne API-Key: einfacher Kontext ohne KI ─────────────────
     if (!apiCfg.key) {
       const simpleContext = Object.values(byDoc)
@@ -2807,8 +2905,15 @@ async function buildSystemContextCache(systemId) {
       const batch = toProcess.slice(i, i + BATCH_SIZE);
       await Promise.all(batch.map(async (docId) => {
         const doc = byDoc[docId];
-        // Mehr Kontext: alle Chunks zusammenführen, bis 8000 Zeichen
-        const content = doc.texts.join('\n').substring(0, 8000);
+        // Alle Chunks der Datei zusammenführen. Die alte pauschale 8000-Zeichen-
+        // Deckelung galt für JEDEN Provider gleich — bei einer umfangreichen
+        // Einzeldatei (z.B. eine Edge Function mit der kompletten Spiellogik)
+        // sah die Datei-Zusammenfassung dadurch nie den hinteren, oft
+        // wichtigsten Teil. Nur bei Groq bleibt es konservativ (TPM-Limit,
+        // siehe isRateLimitedTier weiter oben) — Anthropic/Grok haben dieses
+        // enge Minutenbudget nicht.
+        const PER_FILE_CONTENT_CHARS = isRateLimitedTier ? 8000 : 40000;
+        const content = doc.texts.join('\n').substring(0, PER_FILE_CONTENT_CHARS);
         const isCode = /\.(tsx?|jsx?|py|java|cs|go|rs|sql|sh)$/i.test(doc.name);
         const isCfg  = /\.(json|yaml|yml|toml|env|dockerfile)$/i.test(doc.name.toLowerCase());
 
@@ -2895,7 +3000,7 @@ async function buildSystemContextCache(systemId) {
     // das sofort, unabhängig vom Retry-Backoff in aiCallUnified. Anthropic
     // und Grok haben dieses enge Limit nicht — dort unnötig zu drosseln
     // verlangsamt den Build nur, ohne einen echten Fehler zu vermeiden.
-    const isRateLimitedTier = apiCfg.provider === 'groq';
+    // (isRateLimitedTier ist weiter oben, direkt nach apiCfg, definiert.)
     const groupSummaries = {};
     const GROUP_BATCH = isRateLimitedTier ? 2 : 4;
     const groupEntries = Object.entries(groups);
@@ -2910,13 +3015,20 @@ async function buildSystemContextCache(systemId) {
           return;
         }
         const fileList = files.map(f => '- ' + f.doc_name + ': ' + f.summary).join('\n');
+        // War bisher pauschal 8000 Zeichen für JEDEN Provider — bei einer vollen
+        // Gruppe (MAX_FILES_PER_GROUP=8) mit ausführlichen Datei-Zusammenfassungen
+        // (bis zu ~2400 Zeichen je Datei aus Schritt 1) kommen leicht 15000+
+        // Zeichen zusammen, wodurch alphabetisch später einsortierte Dateien der
+        // Gruppe aus der Gruppen-Zusammenfassung fallen. Nur bei Groq (TPM-Limit)
+        // konservativ bleiben, siehe isRateLimitedTier weiter oben.
+        const GROUP_FILELIST_CHARS = isRateLimitedTier ? 8000 : 24000;
         const prompt = 'Analysiere diese Dateien des Moduls "' + groupName + '" präzise.'
           + '\n\nErstelle eine technische Modul-Beschreibung mit:'
           + '\n1. Modulzweck (konkret, mit Technologien/Bibliotheken)'
           + '\n2. Alle Hauptfunktionen (mit echten Funktionsnamen aus den Zusammenfassungen)'
           + '\n3. Externe Integrationen (APIs, Services, Protokolle wie CalDAV, Bring!, etc.)'
           + '\n4. Datenfluss: was kommt rein, was geht raus'
-          + '\n\nDateien:\n' + fileList.substring(0, 8000);
+          + '\n\nDateien:\n' + fileList.substring(0, GROUP_FILELIST_CHARS);
         try {
           groupSummaries[groupName] = await aiCallUnified(apiCfg, prompt, 800, 'balanced', 60000, 2);
         } catch(e) {
