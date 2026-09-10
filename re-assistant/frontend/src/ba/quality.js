@@ -130,7 +130,7 @@ async function runQS() {
       }).catch(() => {});
     }
 
-    renderQSResults(allResults, reqs);
+    renderQSResults(allResults, reqs, batchErrors);
     if (!allResults.length) {
       toast('❌ QS fehlgeschlagen: ' + (batchErrors[0] || 'Keine Ergebnisse von der KI erhalten'));
     } else {
@@ -146,16 +146,25 @@ async function runQS() {
   }
 }
 
-function renderQSResults(results, reqs) {
+function renderQSResults(results, reqs, batchErrors) {
   if (!$('qs-results')) return;
   if (!results.length && reqs.length) {
+    // Gleiche Fehlermeldung(en) wie in den einzelnen Batches — dedupliziert,
+    // damit z.B. bei 3 identisch fehlgeschlagenen Batches nicht 3x derselbe
+    // Text erscheint.
+    const uniqueErrors = [...new Set((batchErrors||[]).filter(Boolean))];
     $('qs-results').innerHTML = `
       <div class="empty-state">
         <div class="es-icon" style="color:var(--red)">⚠</div>
         <h3>QS-Analyse fehlgeschlagen</h3>
-        <p>Die KI hat für keine der ${reqs.length} Anforderungen ein auswertbares Ergebnis geliefert.
-        Details siehe Toast-Meldung bzw. Browser-Konsole — mögliche Ursachen: API-Key/Budget, Provider-Fehler
-        oder eine unerwartete Antwortstruktur.</p>
+        <p>Die KI hat für keine der ${reqs.length} Anforderungen ein auswertbares Ergebnis geliefert.</p>
+        ${uniqueErrors.length ? `
+        <div style="text-align:left;max-width:520px;margin:12px auto 0;background:var(--s2);
+          border:1px solid var(--b1);border-radius:var(--r);padding:10px 14px">
+          ${uniqueErrors.map(e => `<div style="font-size:12px;color:var(--red);font-family:var(--mono);
+            word-break:break-word;padding:3px 0">${esc(e)}</div>`).join('')}
+        </div>` : `<p>Details siehe Browser-Konsole — mögliche Ursachen: API-Key/Budget,
+        Provider-Fehler oder eine unerwartete Antwortstruktur.</p>`}
       </div>`;
     return;
   }
