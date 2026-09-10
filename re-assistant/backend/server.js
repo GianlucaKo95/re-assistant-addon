@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.34';
+const APP_VERSION = '4.3.35';
 
 const app      = express();
 
@@ -2203,51 +2203,35 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
     }
 
     log('info', `AI-Chat: Sende an ${apiUrl} (Model: ${apiBody.model})`);
-    // Wie bei aiCallUnified (Kontext-Erstellung): 429 (Rate-Limit) und 5xx sind
-    // wiederholbar — TPM-Limits (z.B. Groqs kostenloser Tier, dessen Fenster
-    // alle 60s zurückgesetzt wird) erholen sich über Sekunden bis knapp eine
-    // Minute, nicht sofort. Retry-After-Header nutzen falls vorhanden, sonst
-    // bei Groq direkt bis knapp über das 60s-Fenster warten statt mehrfach
-    // gegen die noch laufende Sperre zu laufen.
-    //
-    // Budget: nginx' proxy_read_timeout für /api/ ist auf 340s angehoben
-    // (siehe nginx.conf) — reißt die Verbindung ab, wenn wir länger
-    // brauchen, was den Retry sinnlos macht. maxTotalWaitMs hält davon
-    // 300s als Wartezeit-Budget frei (Rest bleibt Puffer für die
-    // eigentlichen Request-Laufzeiten) und bricht lieber sauber mit dem
-    // letzten Fehler ab, als in den Proxy-Timeout zu laufen. Bei Groqs
-    // 62s-Wartezeit pro Versuch passen damit bis zu 4 Wiederholungen
-    // (statt vorher nur einer bei 90s Budget) in ein einziges Anfrage-
-    // Fenster — wichtig bei anhaltender Auslastung des kostenlosen Tiers.
-    const maxAttempts = 6;
-    const maxTotalWaitMs = 300000;
+    // 429 (Rate-Limit) wird HIER NICHT mehr abgewartet: eine über die
+    // gesamte Groq-Fensterdauer (bis zu 60s+) offen gehaltene Verbindung
+    // wird auf Mobilgeräten gekillt, sobald der Bildschirm sperrt (iOS
+    // beendet dann den offenen Fetch — sichtbar als "Load failed"). Bei
+    // 429 antworten wir daher sofort mit Retry-After; der Client
+    // (core/api-client.js callAPI) wartet die Zeit selbst mit einem Timer
+    // ab und schickt danach einen neuen, kurzen Request — ein Timer
+    // übersteht das Sperren des Bildschirms, eine offene Verbindung nicht.
+    // Nur echte 5xx-Serverfehler (transiente Hänger, i.d.R. Sekunden) wird
+    // hier noch kurz serverseitig wiederholt.
+    const maxAttempts = 3;
     let response;
-    let totalWaitMs = 0;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       response = await fetch(apiUrl, { method:'POST', headers: apiHeaders, body: JSON.stringify(apiBody) });
-      if (response.ok || attempt === maxAttempts - 1) break;
-      if (response.status !== 429 && response.status < 500) break; // nicht wiederholbarer Fehler
-      let waitMs;
-      if (response.status === 429) {
-        const retryAfterSec = parseFloat(response.headers.get('retry-after'));
-        if (Number.isFinite(retryAfterSec)) {
-          waitMs = retryAfterSec * 1000;
-        } else if (apiCfg.provider === 'groq') {
-          waitMs = 62000; // Groq-Fenster (kostenloser Tier) + Sicherheitsmarge
-        } else {
-          waitMs = Math.min(8000 * (attempt + 1), 20000);
-        }
-      } else {
-        waitMs = 1500 * (attempt + 1);
-      }
-      if (totalWaitMs + waitMs > maxTotalWaitMs) break; // nginx-Timeout nicht riskieren
-      totalWaitMs += waitMs;
+      if (response.ok || response.status === 429 || attempt === maxAttempts - 1) break;
+      if (response.status < 500) break; // nicht wiederholbarer Fehler (4xx außer 429)
+      const waitMs = 1500 * (attempt + 1);
       log('warn', `AI-Chat: ${apiCfg.provider} antwortete mit ${response.status} — Retry in ${waitMs}ms (Versuch ${attempt + 2}/${maxAttempts})`);
       await new Promise(r => setTimeout(r, waitMs));
     }
     let data = await response.json();
     if (!response.ok) {
       log('error', `AI-Chat: ${apiCfg.provider} antwortete mit ${response.status}: ${JSON.stringify(data).substring(0,300)}`);
+    }
+    if (response.status === 429) {
+      const retryAfterSec = parseFloat(response.headers.get('retry-after'));
+      res.setHeader('Retry-After', Number.isFinite(retryAfterSec)
+        ? Math.ceil(retryAfterSec)
+        : (apiCfg.provider === 'groq' ? 62 : 10));
     }
 
     // Grok/Groq Response → Anthropic Format
