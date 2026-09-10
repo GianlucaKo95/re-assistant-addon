@@ -127,7 +127,7 @@ async function loadBaDashboard() {
           </div>
           ${avgSysQS != null ? `<div style="text-align:right"><div style="font-size:16px;font-weight:700;color:${col}">${avgSysQS}</div><div style="font-size:9px;color:var(--t3)">Ø QS</div></div>` : ''}
           <button class="btn-secondary" style="font-size:11px;padding:4px 10px"
-            onclick="$('qs-sys-select').value='${sys.id}';switchView('ba-quality')">
+            onclick="$('qs-sys-sel').value='${sys.id}';switchView('ba-quality')">
             QS starten
           </button>
         </div>`;

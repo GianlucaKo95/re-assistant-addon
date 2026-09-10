@@ -19,7 +19,7 @@ async function loadWordAnalysis() {
   S.systems = S.systems?.length ? S.systems : await window.api.getSystems();
   const sel = $('wa-sys-select');
   if (sel) {
-    sel.innerHTML = '<option value="">Zielsystem wählen (optional, zum Speichern) …</option>' +
+    sel.innerHTML = '<option value="">Zielsystem wählen …</option>' +
       S.systems.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
   }
   $('btn-wa-pick').onclick = pickWordFile;
@@ -38,10 +38,19 @@ function setWaScope(scope) {
   const hint = $('wa-scope-hint');
   if (scope === 'system') {
     hint.textContent = 'Anforderung gehört zu einem vorhandenen System — die Analyse bezieht dessen Stakeholder, Use Cases, Qualitätsziele und RAG-Kontext mit ein.';
-    if (sel) sel.style.outline = sel.value ? '' : '1px solid var(--red)';
+    if (sel) {
+      sel.disabled = false;
+      sel.style.outline = sel.value ? '' : '1px solid var(--red)';
+    }
   } else {
     hint.textContent = 'Neue, noch keinem System zugeordnete Anforderung — Analyse nutzt ausschließlich den Dokumentinhalt.';
-    if (sel) sel.style.outline = '';
+    // Im "Neu"-Modus darf keine Systemauswahl erfolgen — Auswahl zurücksetzen
+    // und sperren, statt sie nur optisch inaktiv zu lassen.
+    if (sel) {
+      sel.value = '';
+      sel.disabled = true;
+      sel.style.outline = '';
+    }
   }
 }
 

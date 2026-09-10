@@ -7,7 +7,7 @@ const $ = window.$ || (id => document.getElementById(id));
 
 async function loadBaQS() {
   S.systems = await window.api.getSystems();
-  const sel = $('qs-sys-select');
+  const sel = $('qs-sys-sel');
   if (sel) {
     const mySystems = S.systems.filter(s => (S.user.systems || []).includes(s.id));
     sel.innerHTML = '<option value="">System wählen …</option>' +
@@ -23,7 +23,7 @@ async function loadBaQS() {
 }
 
 async function runQS() {
-  const sysId = $('qs-sys-select')?.value;
+  const sysId = $('qs-sys-sel')?.value;
   if (!sysId) { toast('⚠ System auswählen'); return; }
 
   const reqs = await window.api.getRequirements({ systemId: sysId });
