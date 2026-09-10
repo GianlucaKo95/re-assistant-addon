@@ -57,57 +57,82 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
   const signal = _activeAbortController.signal;
   const feat   = feature || _currentFeature || 'other';
   const sysId  = _currentSystemId || S.activeSystemId || null;
+
+  // Rate-Limit-Wartezeiten (z.B. Groqs 60s-Fenster) werden HIER client-seitig
+  // zwischen mehreren kurzen Fetches abgewartet statt EINEN Request über
+  // Minuten offen zu halten: ein gesperrtes Handy-Display killt eine so
+  // lange offene Verbindung (iOS/Safari meldet dann "Load failed"), ein
+  // client-seitiger Timer dagegen holt die Wartezeit beim Wieder-Aufwecken
+  // einfach nach. Der Server (server.js /api/ai/chat) antwortet bei 429
+  // deshalb sofort mit Retry-After statt selbst zu warten.
+  const maxAttempts = 6;
+  const maxTotalWaitMs = 300000;
+  let totalWaitMs = 0;
+
   try {
-    const res = await fetch('api/ai/chat', {
-      method: 'POST', credentials: 'include',
-      signal,
-      headers: {
-        'Content-Type':  'application/json',
-        'X-RE-Feature':  feat,
-        'X-RE-System':   sysId || '',
-      },
-      body: JSON.stringify({
-        model:        S.settings?.model || undefined,
-        max_tokens:   maxTokens,
-        system:       system || undefined,
-        messages,
-        _feature:     feat,
-        _systemId:    sysId,
-        // Anhänge (Bilder/Dateien) aus dem Chat
-        _attachments: window._pendingAttachments || undefined,
-      }),
-    });
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const res = await fetch('api/ai/chat', {
+        method: 'POST', credentials: 'include',
+        signal,
+        headers: {
+          'Content-Type':  'application/json',
+          'X-RE-Feature':  feat,
+          'X-RE-System':   sysId || '',
+        },
+        body: JSON.stringify({
+          model:        S.settings?.model || undefined,
+          max_tokens:   maxTokens,
+          system:       system || undefined,
+          messages,
+          _feature:     feat,
+          _systemId:    sysId,
+          // Anhänge (Bilder/Dateien) aus dem Chat
+          _attachments: window._pendingAttachments || undefined,
+        }),
+      });
 
-    // Budget-Warnung anzeigen
-    const budgetWarning = res.headers.get('X-Budget-Warning');
-    if (budgetWarning && typeof addNotif === 'function') {
-      addNotif('⚠', 'Token-Budget', budgetWarning, () => switchView('token-dashboard'));
+      if (res.status === 429 && attempt < maxAttempts - 1) {
+        const retryAfterSec = parseFloat(res.headers.get('retry-after'));
+        const waitMs = Number.isFinite(retryAfterSec) ? retryAfterSec * 1000 : 62000;
+        if (totalWaitMs + waitMs <= maxTotalWaitMs) {
+          totalWaitMs += waitMs;
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
+      }
+
+      // Budget-Warnung anzeigen
+      const budgetWarning = res.headers.get('X-Budget-Warning');
+      if (budgetWarning && typeof addNotif === 'function') {
+        addNotif('⚠', 'Token-Budget', budgetWarning, () => switchView('token-dashboard'));
+      }
+
+      const data = await res.json();
+
+      if (res.status === 402 && data.blocked) {
+        // Budget erschöpft
+        if (typeof addNotif === 'function')
+          addNotif('🚫', 'Feature gesperrt', data.error, () => switchView('token-dashboard'));
+        return { ok: false, text: `Budget erschöpft: ${data.error}` };
+      }
+
+      if (!res.ok) {
+        const msg = data?.error?.message || data?.error || `HTTP ${res.status}`;
+        // status/noKeyConfigured/provider durchreichen: nur wenn der Server
+        // wirklich "kein Key konfiguriert" meldet (debugProvider gesetzt) ist
+        // es tatsächlich das — jeder andere 401/403 kommt vom Provider selbst
+        // zurück (falscher/abgelaufener Key, falsches Modell, Rate-Limit) und
+        // darf NICHT als "kein Key" missverstanden werden.
+        return {
+          ok: false, text: `API-Fehler: ${msg}`, status: res.status,
+          noKeyConfigured: !!data?.debugProvider, provider: data?.debugProvider,
+        };
+      }
+
+      const text = data.content?.find(c => c.type === 'text')?.text || '';
+      return { ok: true, text };
     }
-
-    const data = await res.json();
-
-    if (res.status === 402 && data.blocked) {
-      // Budget erschöpft
-      if (typeof addNotif === 'function')
-        addNotif('🚫', 'Feature gesperrt', data.error, () => switchView('token-dashboard'));
-      return { ok: false, text: `Budget erschöpft: ${data.error}` };
-    }
-
-    if (!res.ok) {
-      const msg = data?.error?.message || data?.error || `HTTP ${res.status}`;
-      // status/noKeyConfigured/provider durchreichen: nur wenn der Server
-      // wirklich "kein Key konfiguriert" meldet (debugProvider gesetzt) ist
-      // es tatsächlich das — jeder andere 401/403 kommt vom Provider selbst
-      // zurück (falscher/abgelaufener Key, falsches Modell, Rate-Limit) und
-      // darf NICHT als "kein Key" missverstanden werden.
-      return {
-        ok: false, text: `API-Fehler: ${msg}`, status: res.status,
-        noKeyConfigured: !!data?.debugProvider, provider: data?.debugProvider,
-      };
-    }
-
-    const text = data.content?.find(c => c.type === 'text')?.text || '';
-    return { ok: true, text };
+    return { ok: false, text: 'API-Fehler: Rate-Limit — maximale Wartezeit überschritten', status: 429 };
   } catch(e) {
     if (e.name === 'AbortError') {
       return { ok: true, text: '', _aborted: true };
