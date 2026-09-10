@@ -7,8 +7,32 @@
 
 (function() {
 
+  // Zerlegt den Handler an Top-Level-Semikola — also nur solchen außerhalb
+  // von Strings und Klammern/Brackets. Ein naiver Split auf jedes ';'
+  // (frühere Implementierung) zerschnitt eingebettete JSON-Nutzdaten
+  // (z.B. Anforderungsbeschreibungen mit "…abgeben; alle…") mitten im
+  // Text, wodurch der Aufruf lautlos verworfen wurde — kein Match in
+  // executeSingle(), keine Fehlermeldung.
+  function splitStatements(handler) {
+    const statements = [];
+    let depth = 0, inStr = false, strChar = '', start = 0;
+    for (let i = 0; i < handler.length; i++) {
+      const ch = handler[i];
+      if (inStr) { if (ch === strChar && handler[i-1] !== '\\') inStr = false; continue; }
+      if (ch === '"' || ch === "'") { inStr = true; strChar = ch; continue; }
+      if ('([{'.includes(ch)) { depth++; continue; }
+      if (')]}'.includes(ch)) { depth--; continue; }
+      if (depth === 0 && ch === ';') {
+        statements.push(handler.slice(start, i));
+        start = i + 1;
+      }
+    }
+    statements.push(handler.slice(start));
+    return statements;
+  }
+
   function parseAndCall(handler, event) {
-    const statements = handler.split(/;\s*(?=[a-zA-Z_$])/);
+    const statements = splitStatements(handler);
     for (const stmt of statements) {
       if (!stmt.trim()) continue;
       executeSingle(stmt.trim(), event);
@@ -93,7 +117,7 @@
     }
 
     const match = stmt.match(/^([\w.$]+)\s*\((.*)\)$/s);
-    if (!match) return;
+    if (!match) { console.warn('csp-compat: Statement nicht erkannt:', stmt); return; }
     const fnPath = match[1];
     const argsStr = match[2].trim();
     const fn = fnPath.split('.').reduce((obj, key) => obj?.[key], window);
