@@ -170,7 +170,7 @@ function renderCompletenessResult(result, sysId) {
                   <div style="font-size:12px;font-weight:600">${esc(s.title)}</div>
                   <div style="font-size:11px;color:var(--t2);margin-top:3px">${esc((s.description||'').substring(0,100))}</div>
                   <button class="btn-secondary" style="font-size:10px;padding:3px 9px;margin-top:6px"
-                    onclick="addSuggestedReq('${sysId}',${JSON.stringify(s).replace(/</g,'\\u003c').replace(/'/g,"\\'")})">
+                    onclick="addSuggestedReq('${sysId}',${esc(JSON.stringify(s))})">
                     + Hinzufügen
                   </button>
                 </div>`).join('')}` : ''}

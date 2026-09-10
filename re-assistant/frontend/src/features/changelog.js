@@ -151,10 +151,10 @@ function renderChangelog(cl, changes, period) {
 
     <!-- Export-Buttons -->
     <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="btn-primary" style="font-size:12px" onclick="exportChangelogMD(${JSON.stringify(cl).replace(/</g,'\\u003c').replace(/'/g,"\\'")})">
+      <button class="btn-primary" style="font-size:12px" onclick="exportChangelogMD(${esc(JSON.stringify(cl))})">
         ↓ Markdown
       </button>
-      <button class="btn-secondary" style="font-size:12px" onclick="exportChangelogHTML(${JSON.stringify(cl).replace(/</g,'\\u003c').replace(/'/g,"\\'")})">
+      <button class="btn-secondary" style="font-size:12px" onclick="exportChangelogHTML(${esc(JSON.stringify(cl))})">
         ↓ HTML
       </button>
     </div>`;

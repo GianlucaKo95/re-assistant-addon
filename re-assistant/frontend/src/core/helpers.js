@@ -163,7 +163,7 @@ function renderMD(t) {
       `<pre style="background:var(--s3);border:1px solid var(--b1);border-radius:${lang?'0 0 6px 6px':'6px'};` +
       `padding:10px 12px;overflow-x:auto;font-size:12px;font-family:var(--mono);margin:0;line-height:1.5">` +
       `<code>${esc(code).trimEnd()}</code></pre>` +
-      `<button onclick="navigator.clipboard.writeText(${JSON.stringify(code)})" ` +
+      `<button onclick="navigator.clipboard.writeText(${esc(JSON.stringify(code))})" ` +
       `style="position:absolute;top:${lang?'28':'6'}px;right:6px;background:var(--s2);border:1px solid var(--b1);` +
       `border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;color:var(--t3)" title="Kopieren">⎘</button>` +
       `</div>`;

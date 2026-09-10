@@ -203,11 +203,11 @@ function renderDecompResults(results) {
         </div>
         <div style="padding:8px 14px 12px;display:flex;gap:8px">
           <button class="btn-primary" style="font-size:11px"
-            onclick="saveDecomp(${ri},${JSON.stringify(result).replace(/</g,'\\u003c').replace(/'/g,"\\'")})">
+            onclick="saveDecomp(${ri},${esc(JSON.stringify(result))})">
             ✓ Ausgewählte speichern
           </button>
           <button class="btn-secondary" style="font-size:11px"
-            onclick="saveDecompAll(${ri},${JSON.stringify(result).replace(/</g,'\\u003c').replace(/'/g,"\\'")})">
+            onclick="saveDecompAll(${ri},${esc(JSON.stringify(result))})">
             Alle speichern
           </button>
         </div>

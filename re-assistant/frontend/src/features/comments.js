@@ -130,7 +130,7 @@ async function showReqHistory(reqId, reqTitle) {
           <span class="rtag" style="font-size:9px">${esc(h.category)}</span>
         </div>
         ${i > 0 ? `<button class="btn-secondary" style="font-size:11px;padding:4px 10px;margin-top:8px"
-          onclick="restoreVersion('${reqId}',${JSON.stringify(h).replace(/</g,'\\u003c').replace(/'/g,"\\'")})">
+          onclick="restoreVersion('${reqId}',${esc(JSON.stringify(h))})">
           ↩ Diese Version wiederherstellen
         </button>` : ''}
       </div>`).join('')}`;

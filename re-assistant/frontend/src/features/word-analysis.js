@@ -167,9 +167,9 @@ function renderWordAnalysis(a) {
   if (a.requirements?.length) {
     const g = document.createElement('div');
     g.className = 'da-group';
-    const allReqsJson = JSON.stringify(a.requirements).replace(/</g,'<').replace(/'/g,"\'");
+    const allReqsJson = esc(JSON.stringify(a.requirements));
     const reqItems = a.requirements.map(r => {
-      const rJson = JSON.stringify(r).replace(/</g,'<').replace(/'/g,"\'");
+      const rJson = esc(JSON.stringify(r));
       const confColor = r.confidence==='high'?'var(--grn)':r.confidence==='medium'?'var(--amb)':'var(--red)';
       return '<div class="da-item">'
         + '<div class="da-item-icon" style="background:var(--bluebg)">📝</div>'
@@ -183,13 +183,13 @@ function renderWordAnalysis(a) {
         + '</div></div>'
         + '<div class="da-item-actions">'
         + '<button class="btn-secondary" style="font-size:11px;padding:4px 9px"'
-        + ' onclick=\'saveWordReq(' + rJson + ')\'>✓ Übernehmen</button>'
+        + ' onclick="saveWordReq(' + rJson + ')">✓ Übernehmen</button>'
         + '</div></div>';
     }).join('');
     g.innerHTML = '<div class="da-group-head">'
       + '<span>📋 Anforderungen (' + a.requirements.length + ')</span>'
       + '<button class="btn-primary" style="font-size:11px;padding:5px 10px"'
-      + ' onclick=\'saveAllWordReqs(' + allReqsJson + ')\'>Alle übernehmen</button>'
+      + ' onclick="saveAllWordReqs(' + allReqsJson + ')">Alle übernehmen</button>'
       + '</div><div class="da-group-body">' + reqItems + '</div>';
     wr.appendChild(g);
   }

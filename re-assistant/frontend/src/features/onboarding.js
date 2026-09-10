@@ -470,7 +470,7 @@ function showObImportPreview(reqs, sysId, filename, detectedPrefix) {
         </div>`).join('')}
       ${reqs.length > 5 ? `<div style="padding:6px 12px;font-size:11px;color:var(--t3)">… und ${reqs.length-5} weitere</div>` : ''}
     </div>
-    <button class="btn-primary" style="width:100%;font-size:12px" onclick="obExecuteImport(${JSON.stringify(reqs).replace(/</g,'\u003c').replace(/'/g,"\'")}, '${sysId}')">
+    <button class="btn-primary" style="width:100%;font-size:12px" onclick="obExecuteImport(${esc(JSON.stringify(reqs))}, '${sysId}')">
       ↑ ${reqs.length} Anforderungen importieren
     </button>`;
 }

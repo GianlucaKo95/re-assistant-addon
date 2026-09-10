@@ -122,7 +122,7 @@ function renderSprintDetail(plan) {
     <div style="display:flex;gap:8px;margin-top:10px">
       ${plan.status!=='active' ? `<button class="btn-primary" style="font-size:11px" onclick="setSprintStatus('${plan.id}','active')">▶ Starten</button>` : ''}
       ${plan.status==='active' ? `<button class="btn-secondary" style="font-size:11px" onclick="setSprintStatus('${plan.id}','completed')">✓ Abschließen</button>` : ''}
-      <button class="btn-secondary" style="font-size:11px" onclick="exportSprintPlan(${JSON.stringify(plan).replace(/</g,'\\u003c').replace(/'/g,"\\'")})">↓ Export</button>
+      <button class="btn-secondary" style="font-size:11px" onclick="exportSprintPlan(${esc(JSON.stringify(plan))})">↓ Export</button>
     </div>`;
 }
 

@@ -156,7 +156,7 @@ function renderNLQResult(result, query) {
       </div>
       <div style="margin-top:8px;display:flex;gap:7px">
         <button class="btn-secondary" style="font-size:11px;padding:5px 11px"
-          onclick="exportNLQResults(${JSON.stringify(result.reqIds||[]).replace(/'/g,"\\'")})">↓ Exportieren</button>
+          onclick="exportNLQResults(${esc(JSON.stringify(result.reqIds||[]))})">↓ Exportieren</button>
       </div>` : ''}`;
 }
 

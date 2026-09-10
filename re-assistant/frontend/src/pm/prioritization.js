@@ -539,7 +539,7 @@ function renderQSDashboard(stats, analysis, reqs, sysId) {
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div style="font-size:11px;color:var(--amb)">${noScore.length} Anforderungen ohne SMART-Score</div>
         <button class="btn-secondary" style="font-size:11px"
-          onclick="batchSmartCheck('${sysId}', ${JSON.stringify(noScore.map(r=>r.id))})">
+          onclick="batchSmartCheck('${sysId}', ${esc(JSON.stringify(noScore.map(r=>r.id)))})">
           ⭐ Alle SMART-prüfen
         </button>
       </div>
