@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.33';
+const APP_VERSION = '4.3.34';
 
 const app      = express();
 
@@ -2210,13 +2210,17 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
     // bei Groq direkt bis knapp über das 60s-Fenster warten statt mehrfach
     // gegen die noch laufende Sperre zu laufen.
     //
-    // Budget: nginx' proxy_read_timeout für /api/ ist 120s — reißt die
-    // Verbindung ab, wenn wir länger brauchen, was den Retry sinnlos macht.
-    // maxTotalWaitMs hält davon 90s als Wartezeit-Budget frei (Rest bleibt
-    // Puffer für die eigentlichen Request-Laufzeiten) und bricht lieber
-    // sauber mit dem letzten Fehler ab, als in den Proxy-Timeout zu laufen.
-    const maxAttempts = 3;
-    const maxTotalWaitMs = 90000;
+    // Budget: nginx' proxy_read_timeout für /api/ ist auf 340s angehoben
+    // (siehe nginx.conf) — reißt die Verbindung ab, wenn wir länger
+    // brauchen, was den Retry sinnlos macht. maxTotalWaitMs hält davon
+    // 300s als Wartezeit-Budget frei (Rest bleibt Puffer für die
+    // eigentlichen Request-Laufzeiten) und bricht lieber sauber mit dem
+    // letzten Fehler ab, als in den Proxy-Timeout zu laufen. Bei Groqs
+    // 62s-Wartezeit pro Versuch passen damit bis zu 4 Wiederholungen
+    // (statt vorher nur einer bei 90s Budget) in ein einziges Anfrage-
+    // Fenster — wichtig bei anhaltender Auslastung des kostenlosen Tiers.
+    const maxAttempts = 6;
+    const maxTotalWaitMs = 300000;
     let response;
     let totalWaitMs = 0;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
