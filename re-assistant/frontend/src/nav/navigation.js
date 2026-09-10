@@ -68,6 +68,7 @@ const NAV = {
     { id:'business-reqs', icon:ICONS.list,  label:'Anforderungen'    },
     { id:'templates',     icon:ICONS.tmpl,  label:'Vorlagen'         },
     { id:'word-analysis', icon:ICONS.wordDoc, label:'Word-Analyse'  },
+    { id:'fachkonzept',   icon:ICONS.tmpl,   label:'Fachkonzept erstellen' },
     { id:'archive', icon:ICONS.list, label:'Archiv' },
   ],
   businessanalyst: [
@@ -76,6 +77,7 @@ const NAV = {
     { id:'ba-quality',      icon:ICONS.check,    label:'QS (ISO 29148)'    },
     { id:'ba-docanalysis',  icon:ICONS.doc,      label:'Dokumentenanalyse' },
     { id:'word-analysis',   icon:ICONS.wordDoc,  label:'Word-Analyse'      },
+    { id:'fachkonzept',     icon:ICONS.tmpl,     label:'Fachkonzept erstellen' },
     { id:'ba-diagrams',     icon:ICONS.diagram,  label:'Diagramme'         },
     { id:'ba-workshop',     icon:ICONS.workshop, label:'Workshop'          },
     { id:'dependencies',    icon:ICONS.deps,     label:'Abhängigkeiten'    },
@@ -129,6 +131,7 @@ const VIEW_LOADERS = {
   'dependencies':       () => typeof loadDependencies === 'function' && loadDependencies(),
   'req-network':        () => typeof loadReqNetwork === 'function' && loadReqNetwork(),
   'word-analysis':      () => typeof loadWordAnalysis === 'function' && loadWordAnalysis(),
+  'fachkonzept':         () => typeof loadFachkonzept === 'function' && loadFachkonzept(),
   'review-workflow':    () => typeof loadReviewDashboard === 'function' && loadReviewDashboard(),
   'import':             () => typeof loadImportView === 'function' && loadImportView(),
   'traceability':       () => typeof loadTraceability === 'function' && loadTraceability(),
