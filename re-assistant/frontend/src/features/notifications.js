@@ -9,8 +9,11 @@ const NOTIFS = [];
 let _notifOpen = false;
 
 function initNotifications() {
-  const bell = $('notif-bell');
-  if (bell) bell.onclick = toggleNotifPanel;
+  // Kein bell.onclick hier — #notif-bell hat bereits ein onclick="toggleNotifPanel()"
+  // Attribut in index.html (von csp-compat.js in einen echten Listener
+  // umgewandelt). Eine zweite Registrierung hier führte dazu, dass ein
+  // einzelner Klick toggleNotifPanel() zweimal auslöste — das Panel ging
+  // im selben Moment auf und wieder zu.
   renderNotifs();
 }
 
@@ -59,9 +62,14 @@ function clickNotif(id) {
 }
 
 function toggleNotifPanel() {
+  const wasOpen = _notifOpen;
   _notifOpen = !_notifOpen;
   $('notif-panel')?.classList.toggle('open', _notifOpen);
-  if (_notifOpen) {
+  // Erst beim Schließen als gelesen markieren — sonst verschwindet die
+  // "ungelesen"-Hervorhebung (und der Badge-Zähler) im selben Moment, in
+  // dem das Panel überhaupt erst aufgeht, und der Nutzer sieht nie, was
+  // tatsächlich neu war.
+  if (wasOpen && !_notifOpen) {
     NOTIFS.forEach(n => n.read = true);
     renderNotifs();
   }
@@ -79,6 +87,8 @@ document.addEventListener('click', e => {
       !e.target.closest('#notif-bell')) {
     _notifOpen = false;
     $('notif-panel')?.classList.remove('open');
+    NOTIFS.forEach(n => n.read = true);
+    renderNotifs();
   }
 });
 

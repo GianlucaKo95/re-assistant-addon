@@ -9,8 +9,10 @@ async function loadBaQS() {
   S.systems = await window.api.getSystems();
   const sel = $('qs-sys-select');
   if (sel) {
+    const mySystems = S.systems.filter(s => (S.user.systems || []).includes(s.id));
     sel.innerHTML = '<option value="">System wählen …</option>' +
-      S.systems.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+      mySystems.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    if (mySystems.length === 1) sel.value = mySystems[0].id;
   }
   if ($('btn-run-qs')) $('btn-run-qs').onclick = runQS;
   if ($('qs-results')) $('qs-results').innerHTML = `
