@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.29';
+const APP_VERSION = '4.3.31';
 
 const app      = express();
 
@@ -251,7 +251,21 @@ const PROVIDER_MODELS = {
   },
 };
 
+// Modelle, die Groq für Free/Developer-Tier abgeschaltet hat (nur noch
+// Enterprise-Verträge) — laut console.groq.com/docs/deprecations seit
+// 08/2026 llama-3.1-8b-instant und llama-3.3-70b-versatile, sowie die
+// gesamte ältere llama-3.x-Reihe als Sammelfall. Ein hier gespeichertes
+// Modell würde sonst den korrigierten Standard (openai/gpt-oss-120b)
+// dauerhaft überschreiben und jeden Aufruf mit HTTP 404 fehlschlagen
+// lassen, ohne dass ein Nutzer das je bemerkt (bestehende, vor dieser
+// Korrektur gespeicherte Einstellungen betroffen).
+const GROQ_DEPRECATED_MODELS = /^llama-3(\.\d+)?-\d+b/i;
+
 function resolveModel(provider, tier = 'balanced', userModel = null) {
+  if (provider === 'groq' && userModel && GROQ_DEPRECATED_MODELS.test(userModel)) {
+    log('warn', `Groq-Modell "${userModel}" ist deprecated (Enterprise-only) — nutze Standard ${PROVIDER_MODELS.groq[tier]} stattdessen`);
+    userModel = null;
+  }
   // User hat explizit ein Modell gewählt → respektieren
   if (userModel && userModel.length > 3) return userModel;
   return PROVIDER_MODELS[provider]?.[tier] || PROVIDER_MODELS.anthropic[tier];
