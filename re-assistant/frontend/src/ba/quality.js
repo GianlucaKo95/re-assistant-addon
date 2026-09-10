@@ -59,6 +59,7 @@ async function runQS() {
     // Anforderungen in Batches analysieren (max 15 pro Call)
     const BATCH = 15;
     const allResults = [];
+    const batchErrors = [];
 
     for (let i = 0; i < reqs.length; i += BATCH) {
       const batch = reqs.slice(i, i + BATCH);
@@ -103,11 +104,14 @@ async function runQS() {
         4000
       );
 
-      if (!res.ok) continue;
+      if (!res.ok) { batchErrors.push(res.text); continue; }
       try {
         const batchResults = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
         allResults.push(...(Array.isArray(batchResults) ? batchResults : []));
-      } catch(e) {}
+      } catch(e) {
+        console.error('QS: Antwort konnte nicht als JSON verarbeitet werden', e, res.text);
+        batchErrors.push('Antwort der KI konnte nicht verarbeitet werden');
+      }
 
       if (i + BATCH < reqs.length) {
         await new Promise(r => setTimeout(r, 300));
@@ -127,10 +131,13 @@ async function runQS() {
     }
 
     renderQSResults(allResults, reqs);
-    const avg = allResults.length
-      ? (allResults.reduce((s, r) => s + (r.score||0), 0) / allResults.length).toFixed(0)
-      : 0;
-    toast(`✅ ${allResults.length} bewertet — Ø Score: ${avg}/100`);
+    if (!allResults.length) {
+      toast('❌ QS fehlgeschlagen: ' + (batchErrors[0] || 'Keine Ergebnisse von der KI erhalten'));
+    } else {
+      const avg = (allResults.reduce((s, r) => s + (r.score||0), 0) / allResults.length).toFixed(0);
+      const failedNote = batchErrors.length ? ` — ${batchErrors.length} von ${Math.ceil(reqs.length / BATCH)} Batches fehlgeschlagen` : '';
+      toast(`✅ ${allResults.length} bewertet — Ø Score: ${avg}/100${failedNote}`);
+    }
 
   } catch(e) {
     toast('❌ Fehler: ' + e.message);
@@ -141,6 +148,17 @@ async function runQS() {
 
 function renderQSResults(results, reqs) {
   if (!$('qs-results')) return;
+  if (!results.length && reqs.length) {
+    $('qs-results').innerHTML = `
+      <div class="empty-state">
+        <div class="es-icon" style="color:var(--red)">⚠</div>
+        <h3>QS-Analyse fehlgeschlagen</h3>
+        <p>Die KI hat für keine der ${reqs.length} Anforderungen ein auswertbares Ergebnis geliefert.
+        Details siehe Toast-Meldung bzw. Browser-Konsole — mögliche Ursachen: API-Key/Budget, Provider-Fehler
+        oder eine unerwartete Antwortstruktur.</p>
+      </div>`;
+    return;
+  }
   const sorted = [...results].sort((a, b) => (a.score||0) - (b.score||0));
 
   const typeLabels = {
