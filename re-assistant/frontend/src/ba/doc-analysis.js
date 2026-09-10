@@ -120,9 +120,9 @@ function renderDocAnalysis(a, sysId) {
   if (a.requirements?.length) {
     const g = document.createElement('div');
     g.className = 'da-group';
-    const allReqsJson = JSON.stringify(a.requirements).replace(/</g,'\u003c').replace(/'/g,"\'");
+    const allReqsJson = esc(JSON.stringify(a.requirements));
     const reqItems = a.requirements.map(r => {
-      const rJson = JSON.stringify(r).replace(/</g,'\u003c').replace(/'/g,"\'");
+      const rJson = esc(JSON.stringify(r));
       const confColor = r.confidence==='high'?'var(--grn)':r.confidence==='medium'?'var(--amb)':'var(--red)';
       return '<div class="da-item">'
         + '<div class="da-item-icon" style="background:var(--bluebg)">📝</div>'
@@ -136,13 +136,13 @@ function renderDocAnalysis(a, sysId) {
         + '</div></div>'
         + '<div class="da-item-actions">'
         + '<button class="btn-secondary" style="font-size:11px;padding:4px 9px"'
-        + ' onclick=\'saveSingleDocReq(' + rJson + ',\"' + sysId + '\")\'>✓ Übernehmen</button>'
+        + ' onclick="saveSingleDocReq(' + rJson + ',\'' + sysId + '\')">✓ Übernehmen</button>'
         + '</div></div>';
     }).join('');
     g.innerHTML = '<div class="da-group-head">'
       + '<span>📋 Anforderungen (' + a.requirements.length + ')</span>'
       + '<button class="btn-primary" style="font-size:11px;padding:5px 10px"'
-      + ' onclick=\'saveAllDocReqs(' + allReqsJson + ',\"' + sysId + '\")\'>Alle übernehmen</button>'
+      + ' onclick="saveAllDocReqs(' + allReqsJson + ',\'' + sysId + '\')">Alle übernehmen</button>'
       + '</div><div class="da-group-body">' + reqItems + '</div>';
     dr.appendChild(g);
   }

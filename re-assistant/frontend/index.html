@@ -257,6 +257,26 @@
         </div>
       </div>
 
+      <!-- FACHKONZEPT-GENERATOR (Anforderung tief beschreiben → Word-Datei) -->
+      <div class="view" id="view-fachkonzept">
+        <div class="view-header"><div><h2>Fachkonzept erstellen</h2><p class="view-sub">Anforderung tief beschreiben — die KI erstellt daraus ein vollständiges Fachkonzept als Word-Datei</p></div></div>
+        <div id="fk-layout">
+          <div id="fk-left">
+            <div class="pane-label" style="padding:12px 14px 6px">System (optional, für Kontext)</div>
+            <div style="padding:0 12px 12px"><select id="fk-sys-select" class="filter-select" style="width:100%"><option value="">Kein System (eigenständig) …</option></select></div>
+            <div class="pane-label" style="padding:0 14px 6px">Anforderung (optional, zum Vorbefüllen)</div>
+            <div style="padding:0 12px 12px"><select id="fk-req-select" class="filter-select" style="width:100%" disabled><option value="">— frei beschreiben —</option></select></div>
+            <div class="pane-label" style="padding:0 14px 6px">Detaillierte Beschreibung der Anforderung</div>
+            <textarea id="fk-desc-input" placeholder="Beschreiben Sie die Anforderung so detailliert wie möglich: Ausgangslage, gewünschtes Verhalten, Sonderfälle, betroffene Rollen …"></textarea>
+            <div style="padding:10px 12px;border-top:1px solid var(--b1)"><button class="btn-primary" style="width:100%;justify-content:center" id="btn-fk-generate">📝 Fachkonzept generieren</button></div>
+          </div>
+          <div id="fk-right">
+            <div id="fk-preview" class="scroll-body"><div class="empty-state"><div class="es-icon">📝</div><h3>Anforderung beschreiben &amp; generieren</h3><p>Aus der Detailbeschreibung erstellt die KI ein vollständiges Fachkonzept mit Ausgangslage, Zielsetzung, Prozessablauf, Geschäftsregeln, Akzeptanzkriterien und Abgrenzung.</p></div></div>
+            <div style="padding:10px 14px;border-top:1px solid var(--b1)"><button class="btn-secondary" style="width:100%;justify-content:center;display:none" id="btn-fk-download">⬇ Als Word-Datei herunterladen (.docx)</button></div>
+          </div>
+        </div>
+      </div>
+
       <!-- BA: Diagrams -->
       <div class="view" id="view-ba-diagrams">
         <div class="view-header"><div><h2>Diagramm-Generator</h2><p class="view-sub">BPMN-Prozessdiagramme und Systemkontextdiagramme automatisch generieren und exportieren</p></div><button class="btn-primary" id="btn-new-diagram">+ Neues Diagramm</button></div>

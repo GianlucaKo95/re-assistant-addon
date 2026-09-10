@@ -124,7 +124,7 @@ function renderTrends(data, sysId, days) {
 
     <!-- Export -->
     <div style="padding:0 20px 16px">
-      <button class="btn-secondary" onclick="exportQSTrends(${JSON.stringify(data).replace(/</g,'\\u003c').replace(/'/g,"\\'")})">
+      <button class="btn-secondary" onclick="exportQSTrends(${esc(JSON.stringify(data))})">
         ↓ CSV exportieren
       </button>
     </div>`;

@@ -137,10 +137,10 @@ type: "positive" = Normalfall, "negative" = Fehlerfall/Grenzfall` }],
           </div>`).join('')}
       </div>
       <div style="display:flex;gap:8px;margin-top:10px">
-        <button class="btn-primary" onclick="saveSelectedAC('${req.id}',${JSON.stringify(criteria).replace(/'/g,"\\'")})">
+        <button class="btn-primary" onclick="saveSelectedAC('${req.id}',${esc(JSON.stringify(criteria))})">
           ✓ Ausgewählte übernehmen
         </button>
-        <button class="btn-secondary" onclick="saveAllAC('${req.id}',${JSON.stringify(criteria).replace(/'/g,"\\'")})">
+        <button class="btn-secondary" onclick="saveAllAC('${req.id}',${esc(JSON.stringify(criteria))})">
           Alle übernehmen
         </button>
       </div>`;

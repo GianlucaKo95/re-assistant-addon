@@ -316,6 +316,19 @@ input::placeholder,textarea::placeholder{color:var(--t3)}
 .da-item-icon{flex-shrink:0;width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;margin-top:1px}
 .da-item-body{flex:1;min-width:0}.da-item-actions{display:flex;gap:5px;flex-shrink:0}
 
+/* Fachkonzept-Generator */
+#fk-layout{display:grid;grid-template-columns:300px 1fr;flex:1;overflow:hidden}
+#fk-left{border-right:1px solid var(--b1);background:rgba(6,6,14,.98);display:flex;flex-direction:column;overflow:hidden}
+#fk-desc-input{flex:1;min-height:140px;background:transparent;border:none;border-radius:0;padding:12px 14px;color:var(--t1);font-size:13px;font-family:var(--font);resize:none;line-height:1.7}
+#fk-desc-input:focus{outline:none}
+#fk-right{display:flex;flex-direction:column;overflow:hidden}
+#fk-preview{display:flex;flex-direction:column;gap:12px}
+#fk-preview h3.fk-sec-title{font-size:13px;font-weight:600;margin:0 0 6px;color:var(--t1)}
+.fk-sec{background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);padding:14px 16px;box-shadow:0 3px 10px rgba(0,0,0,.18)}
+.fk-sec p{font-size:12px;color:var(--t2);line-height:1.7;margin:0 0 8px;white-space:pre-wrap}
+.fk-sec ul{margin:0;padding-left:18px;font-size:12px;color:var(--t2);line-height:1.7}
+.fk-sec li{margin:2px 0}
+
 /* BA: Diagrams */
 #diag-layout{display:grid;grid-template-columns:200px 1fr;flex:1;overflow:hidden}
 #diag-sidebar{border-right:1px solid var(--b1);background:rgba(6,6,14,.98);overflow-y:auto;display:flex;flex-direction:column}
@@ -641,11 +654,12 @@ input::placeholder,textarea::placeholder{color:var(--t3)}
   .user-role-badge{font-size:10px}
 
   /* Diagramme / Jira / Workshops */
-  #jira-layout,#diag-editor-area,#ws-body,#da-layout,#diag-layout,#wa-layout{
+  #jira-layout,#diag-editor-area,#ws-body,#da-layout,#diag-layout,#wa-layout,#fk-layout{
     grid-template-columns:1fr
   }
   #jira-config-pane{border-right:none;border-bottom:1px solid var(--b1)}
   #diag-text-pane{border-right:none;border-bottom:1px solid var(--b1);max-height:180px}
+  #fk-left{border-right:none;border-bottom:1px solid var(--b1);max-height:260px}
   #ws-structured{display:none}
   #da-left,#wa-left{border-right:none;border-bottom:1px solid var(--b1);max-height:160px}
   #diag-sidebar{display:none}
