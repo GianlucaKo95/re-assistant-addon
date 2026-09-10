@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.32';
+const APP_VERSION = '4.3.33';
 
 const app      = express();
 
@@ -2204,13 +2204,21 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
 
     log('info', `AI-Chat: Sende an ${apiUrl} (Model: ${apiBody.model})`);
     // Wie bei aiCallUnified (Kontext-Erstellung): 429 (Rate-Limit) und 5xx sind
-    // wiederholbar — TPM-Limits (z.B. Groqs 8000 Tokens/Min auf dem kostenlosen
-    // Tier) erholen sich über Sekunden, nicht sofort. Retry-After-Header
-    // nutzen falls vorhanden, sonst gestaffelt warten und erneut versuchen,
-    // statt den Aufruf (und damit z.B. einen ganzen QS-Batch) sofort als
-    // fehlgeschlagen zu werten.
+    // wiederholbar — TPM-Limits (z.B. Groqs kostenloser Tier, dessen Fenster
+    // alle 60s zurückgesetzt wird) erholen sich über Sekunden bis knapp eine
+    // Minute, nicht sofort. Retry-After-Header nutzen falls vorhanden, sonst
+    // bei Groq direkt bis knapp über das 60s-Fenster warten statt mehrfach
+    // gegen die noch laufende Sperre zu laufen.
+    //
+    // Budget: nginx' proxy_read_timeout für /api/ ist 120s — reißt die
+    // Verbindung ab, wenn wir länger brauchen, was den Retry sinnlos macht.
+    // maxTotalWaitMs hält davon 90s als Wartezeit-Budget frei (Rest bleibt
+    // Puffer für die eigentlichen Request-Laufzeiten) und bricht lieber
+    // sauber mit dem letzten Fehler ab, als in den Proxy-Timeout zu laufen.
     const maxAttempts = 3;
+    const maxTotalWaitMs = 90000;
     let response;
+    let totalWaitMs = 0;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       response = await fetch(apiUrl, { method:'POST', headers: apiHeaders, body: JSON.stringify(apiBody) });
       if (response.ok || attempt === maxAttempts - 1) break;
@@ -2218,11 +2226,18 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
       let waitMs;
       if (response.status === 429) {
         const retryAfterSec = parseFloat(response.headers.get('retry-after'));
-        waitMs = Number.isFinite(retryAfterSec) ? retryAfterSec * 1000 : 8000 * (attempt + 1);
-        waitMs = Math.min(waitMs, 20000);
+        if (Number.isFinite(retryAfterSec)) {
+          waitMs = retryAfterSec * 1000;
+        } else if (apiCfg.provider === 'groq') {
+          waitMs = 62000; // Groq-Fenster (kostenloser Tier) + Sicherheitsmarge
+        } else {
+          waitMs = Math.min(8000 * (attempt + 1), 20000);
+        }
       } else {
         waitMs = 1500 * (attempt + 1);
       }
+      if (totalWaitMs + waitMs > maxTotalWaitMs) break; // nginx-Timeout nicht riskieren
+      totalWaitMs += waitMs;
       log('warn', `AI-Chat: ${apiCfg.provider} antwortete mit ${response.status} — Retry in ${waitMs}ms (Versuch ${attempt + 2}/${maxAttempts})`);
       await new Promise(r => setTimeout(r, waitMs));
     }
