@@ -323,7 +323,7 @@ function showImportPreview(reqs, sysId, filename) {
         <option value="replace">Überschreiben</option>
         <option value="duplicate">Trotzdem importieren</option>
       </select>
-      <button class="btn-primary" style="margin-left:auto" onclick="executeImport(${JSON.stringify(reqs).replace(/</g,'\\u003c').replace(/'/g,"\\'")},'${sysId}')">
+      <button class="btn-primary" style="margin-left:auto" onclick="executeImport(${esc(JSON.stringify(reqs))},'${sysId}')">
         ↑ Alle importieren (${reqs.length})
       </button>
       <button class="btn-secondary" onclick="$('import-preview').innerHTML=''">Abbrechen</button>
