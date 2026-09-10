@@ -2,26 +2,22 @@
 const $ = window.$ || (id => document.getElementById(id));
 /**
  * init-handlers.js
- * Setzt alle Event-Listener die vorher als inline onclick in index.html waren.
- * Notwendig wegen HA Content Security Policy die inline Handler blockiert.
+ * Event-Listener für Elemente, die csp-compat.js NICHT automatisch abdeckt
+ * (dieses konvertiert nur [onclick] — change/input-Attribute bleiben unter
+ * der HA-CSP sonst wirkungslos blockiert).
+ *
+ * Achtung: NICHT hier zusätzlich .onclick für Elemente setzen, die bereits
+ * ein onclick="..."-Attribut in index.html haben — csp-compat.js wandelt
+ * das bereits in einen echten Listener um; eine zweite Registrierung hier
+ * lässt jeden Klick den Handler zweimal auslösen. Bei toggle-artigen
+ * Funktionen (toggleTheme, toggleSearchPanel, toggleNotifPanel, …) hebt
+ * sich das gegenseitig auf, sodass der Button scheinbar nichts tut. Das
+ * ist hier bereits einmal passiert (notif-bell, btn-theme, btn-search,
+ * bc-mobile-req-toggle u.a. waren dadurch faktisch nicht klickbar) — vor
+ * dem Hinzufügen eines neuen Eintrags in index.html prüfen, ob das
+ * Element schon ein onclick-Attribut hat.
  */
 document.addEventListener('DOMContentLoaded', function() {
-
-  // Persona-Badge → Settings
-  const personaBadge = document.getElementById('persona-badge');
-  if (personaBadge) personaBadge.onclick = () => window.switchView && window.switchView('settings');
-
-  // Notification Panel
-  const notifBell = document.getElementById('notif-bell');
-  if (notifBell) notifBell.onclick = () => window.toggleNotifPanel && window.toggleNotifPanel();
-
-  const clearNotifs = document.querySelector('[onclick*="clearNotifs"]');
-  // Suche nach Button in notif-panel-head
-  const notifHead = document.getElementById('notif-panel-head');
-  if (notifHead) {
-    const btn = notifHead.querySelector('button');
-    if (btn) btn.onclick = () => window.clearNotifs && window.clearNotifs();
-  }
 
   // Audit Log Filter
   ['audit-filter-action','audit-filter-entity','audit-filter-date'].forEach(id => {
@@ -31,43 +27,9 @@ document.addEventListener('DOMContentLoaded', function() {
   const auditUser = document.getElementById('audit-filter-user');
   if (auditUser) auditUser.addEventListener('input', () => window.loadAuditLogView && window.loadAuditLogView());
 
-  // DNA Tabs
-  const dnaDrift = document.getElementById('btn-dna-drift');
-  if (dnaDrift) dnaDrift.onclick = () => window.switchDNATab && window.switchDNATab('drift');
-  const dnaNetwork = document.getElementById('btn-dna-network');
-  if (dnaNetwork) dnaNetwork.onclick = () => window.switchDNATab && window.switchDNATab('network');
-  const dnaGenealogy = document.getElementById('btn-dna-genealogy');
-  if (dnaGenealogy) dnaGenealogy.onclick = () => window.switchDNATab && window.switchDNATab('genealogy');
-
-  // Token Dashboard Tabs
-  const tokenUsage = document.getElementById('token-tab-usage');
-  if (tokenUsage) tokenUsage.onclick = () => window.switchDashboardTab && window.switchDashboardTab('usage');
-  const tokenBudgets = document.getElementById('token-tab-budgets');
-  if (tokenBudgets) tokenBudgets.onclick = () => window.switchDashboardTab && window.switchDashboardTab('budgets');
-
   // Token Months
   const tokenMonths = document.getElementById('token-months-sel');
   if (tokenMonths) tokenMonths.addEventListener('change', () => window.loadTokenDashboard && window.loadTokenDashboard());
-
-  // Integration Tabs
-  document.querySelectorAll('.int-tab').forEach((btn, i) => {
-    const tabs = ['jira', 'azuredevops'];
-    if (tabs[i]) btn.onclick = () => window.switchIntTab && window.switchIntTab(tabs[i]);
-  });
-
-  // Mobile Req Pane Toggle
-  const mobileToggle = document.getElementById('bc-mobile-req-toggle');
-  if (mobileToggle) mobileToggle.onclick = () => window.toggleMobileReqPane && window.toggleMobileReqPane();
-
-  // Search Panel
-  const searchBtns = document.querySelectorAll('[id="btn-search"]');
-  searchBtns.forEach(btn => {
-    btn.onclick = () => window.toggleSearchPanel && window.toggleSearchPanel();
-  });
-
-  // Theme Toggle
-  const themeBtn = document.getElementById('btn-theme');
-  if (themeBtn) themeBtn.onclick = () => window.toggleTheme && window.toggleTheme();
 
 });
 
