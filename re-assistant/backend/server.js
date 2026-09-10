@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.31';
+const APP_VERSION = '4.3.32';
 
 const app      = express();
 
@@ -2203,7 +2203,29 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
     }
 
     log('info', `AI-Chat: Sende an ${apiUrl} (Model: ${apiBody.model})`);
-    const response = await fetch(apiUrl, { method:'POST', headers: apiHeaders, body: JSON.stringify(apiBody) });
+    // Wie bei aiCallUnified (Kontext-Erstellung): 429 (Rate-Limit) und 5xx sind
+    // wiederholbar — TPM-Limits (z.B. Groqs 8000 Tokens/Min auf dem kostenlosen
+    // Tier) erholen sich über Sekunden, nicht sofort. Retry-After-Header
+    // nutzen falls vorhanden, sonst gestaffelt warten und erneut versuchen,
+    // statt den Aufruf (und damit z.B. einen ganzen QS-Batch) sofort als
+    // fehlgeschlagen zu werten.
+    const maxAttempts = 3;
+    let response;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      response = await fetch(apiUrl, { method:'POST', headers: apiHeaders, body: JSON.stringify(apiBody) });
+      if (response.ok || attempt === maxAttempts - 1) break;
+      if (response.status !== 429 && response.status < 500) break; // nicht wiederholbarer Fehler
+      let waitMs;
+      if (response.status === 429) {
+        const retryAfterSec = parseFloat(response.headers.get('retry-after'));
+        waitMs = Number.isFinite(retryAfterSec) ? retryAfterSec * 1000 : 8000 * (attempt + 1);
+        waitMs = Math.min(waitMs, 20000);
+      } else {
+        waitMs = 1500 * (attempt + 1);
+      }
+      log('warn', `AI-Chat: ${apiCfg.provider} antwortete mit ${response.status} — Retry in ${waitMs}ms (Versuch ${attempt + 2}/${maxAttempts})`);
+      await new Promise(r => setTimeout(r, waitMs));
+    }
     let data = await response.json();
     if (!response.ok) {
       log('error', `AI-Chat: ${apiCfg.provider} antwortete mit ${response.status}: ${JSON.stringify(data).substring(0,300)}`);
