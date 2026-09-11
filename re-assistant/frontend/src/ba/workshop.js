@@ -94,9 +94,9 @@ async function sendWsMsg(){
 async function updateWsStructured(ws){
   const allText=ws.entries.filter(e=>e.role==='user').map(e=>e.text).join('\n');
   const schema = '{"themes":["Thema"],"decisions":["Entscheidung (inkl. Begründung)"],"openPoints":["Offener Punkt (inkl. Verantwortlicher)"],"requirements":["Das System MUSS/SOLL/KANN..."],"risks":["Erkanntes Risiko"],"assumptions":["Getroffene Annahme"]}';
-  const res=await callAPI([{role:'user',content:'Extrahiere strukturiert aus dem Workshop-Transkript. Anforderungen im Format "Das System MUSS/SOLL/KANN...". JSON ohne Backticks:\n' + schema + '\n\nTranskript:\n' + allText}],langNote(),1200);
+  const res=await callAPI([{role:'user',content:'Extrahiere strukturiert aus dem Workshop-Transkript. Anforderungen im Format "Das System MUSS/SOLL/KANN...". JSON ohne Backticks:\n' + schema + '\n\nTranskript:\n' + allText}],langNote(),2000);
   if(!res.ok)return;
-  try{ws.structured=JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());}catch(e){}
+  try{ws.structured=JSON.parse(cleanJsonText(res.text));}catch(e){}
 }
 function renderWsTranscript(ws){
   const el=$('ws-transcript');

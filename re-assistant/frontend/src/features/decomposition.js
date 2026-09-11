@@ -156,14 +156,24 @@ ID: ${req.id}
 Titel: ${req.title}
 Beschreibung: ${req.description || '(keine)'}
 Kategorie: ${req.category}
-Priorität: ${req.priority}` }], langNote(), 2000);
+Priorität: ${req.priority}` }], langNote(), 3000);
 
     if (!res.ok) continue;
     try {
-      const decomp = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
+      const decomp = JSON.parse(cleanJsonText(res.text));
       results.push({ req, stories: decomp.stories || [], reasoning: decomp.reasoning || '' });
       totalCreated += (decomp.stories||[]).length;
-    } catch(e) { console.error('Decomp parse error', e); }
+    } catch(e) {
+      // Bei max_tokens mitten in "stories" abgeschnitten: vollständige
+      // Stories retten statt die Zerlegung dieser Anforderung zu verlieren.
+      const stories = extractJsonObjects(res.text, 'stories');
+      if (stories.length) {
+        results.push({ req, stories, reasoning: 'Antwort unvollständig (Token-Limit) — evtl. nicht alle Stories erkannt.' });
+        totalCreated += stories.length;
+      } else {
+        console.error('Decomp parse error', e);
+      }
+    }
   }
 
   if (btn) { btn.disabled=false; btn.innerHTML='⚡ Ausgewählte zerlegen'; }

@@ -140,10 +140,9 @@ JSON ohne Backticks:
 [{"title":"...","description":"...","category":"Funktional","priority":"medium"}]
 
 Input:
-${rawReqs.map(r => r.title).join('\n')}` }], langNote(), 1500);
+${rawReqs.map(r => r.title).join('\n')}` }], langNote(), 3000);
 
-  try {
-    const improved = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
+  const renderImproved = (improved) => {
     w.reqs = improved;
     list.innerHTML = improved.map((r, i) => `
       <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--b1)">
@@ -153,9 +152,18 @@ ${rawReqs.map(r => r.title).join('\n')}` }], langNote(), 1500);
           <div style="font-size:11px;color:var(--t3)">${esc(r.category)} · ${esc(r.priority)}</div>
         </div>
       </div>`).join('');
+  };
+
+  try {
+    renderImproved(JSON.parse(cleanJsonText(res.text)));
   } catch(e) {
-    list.innerHTML = rawReqs.map((r,i) => `<div style="font-size:12px;padding:4px 0">• ${esc(r.title)}</div>`).join('');
-    w.reqs = rawReqs;
+    // Bei max_tokens abgeschnitten: vollständige verbesserte Einträge retten
+    const recovered = extractJsonObjects(res.text);
+    if (recovered.length) renderImproved(recovered);
+    else {
+      list.innerHTML = rawReqs.map((r,i) => `<div style="font-size:12px;padding:4px 0">• ${esc(r.title)}</div>`).join('');
+      w.reqs = rawReqs;
+    }
   }
 }
 
@@ -192,10 +200,18 @@ async function pipelineStep3() {
   const qsRes = await callAPI([{ role:'user', content:
     `Bewerte kurz nach ISO 29148. JSON ohne Backticks:
 [{"reqId":"REQ-001","score":7,"issues":[{"type":"ambiguity","text":"..."}]}]
-${rl}` }], langNote(), 2000);
+${rl}` }], langNote(), 4000);
 
   let qsResults = [];
-  try { qsResults = JSON.parse(qsRes.text.replace(/```json|```/g,'').trim()); } catch(e) {}
+  if (qsRes.ok) {
+    try { qsResults = JSON.parse(cleanJsonText(qsRes.text)); }
+    catch(e) {
+      // Bei max_tokens abgeschnitten: vollständige Scores retten statt
+      // die Auswertung für alle gerade gespeicherten Reqs zu verlieren
+      qsResults = extractJsonObjects(qsRes.text);
+      if (!qsResults.length) console.warn('Pipeline: QS-Antwort konnte nicht verarbeitet werden', e);
+    }
+  }
 
   // Scores speichern
   for (const qr of qsResults) {
@@ -237,14 +253,16 @@ JSON ohne Backticks:
 {"epics":[{"id":"EPIC-1","title":"...","description":"...","features":[{"id":"FEAT-1.1","title":"...","stories":[{"id":"US-1.1.1","title":"...","description":"...","storyPoints":5,"priority":"medium","reqRef":"REQ-001"}]}]}]}
 
 Anforderungen:
-${rl}` }], langNote(), 2000);
+${rl}` }], langNote(), 4000);
 
-  try {
-    const bl = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
-    const backlog = { id:null, systemId:w.systemId, systemName:sys?.name||'', epics:bl.epics, createdAt:Date.now() };
+  const finishBacklog = async (epics) => {
+    const backlog = { id:null, systemId:w.systemId, systemName:sys?.name||'', epics, createdAt:Date.now() };
     await window.api.saveBacklog(backlog);
     S.currentBacklog = backlog;
+    return backlog;
+  };
 
+  const renderDone = (epics, note) => {
     cont.innerHTML = `
       <div style="text-align:center;padding:16px 0">
         <div style="font-size:36px;margin-bottom:8px">🎉</div>
@@ -252,20 +270,34 @@ ${rl}` }], langNote(), 2000);
         <div style="font-size:13px;color:var(--t2);margin-top:6px;line-height:1.6">
           ✅ ${toUse.length} Requirements gespeichert<br>
           ✅ QS-Prüfung durchgeführt<br>
-          ✅ ${(bl.epics||[]).length} Epics im Backlog erstellt
+          ✅ ${epics.length} Epics im Backlog erstellt
         </div>
+        ${note ? `<div style="font-size:11px;color:var(--amb);margin-top:6px">⚠ ${esc(note)}</div>` : ''}
       </div>`;
 
     if (typeof addNotif === 'function')
-      addNotif('⚡', 'Pipeline abgeschlossen', `${toUse.length} Reqs → QS → ${(bl.epics||[]).length} Epics`,
+      addNotif('⚡', 'Pipeline abgeschlossen', `${toUse.length} Reqs → QS → ${epics.length} Epics`,
         () => switchView('pm-backlog'));
 
     $('pipeline-actions').innerHTML = `
       <button class="btn-secondary" onclick="closeModal()">Schließen</button>
       <button class="btn-primary" onclick="closeModal();switchView('pm-backlog')">Backlog ansehen</button>`;
+  };
 
+  try {
+    const bl = JSON.parse(cleanJsonText(res.text));
+    await finishBacklog(bl.epics);
+    renderDone(bl.epics || []);
   } catch(e) {
-    cont.innerHTML = '<p style="color:var(--red)">❌ Backlog-Erstellung fehlgeschlagen.</p>';
+    // Bei max_tokens mitten in "epics" abgeschnitten: vollständige Epics
+    // (mit allen verschachtelten Features/Stories) trotzdem übernehmen.
+    const recovered = extractJsonObjects(res.text, 'epics');
+    if (recovered.length) {
+      await finishBacklog(recovered);
+      renderDone(recovered, 'Antwort unvollständig (Token-Limit) — evtl. nicht alle Epics erstellt');
+    } else {
+      cont.innerHTML = '<p style="color:var(--red)">❌ Backlog-Erstellung fehlgeschlagen.</p>';
+    }
   }
 }
 

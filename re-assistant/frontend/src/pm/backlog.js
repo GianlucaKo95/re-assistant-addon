@@ -95,11 +95,21 @@ async function generateBacklog(){
   ].filter(Boolean).join('\n');
 
   const res=await callAPI([{role:'user',content:blPrompt}],
-    'Du bist zertifizierter Product Owner und Scrum Master. ' + langNote(), 4000);
+    'Du bist zertifizierter Product Owner und Scrum Master. ' + langNote(), 6000);
   btn.disabled=false;btn.innerHTML='⚡ Backlog generieren';
   if(!res.ok){toast('❌ '+res.text);return;}
+
+  let bl;
+  try { bl = JSON.parse(cleanJsonText(res.text)); }
+  catch(e) {
+    // Bei max_tokens mitten in "epics" abgeschnitten: vollständige Epics
+    // (samt verschachtelter Features/Stories) trotzdem übernehmen statt
+    // das ganze generierte Backlog zu verwerfen.
+    const recovered = extractJsonObjects(res.text, 'epics');
+    if (recovered.length) bl = { epics: recovered };
+    else { toast('❌ Parsing-Fehler' + (res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : '')); return; }
+  }
   try{
-    const bl=JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
     const sys=S.systems.find(s=>s.id===sysId);
     S.currentBacklog={id:null,systemId:sysId,systemName:sys?.name||'',epics:bl.epics};
     await window.api.saveBacklog(S.currentBacklog);
@@ -109,7 +119,7 @@ async function generateBacklog(){
       if (window.renderBacklogNetwork) renderBacklogNetwork(S.currentBacklog);
     }
     toast('✅ Backlog erstellt');
-  }catch(e){toast('❌ Parsing-Fehler');}
+  }catch(e){toast('❌ Backlog konnte nicht gespeichert werden');}
 }
 function renderBacklog(bl){
   $('backlog-area').innerHTML=(bl.epics||[]).map(ep=>`<div class="epic-block" data-epic-id="${esc(ep.id)}">
@@ -225,13 +235,19 @@ async function mergeNewReqsIntoBacklog(backlog, newReqs, systemId) {
       + '"newEpics":[{"id":"EPIC-N","title":"...","description":"..."}]}';
 
     const res = await callAPI([{ role: 'user', content: prompt }],
-      'Du bist Product Owner. ' + langNote(), 2000);
+      'Du bist Product Owner. ' + langNote(), 3000);
 
     if (!res.ok) return;
 
     let plan;
-    try { plan = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })()); }
-    catch(e) { return; }
+    try { plan = JSON.parse(cleanJsonText(res.text)); }
+    catch(e) {
+      // Bei max_tokens abgeschnitten: vollständige Updates/neue Epics retten
+      const updates  = extractJsonObjects(res.text, 'updates');
+      const newEpics = extractJsonObjects(res.text, 'newEpics');
+      if (updates.length || newEpics.length) plan = { updates, newEpics };
+      else { console.warn('Auto-Epic-Update: Antwort konnte nicht verarbeitet werden', e); return; }
+    }
 
     // Neue Epics hinzufügen
     for (const newEpic of plan.newEpics || []) {
@@ -322,13 +338,18 @@ async function autoGenerateBacklog(systemId, reqs) {
       + '\n\nJSON ohne Backticks:\n' + schema;
 
     const res = await callAPI([{ role: 'user', content: prompt }],
-      'Du bist zertifizierter Product Owner. ' + langNote(), 3000);
+      'Du bist zertifizierter Product Owner. ' + langNote(), 4000);
 
     if (!res.ok) return;
 
     let bl;
-    try { bl = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })()); }
-    catch(e) { return; }
+    try { bl = JSON.parse(cleanJsonText(res.text)); }
+    catch(e) {
+      // Bei max_tokens mitten in "epics" abgeschnitten: vollständige Epics retten
+      const recovered = extractJsonObjects(res.text, 'epics');
+      if (recovered.length) bl = { epics: recovered };
+      else { console.warn('Auto-Backlog: Antwort konnte nicht verarbeitet werden', e); return; }
+    }
 
     const backlog = {
       id: null, systemId, systemName: sys?.name || '',

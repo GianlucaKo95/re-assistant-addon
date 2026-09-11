@@ -40,14 +40,14 @@ async function _runDedup(reqs, mode) {
     
     Anforderungen:
     ${rl}` }],
-    langNote(), 2000);
+    langNote(), 3000);
 
   if (!res.ok) { toast('❌ ' + res.text); return; }
-  try {
-    const a = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
+
+  const applyDedup = (a) => {
     S.dedupSuggestion = { analysis: a, allReqs: reqs };
     if (!a.duplicateGroups?.length) {
-      toast('✅ Keine Duplikate — ' + a.summary);
+      toast('✅ Keine Duplikate — ' + (a.summary||''));
       return;
     }
     // Duplikate markieren
@@ -57,7 +57,16 @@ async function _runDedup(reqs, mode) {
     });
     if (mode === 'pane') showDedupBanner(a);
     else                 showDedupModal(a, reqs);
-  } catch(e) { toast('❌ Parsing-Fehler'); }
+  };
+
+  try {
+    applyDedup(JSON.parse(cleanJsonText(res.text)));
+  } catch(e) {
+    // Bei max_tokens abgeschnitten: vollständige Duplikat-Gruppen retten
+    const recovered = extractJsonObjects(res.text, 'duplicateGroups');
+    if (recovered.length) applyDedup({ duplicateGroups: recovered, summary: 'Antwort unvollständig (Token-Limit) — evtl. nicht alle Duplikate erkannt.' });
+    else toast('❌ Parsing-Fehler' + (res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : ''));
+  }
 }
 
 function showDedupBanner(a) {

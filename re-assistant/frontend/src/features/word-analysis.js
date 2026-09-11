@@ -149,17 +149,34 @@ async function runWordAnalysis() {
   ].filter(Boolean).join('\n');
 
   const res = await callAPI([{ role:'user', content: prompt }],
-    'Du bist CPRE-zertifizierter Requirements Engineer. ' + langNote(), 4500);
+    'Du bist CPRE-zertifizierter Requirements Engineer. ' + langNote(), 6000);
 
   btn.disabled = false;
   btn.innerHTML = '🔍 Analysieren';
 
   if (!res.ok) { toast('❌ ' + res.text); $('wa-results').innerHTML = ''; return; }
   try {
-    const a = JSON.parse((() => { let _r=res.text.trim().replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); const _arrFirst=_fi!==-1&&(_fo===-1||_fi<_fo); if(_arrFirst&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\s*}/g,'}').replace(/,\s*]/g,']'); })());
+    const a = JSON.parse(cleanJsonText(res.text));
     renderWordAnalysis(a);
     toast(`✅ ${a.requirements?.length||0} Anforderungen · ${a.assumptions?.length||0} Annahmen · ${a.risks?.length||0} Risiken · ${a.qualityIssues?.length||0} QS-Befunde`);
-  } catch(e) { toast('❌ Parsing-Fehler'); }
+  } catch(e) {
+    // Bei max_tokens mitten in einem der Arrays abgeschnitten: alle
+    // vollständigen Einträge je Kategorie retten statt die ganze
+    // Dokumentenanalyse zu verwerfen.
+    const a = {
+      requirements:  extractJsonObjects(res.text, 'requirements'),
+      assumptions:   extractJsonObjects(res.text, 'assumptions'),
+      risks:         extractJsonObjects(res.text, 'risks'),
+      qualityIssues: extractJsonObjects(res.text, 'qualityIssues'),
+      gaps: [], summary: 'Antwort unvollständig (Token-Limit) — evtl. nicht alle Befunde erkannt.',
+    };
+    if (a.requirements.length || a.assumptions.length || a.risks.length || a.qualityIssues.length) {
+      renderWordAnalysis(a);
+      toast(`⚠ Antwort unvollständig — ${a.requirements.length} Anforderungen · ${a.assumptions.length} Annahmen · ${a.risks.length} Risiken · ${a.qualityIssues.length} QS-Befunde gerettet`);
+    } else {
+      toast('❌ Parsing-Fehler' + (res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : ''));
+    }
+  }
 }
 
 function renderWordAnalysis(a) {

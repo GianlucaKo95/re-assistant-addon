@@ -66,7 +66,7 @@ Antworte immer strukturiert mit konkreten Handlungsempfehlungen.`,
   let pmStreamedText = '';
   const pmBub = pmBubble.querySelector('.bubble');
 
-  const res=await callAPI(S.chatHistory.pmc, pmSystem, 3500, 'pmc', null, (token, full) => {
+  const res=await callAPI(S.chatHistory.pmc, pmSystem, 8000, 'pmc', null, (token, full) => {
     pmStreamedText = full;
     if (pmBub) pmBub.innerHTML = renderMD(full) + '<span class="stream-cursor">▋</span>';
     if (pmMsgs) pmMsgs.scrollTop = pmMsgs.scrollHeight;
@@ -78,7 +78,10 @@ Antworte immer strukturiert mit konkreten Handlungsempfehlungen.`,
   document.getElementById('pmc-stop')?.style.setProperty('display','none');
   document.getElementById('pmc-send')?.style.setProperty('display','flex');
   if(res._aborted) return;
-  pushMsg('pm-chat-msgs','a',res.ok?res.text:`❌ ${res.text}`);
+  const pmReply = res.ok ? res.text : `❌ ${res.text}`;
+  pushMsg('pm-chat-msgs','a', res.ok && res.truncated
+    ? pmReply + '\n\n*(⚠ Antwort wegen Längenbegrenzung abgeschnitten — mit "weiter" fortsetzen lassen)*'
+    : pmReply);
   if(res.ok){S.chatHistory.pmc.push({role:'assistant',content:res.text});if(S.chatHistory.pmc.length>40){compressHistory('pmc').catch(()=>{S.chatHistory.pmc=S.chatHistory.pmc.slice(-40);});}if(typeof scheduleConvAutoSave==='function')scheduleConvAutoSave('pmc');}
 }
 

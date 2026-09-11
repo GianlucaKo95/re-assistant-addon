@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.36';
+const APP_VERSION = '4.3.37';
 
 const app      = express();
 
@@ -2235,12 +2235,18 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
     }
 
     // Grok/Groq Response → Anthropic Format
+    // stop_reason auf Anthropics Vokabular abbilden, damit der Client
+    // (core/api-client.js callAPI) providerunabhängig an einer Stelle
+    // erkennen kann, ob max_tokens die Antwort abgeschnitten hat
+    // (Anthropic liefert stop_reason nativ, OpenAI-kompatible Provider
+    // liefern stattdessen choices[0].finish_reason==='length').
     if ((apiCfg.provider === 'grok' || apiCfg.provider === 'groq') && response.ok) {
       const choice = data.choices?.[0];
       data = {
         id: data.id, type: 'message', role: 'assistant',
         content: [{ type: 'text', text: choice?.message?.content || '' }],
         model: data.model,
+        stop_reason: choice?.finish_reason === 'length' ? 'max_tokens' : (choice?.finish_reason || null),
         usage: { input_tokens: data.usage?.prompt_tokens || 0, output_tokens: data.usage?.completion_tokens || 0 }
       };
     }

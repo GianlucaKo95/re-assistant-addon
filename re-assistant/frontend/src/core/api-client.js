@@ -130,7 +130,11 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
       }
 
       const text = data.content?.find(c => c.type === 'text')?.text || '';
-      return { ok: true, text };
+      // truncated: max_tokens hat die Antwort abgeschnitten, bevor die KI
+      // fertig war — Aufrufer können das nutzen um eine klarere Fehler-
+      // meldung zu zeigen (statt eines generischen "Parsing-Fehler") oder
+      // bei Freitext-Antworten einen Hinweis anzuhängen.
+      return { ok: true, text, truncated: data.stop_reason === 'max_tokens' };
     }
     return { ok: false, text: 'API-Fehler: Rate-Limit — maximale Wartezeit überschritten', status: 429 };
   } catch(e) {

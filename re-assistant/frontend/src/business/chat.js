@@ -236,7 +236,10 @@ Du analysierst das oben beschriebene System tiefgründig und lieferst präzise, 
 - Maximale Ausführlichkeit bei technischen Fragen — kurze, prägnante Antworten nur wenn explizit gewünscht`,
   ].filter(Boolean).join('\n\n');
 
-  const res = await callAPI(S.chatHistory.bc, system, 4000);
+  // 8000 statt 4000: der System-Prompt fordert oben explizit "Maximale
+  // Ausführlichkeit" bei technischen/detaillierten Fragen — mit zu wenig
+  // Budget bricht genau diese Art Antwort regelmäßig mitten im Satz ab.
+  const res = await callAPI(S.chatHistory.bc, system, 8000);
   typing.remove();
 
   // Stopp-/Send-Button zurücksetzen
@@ -247,7 +250,10 @@ Du analysierst das oben beschriebene System tiefgründig und lieferst präzise, 
     return; // Abgebrochen — keine leere Nachricht anzeigen
   }
 
-  const reply = res.ok ? res.text : `❌ ${res.text}`;
+  let reply = res.ok ? res.text : `❌ ${res.text}`;
+  if (res.ok && res.truncated) {
+    reply += '\n\n*(⚠ Antwort wegen Längenbegrenzung abgeschnitten — mit "weiter" fortsetzen lassen)*';
+  }
   pushMsg('bc-chat-msgs', 'a', reply);
 
   // Anhänge leeren nach dem Senden

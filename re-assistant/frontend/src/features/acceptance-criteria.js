@@ -109,18 +109,26 @@ Antworte NUR mit JSON ohne Backticks:
 {"criteria":[{"text":"...","type":"positive"},{"text":"...","type":"negative"}]}
 
 type: "positive" = Normalfall, "negative" = Fehlerfall/Grenzfall` }],
-  langNote(), 1200);
+  langNote(), 2500);
 
   btn.disabled = false;
   btn.innerHTML = '⚡ Generieren';
 
   if (!res.ok) { area.innerHTML = `<p style="color:var(--red);font-size:12px">❌ ${esc(res.text)}</p>`; return; }
 
+  let criteria;
   try {
-    const result = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
-    const criteria = result.criteria || [];
+    criteria = JSON.parse(cleanJsonText(res.text)).criteria || [];
+  } catch(e) {
+    // Bei max_tokens abgeschnitten: vollständige Kriterien retten
+    criteria = extractJsonObjects(res.text, 'criteria');
+    if (!criteria.length) {
+      area.innerHTML = `<p style="color:var(--red);font-size:12px">❌ Parsing-Fehler${res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : ''}</p>`;
+      return;
+    }
+  }
 
-    area.innerHTML = `
+  area.innerHTML = `
       <div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
         ✦ KI-Vorschläge
       </div>
@@ -157,7 +165,6 @@ type: "positive" = Normalfall, "negative" = Fehlerfall/Grenzfall` }],
         .ac-negative{background:var(--redbg);color:var(--red)}`;
       document.head.appendChild(s);
     }
-  } catch(e) { area.innerHTML = '<p style="color:var(--red);font-size:12px">❌ Parsing-Fehler</p>'; }
 }
 
 async function saveSelectedAC(reqId, criteria) {

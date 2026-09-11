@@ -51,10 +51,16 @@ async function analyzeSource(reqId){
   const sys=S.systems.find(s=>s.id===req.systemId);if(!sys?.docs?.length){toast('⚠ Keine Dokumentation');return;}
   toast('🔍 Analysiere Source …');
   const code=(sys.docs||[]).filter(d=>['.js','.ts','.py','.java','.cs','.go','.rs','.cpp','.jsx','.tsx'].some(e=>d.name.endsWith(e))).slice(0,8).map(d=>`### ${d.relativePath||d.name}\n\`\`\`\n${d.content.substring(0,3000)}\n\`\`\``).join('\n\n');
-  const res=await callAPI([{role:'user',content:`Analysiere. JSON ohne Backticks:\n{"affectedFiles":[{"file":"...","reason":"..."}],"summary":"...","suggestion":"+ //neu\\n- //alt"}\n\nAnforderung: ${req.title} — ${req.description}\n\nCode:\n${code}`}],'',2000);
+  const res=await callAPI([{role:'user',content:`Analysiere. JSON ohne Backticks:\n{"affectedFiles":[{"file":"...","reason":"..."}],"summary":"...","suggestion":"+ //neu\\n- //alt"}\n\nAnforderung: ${req.title} — ${req.description}\n\nCode:\n${code}`}],'',3000);
   if(!res.ok){toast('❌ Analyse fehlgeschlagen');return;}
-  try{const a=JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());await window.api.saveRequirement({...req,sourceAnalysis:a,sourceSuggestion:a.suggestion});S.requirements=await window.api.getRequirements({});toast('✅ Source-Analyse gespeichert');await loadPMAssign();}
-  catch(e){toast('❌ Parsing-Fehler');}
+  let a;
+  try{ a=JSON.parse(cleanJsonText(res.text)); }
+  catch(e){
+    const affectedFiles = extractJsonObjects(res.text, 'affectedFiles');
+    if(!affectedFiles.length){toast('❌ Parsing-Fehler' + (res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : ''));return;}
+    a = { affectedFiles, summary: 'Antwort unvollständig (Token-Limit)', suggestion: '' };
+  }
+  await window.api.saveRequirement({...req,sourceAnalysis:a,sourceSuggestion:a.suggestion});S.requirements=await window.api.getRequirements({});toast('✅ Source-Analyse gespeichert');await loadPMAssign();
 }
 
 window.loadPMAssign=loadPMAssign;

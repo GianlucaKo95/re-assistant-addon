@@ -101,22 +101,33 @@ async function analyzeDependencies() {
   if (!S.requirements.length) { toast('ℹ Keine Anforderungen'); return; }
   const btn = $('btn-analyze-deps'); btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Analysiere …';
   const rl = S.requirements.map(r => `${r.id}: ${r.title} — ${(r.description||'').substring(0,100)}`).join('\n');
-  const res = await callAPI([{role:'user', content:`Analysiere Abhängigkeiten zwischen diesen Anforderungen. Erkenne:\n- "blocks": A muss vor B fertig sein\n- "needs": A braucht B als Voraussetzung\n- "related": A und B sind thematisch verbunden\n\nJSON ohne Backticks:\n{"dependencies":[{"from":"REQ-001","to":"REQ-002","type":"blocks","note":"Kurze Begründung"}],"summary":"..."}\n\nAnforderungen:\n${rl}`}], langNote(), 2000);
+  const res = await callAPI([{role:'user', content:`Analysiere Abhängigkeiten zwischen diesen Anforderungen. Erkenne:\n- "blocks": A muss vor B fertig sein\n- "needs": A braucht B als Voraussetzung\n- "related": A und B sind thematisch verbunden\n\nJSON ohne Backticks:\n{"dependencies":[{"from":"REQ-001","to":"REQ-002","type":"blocks","note":"Kurze Begründung"}],"summary":"..."}\n\nAnforderungen:\n${rl}`}], langNote(), 4000);
   btn.disabled = false; btn.innerHTML = '⚡ KI analysieren';
   if (!res.ok) { toast('❌ ' + res.text); return; }
-  try {
-    const result = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
+
+  const applyDeps = (deps, summary) => {
     const existing = loadDeps(sysId);
-    const newDeps = (result.dependencies || []).map(d => ({...d, id: 'dep' + Date.now() + Math.random()}));
+    const newDeps = deps.map(d => ({...d, id: 'dep' + Date.now() + Math.random()}));
     const merged = [...existing];
     for (const d of newDeps) {
       if (!merged.find(e => e.from === d.from && e.to === d.to)) merged.push(d);
     }
     saveDeps(sysId, merged);
     renderDepView();
-    toast(`✅ ${newDeps.length} Abhängigkeit(en) gefunden — ${result.summary || ''}`);
+    toast(`✅ ${newDeps.length} Abhängigkeit(en) gefunden — ${summary || ''}`);
     addNotif('🔗', 'Abhängigkeitsanalyse abgeschlossen', `${newDeps.length} neue Abhängigkeiten`, () => switchView('dependencies'));
-  } catch(e) { toast('❌ Parsing-Fehler'); }
+  };
+
+  try {
+    const result = JSON.parse(cleanJsonText(res.text));
+    applyDeps(result.dependencies || [], result.summary);
+  } catch(e) {
+    // Bei max_tokens mitten in "dependencies" abgeschnitten: vollständige
+    // Einträge trotzdem retten statt die ganze Analyse zu verwerfen.
+    const recovered = extractJsonObjects(res.text, 'dependencies');
+    if (recovered.length) applyDeps(recovered, 'Antwort unvollständig — evtl. nicht alle Abhängigkeiten erkannt');
+    else toast('❌ Parsing-Fehler' + (res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : ''));
+  }
 }
 
 function openAddDepModal() {

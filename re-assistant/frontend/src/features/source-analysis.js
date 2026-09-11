@@ -82,20 +82,30 @@ ${codeContext}` }], langNote(), 3000);
 
   if (!res.ok) return null;
 
+  let analysis;
   try {
-    const analysis = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
-    // Analyse speichern
-    await window.api.saveRequirement({
-      ...req,
-      sourceAnalysis:    analysis,
-      sourceSuggestion:  analysis.diffSuggestion || '',
-      sourceAnalyzedAt:  Date.now(),
-    });
-    return analysis;
+    analysis = JSON.parse(cleanJsonText(res.text));
   } catch(e) {
-    console.error('[SourceAnalysis] Parse-Fehler:', e);
-    return null;
+    // Bei max_tokens mitten in einem der Datei-Arrays abgeschnitten:
+    // vollständige Einträge retten statt die Analyse zu verwerfen.
+    const affectedFiles = extractJsonObjects(res.text, 'affectedFiles');
+    const indirectFiles = extractJsonObjects(res.text, 'indirectFiles');
+    if (!affectedFiles.length && !indirectFiles.length) {
+      console.error('[SourceAnalysis] Parse-Fehler:', e);
+      return null;
+    }
+    analysis = { affectedFiles, indirectFiles, diffSuggestion: '', complexity: '', riskLevel: '',
+      estimatedHours: null, technicalNotes: '', testingHints: '',
+      summary: 'Antwort unvollständig (Token-Limit) — evtl. nicht alle Dateien erkannt.' };
   }
+  // Analyse speichern
+  await window.api.saveRequirement({
+    ...req,
+    sourceAnalysis:    analysis,
+    sourceSuggestion:  analysis.diffSuggestion || '',
+    sourceAnalyzedAt:  Date.now(),
+  });
+  return analysis;
 }
 
 // ── Relevanz-Ranking ──────────────────────────────────────────

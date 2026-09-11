@@ -166,14 +166,20 @@ JSON-Array ohne Backticks:
 [{"title":"...","description":"...","category":"Funktional","priority":"medium","rationale":""}]
 Max. 8 Anforderungen.
 
-Beschreibung: "${text}"` }], langNote(), 1200);
+Beschreibung: "${text}"` }], langNote(), 2000);
 
   btn.disabled=false; btn.innerHTML='✦ KI extrahieren';
   if (!res.ok) { toast('❌ ' + res.text); return; }
 
+  let reqs;
   try {
-    const reqs = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
-    window._onboardingData.generatedReqs = reqs;
+    reqs = JSON.parse(cleanJsonText(res.text));
+  } catch(e) {
+    reqs = extractJsonObjects(res.text);
+    if (!reqs.length) { toast('❌ Parsing-Fehler' + (res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : '')); return; }
+  }
+
+  window._onboardingData.generatedReqs = reqs;
 
     $('ob-req-preview').innerHTML = `
       <div style="font-size:12px;font-weight:600;color:var(--aa);margin-bottom:8px">
@@ -190,7 +196,6 @@ Beschreibung: "${text}"` }], langNote(), 1200);
           </div>`).join('')}
       </div>`;
     $('ob-req-nav').style.display='grid';
-  } catch(e) { toast('❌ Parsing-Fehler'); }
 }
 
 async function onboardingSaveReqs() {

@@ -87,14 +87,24 @@ Antworte mit JSON ohne Backticks:
   ],
   "stats": {"created": 3, "updated": 7, "approved": 2},
   "nextSteps": ["Empfehlung für die nächste Periode"]
-}` }], langNote(), 1800);
+}` }], langNote(), 3000);
 
   if (!res.ok) { toast('❌ ' + res.text); return; }
 
   try {
-    const cl = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
+    const cl = JSON.parse(cleanJsonText(res.text));
     renderChangelog(cl, changes, period);
-  } catch(e) { toast('❌ Parsing-Fehler'); }
+  } catch(e) {
+    // Bei max_tokens mitten in "sections" abgeschnitten: vollständige
+    // Abschnitte (samt ihrer "items") retten statt das Changelog zu verwerfen.
+    const sections = extractJsonObjects(res.text, 'sections');
+    if (sections.length) {
+      renderChangelog({ title: 'Changelog', summary: 'Antwort unvollständig (Token-Limit) — evtl. nicht alle Abschnitte erkannt.',
+        highlights: [], sections, stats: {}, nextSteps: [] }, changes, period);
+    } else {
+      toast('❌ Parsing-Fehler' + (res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : ''));
+    }
+  }
 }
 
 function renderChangelog(cl, changes, period) {

@@ -95,17 +95,31 @@ status: complete = >80% abgedeckt, partial = 20-80%, missing = <20%
 Bestehende Anforderungen:
 ${reqList || '(keine Anforderungen vorhanden)'}
 
-System: ${sys?.name || ''} — ${sys?.description || ''}` }], langNote(), 3000);
+System: ${sys?.name || ''} — ${sys?.description || ''}` }], langNote(), 4500);
 
   btn.disabled=false; btn.innerHTML='🔍 Vollständigkeit prüfen';
 
   if (!res.ok) { toast('❌ ' + res.text); return; }
-  try {
-    const result = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
+
+  const applyResult = (result) => {
     renderCompletenessResult(result, sysId);
     if (typeof addNotif==='function')
       addNotif('🔍', 'Vollständigkeitsprüfung', `Score: ${result.overallScore}% — ${(result.criticalGaps||[]).length} kritische Lücken`, ()=>switchView('completeness'));
-  } catch(e) { toast('❌ Parsing-Fehler'); }
+  };
+
+  try {
+    applyResult(JSON.parse(cleanJsonText(res.text)));
+  } catch(e) {
+    // Bei max_tokens mitten in "categories" abgeschnitten: vollständige
+    // Kategorien retten statt die ganze Prüfung zu verwerfen.
+    const categories = extractJsonObjects(res.text, 'categories');
+    if (categories.length) {
+      const approxScore = Math.round(categories.reduce((s,c)=>s+(c.coverage||0),0) / categories.length);
+      applyResult({ overallScore: approxScore, categories, criticalGaps: [], summary: 'Antwort unvollständig (Token-Limit) — evtl. nicht alle Kategorien geprüft.' });
+    } else {
+      toast('❌ Parsing-Fehler' + (res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : ''));
+    }
+  }
 }
 
 function renderCompletenessResult(result, sysId) {
