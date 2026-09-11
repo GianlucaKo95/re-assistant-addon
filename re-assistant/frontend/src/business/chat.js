@@ -237,9 +237,11 @@ Du analysierst das oben beschriebene System tiefgründig und lieferst präzise, 
   ].filter(Boolean).join('\n\n');
 
   // 8000 statt 4000: der System-Prompt fordert oben explizit "Maximale
-  // Ausführlichkeit" bei technischen/detaillierten Fragen — mit zu wenig
-  // Budget bricht genau diese Art Antwort regelmäßig mitten im Satz ab.
-  const res = await callAPI(S.chatHistory.bc, system, 8000);
+  // Ausführlichkeit" bei technischen/detaillierten Fragen. autoContinue
+  // lässt die KI bei Bedarf zusätzlich automatisch weiterschreiben (bis zu
+  // 5x), statt die Antwort einfach mitten im Satz abzubrechen — der Nutzer
+  // will die vollständige Antwort, keinen Hinweis dass sie unvollständig ist.
+  const res = await callAPI(S.chatHistory.bc, system, 8000, null, null, null, true);
   typing.remove();
 
   // Stopp-/Send-Button zurücksetzen
@@ -252,7 +254,8 @@ Du analysierst das oben beschriebene System tiefgründig und lieferst präzise, 
 
   let reply = res.ok ? res.text : `❌ ${res.text}`;
   if (res.ok && res.truncated) {
-    reply += '\n\n*(⚠ Antwort wegen Längenbegrenzung abgeschnitten — mit "weiter" fortsetzen lassen)*';
+    // Nur falls selbst nach den automatischen Fortsetzungen noch abgeschnitten
+    reply += '\n\n*(⚠ Antwort auch nach automatischer Fortsetzung noch unvollständig — bitte "weiter" schreiben)*';
   }
   pushMsg('bc-chat-msgs', 'a', reply);
 
