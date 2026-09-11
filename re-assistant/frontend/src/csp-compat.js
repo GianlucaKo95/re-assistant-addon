@@ -31,11 +31,11 @@
     return statements;
   }
 
-  function parseAndCall(handler, event) {
+  function parseAndCall(handler, event, thisArg) {
     const statements = splitStatements(handler);
     for (const stmt of statements) {
       if (!stmt.trim()) continue;
-      executeSingle(stmt.trim(), event);
+      executeSingle(stmt.trim(), event, thisArg);
     }
   }
 
@@ -61,8 +61,12 @@
     return -1;
   }
 
-  // Löst eine Objekt/Methoden-Kette auf, z.B. "document.getElementById('x').style"
-  function resolveChain(expr) {
+  // Zerlegt eine Objekt/Methoden-Kette in ihre Punkt-getrennten Schritte,
+  // z.B. "document.getElementById('x').style" → ["document","getElementById('x')","style"].
+  // Klammern werden tiefen-bewusst übersprungen, damit ein '.' INNERHALB
+  // eines Funktionsaufrufs (z.B. in einem String-Argument) keinen neuen
+  // Schritt erzeugt.
+  function splitChainSteps(expr) {
     const steps = [];
     let depth = 0, cur = '';
     for (const ch of expr) {
@@ -72,13 +76,25 @@
       else cur += ch;
     }
     if (cur) steps.push(cur);
+    return steps;
+  }
 
+  // Läuft eine Schritt-Liste ab und liefert den finalen Wert. Der erste
+  // Schritt "this" löst zu thisArg auf (dem Element, auf dem der Klick
+  // registriert wurde) — ohne das bricht z.B. "this.nextElementSibling…"
+  // stillschweigend ab, weil es sonst als window.this gesucht würde.
+  // Ein '?' am Ende eines Schritts (aus optionalem Chaining "a?.b") wird
+  // ignoriert; obj?.[name] darunter liefert bei fehlendem Zwischenwert
+  // ohnehin schon undefined statt zu werfen.
+  function resolveSteps(steps, thisArg) {
     let obj = window;
-    for (const step of steps) {
-      const m = step.trim().match(/^([\w$]+)(?:\((.*)\))?$/s);
+    let isFirst = true;
+    for (const rawStep of steps) {
+      const m = rawStep.trim().replace(/\?$/, '').match(/^([\w$]+)(?:\((.*)\))?$/s);
       if (!m) return undefined;
       const [, name, argsStr] = m;
-      const val = obj?.[name];
+      const val = (isFirst && name === 'this') ? thisArg : obj?.[name];
+      isFirst = false;
       if (argsStr !== undefined) {
         if (typeof val !== 'function') return undefined;
         obj = val.apply(obj, parseArgs(argsStr));
@@ -89,7 +105,11 @@
     return obj;
   }
 
-  function executeSingle(stmt, event) {
+  function resolveChain(expr, thisArg) {
+    return resolveSteps(splitChainSteps(expr), thisArg);
+  }
+
+  function executeSingle(stmt, event, thisArg) {
     if (stmt === 'event.stopPropagation()') {
       event && event.stopPropagation();
       return;
@@ -98,8 +118,8 @@
     // Bedingtes Ausführen: "cond && call(...)"
     const andIdx = findTopLevelOp(stmt, '&&');
     if (andIdx !== -1) {
-      const cond = resolveChain(stmt.slice(0, andIdx).trim());
-      if (cond) executeSingle(stmt.slice(andIdx + 2).trim(), event);
+      const cond = resolveChain(stmt.slice(0, andIdx).trim(), thisArg);
+      if (cond) executeSingle(stmt.slice(andIdx + 2).trim(), event, thisArg);
       return;
     }
 
@@ -110,22 +130,32 @@
       const rhs = stmt.slice(eqIdx + 1).trim();
       const lastDot = lhs.lastIndexOf('.');
       if (lastDot === -1) return; // Top-Level-Variablenzuweisung — nicht unterstützt
-      const obj = resolveChain(lhs.slice(0, lastDot));
+      const obj = resolveChain(lhs.slice(0, lastDot), thisArg);
       if (obj == null) return;
       obj[lhs.slice(lastDot + 1)] = evalArg(rhs);
       return;
     }
 
-    const match = stmt.match(/^([\w.$]+)\s*\((.*)\)$/s);
-    if (!match) { console.warn('csp-compat: Statement nicht erkannt:', stmt); return; }
-    const fnPath = match[1];
-    const argsStr = match[2].trim();
-    const fn = fnPath.split('.').reduce((obj, key) => obj?.[key], window);
+    // Funktionsaufruf, ggf. als Kette mit Zwischen-Aufrufen (z.B.
+    // "this.closest('[id]').__pg?.goTo(1)" oder
+    // "this.nextElementSibling.classList.toggle('open')"). Alles bis zum
+    // letzten Schritt über resolveSteps auflösen und die letzte Methode
+    // GEBUNDEN an ihr Objekt aufrufen — ein losgelöster Aufruf (wie es die
+    // frühere Implementierung tat) wirft bei nativen Methoden wie
+    // classList.toggle() eine "Illegal invocation".
+    const steps = splitChainSteps(stmt);
+    const lastStep = (steps[steps.length - 1] || '').trim().replace(/\?$/, '');
+    const callMatch = lastStep.match(/^([\w$]+)\((.*)\)$/s);
+    if (!callMatch) { console.warn('csp-compat: Statement nicht erkannt:', stmt); return; }
+    const [, methodName, argsStr] = callMatch;
+    const obj = steps.length > 1 ? resolveSteps(steps.slice(0, -1), thisArg) : window;
+    if (obj == null) return; // optionale Kette (?.) lief ins Leere — kein Fehler
+    const fn = obj[methodName];
     if (typeof fn !== 'function') {
-      console.warn('csp-compat: nicht gefunden:', fnPath);
+      console.warn('csp-compat: nicht gefunden:', stmt);
       return;
     }
-    fn(...parseArgs(argsStr));
+    fn.apply(obj, parseArgs(argsStr));
   }
 
   function parseArgs(argsStr) {
@@ -177,7 +207,7 @@
       if (!handler) return;
       el.removeAttribute('onclick');
       el.addEventListener('click', function(e) {
-        parseAndCall(handler, e);
+        parseAndCall(handler, e, this);
       });
     });
   }

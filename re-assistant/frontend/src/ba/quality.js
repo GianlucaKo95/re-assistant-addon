@@ -12,27 +12,72 @@ async function loadBaQS() {
     const mySystems = S.systems.filter(s => (S.user.systems || []).includes(s.id));
     sel.innerHTML = '<option value="">System wählen …</option>' +
       mySystems.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    sel.onchange = () => loadCachedQS(sel.value);
     if (mySystems.length === 1) sel.value = mySystems[0].id;
   }
   if ($('btn-run-qs')) $('btn-run-qs').onclick = runQS;
-  if ($('qs-results')) $('qs-results').innerHTML = `
-    <div class="empty-state"><div class="es-icon">🔬</div>
-    <h3>System auswählen und QS starten</h3>
-    <p>Die KI bewertet jede Anforderung nach ISO 29148, SMART, IEEE-830:<br>
-    Eindeutigkeit, Vollständigkeit, Testbarkeit, Stakeholder-Abdeckung.</p></div>`;
+  if (sel?.value) {
+    loadCachedQS(sel.value);
+  } else if ($('qs-results')) {
+    $('qs-results').innerHTML = `
+      <div class="empty-state"><div class="es-icon">🔬</div>
+      <h3>System auswählen und QS starten</h3>
+      <p>Die KI bewertet jede Anforderung nach ISO 29148, SMART, IEEE-830:<br>
+      Eindeutigkeit, Vollständigkeit, Testbarkeit, Stakeholder-Abdeckung.</p></div>`;
+  }
+}
+
+// Trennt die Anforderungen eines Systems in bereits gültig bewertete
+// (QS-Ergebnis vorhanden UND Inhalt seit der Analyse unverändert) und
+// offene (noch nie bewertet, oder Titel/Beschreibung/Kategorie/Priorität
+// haben sich seitdem geändert — z.B. weil die Anforderung verbessert
+// wurde). So muss eine unveränderte Anforderung nicht erneut über die KI
+// laufen, während eine geänderte automatisch wieder als offen gilt.
+function splitQSCache(reqs) {
+  const cached = [];
+  const open = [];
+  for (const req of reqs) {
+    if (req.qsDetail && req.qsContentHash && req.qsContentHash === hashReqContent(req)) {
+      cached.push({ ...req.qsDetail, reqId: req.id });
+    } else {
+      open.push(req);
+    }
+  }
+  return { cached, open };
+}
+
+// Lädt beim Öffnen der Ansicht bzw. bei Systemwechsel die gespeicherten
+// QS-Ergebnisse, ohne die KI erneut zu bemühen — das eigentliche
+// "gespeichert bleiben solange sich nichts ändert".
+async function loadCachedQS(sysId) {
+  if (!sysId) return;
+  const reqs = await window.api.getRequirements({ systemId: sysId });
+  const { cached, open } = splitQSCache(reqs);
+  renderQSResults(cached, reqs, [], open.length);
 }
 
 async function runQS() {
   const sysId = $('qs-sys-sel')?.value;
   if (!sysId) { toast('⚠ System auswählen'); return; }
 
-  const reqs = await window.api.getRequirements({ systemId: sysId });
-  if (!reqs.length) { toast('ℹ Keine Anforderungen im System'); return; }
+  const allReqs = await window.api.getRequirements({ systemId: sysId });
+  if (!allReqs.length) { toast('ℹ Keine Anforderungen im System'); return; }
+
+  // Nur offene (nie bewertete oder seit der letzten QS geänderte)
+  // Anforderungen erneut über die KI laufen lassen — unveränderte behalten
+  // ihr gespeichertes Ergebnis, das spart Zeit und Tokens.
+  const { cached: cachedResults, open: reqs } = splitQSCache(allReqs);
+  if (!reqs.length) {
+    renderQSResults(cachedResults, allReqs, [], 0);
+    const avg = cachedResults.length ? (cachedResults.reduce((s,r)=>s+(r.score||0),0)/cachedResults.length).toFixed(0) : '—';
+    toast(`✅ Bereits aktuell — keine Änderungen seit der letzten QS (Ø Score: ${avg}/100)`);
+    return;
+  }
 
   const btn = $('btn-run-qs');
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Analysiere …'; }
   if ($('qs-results')) $('qs-results').innerHTML =
-    '<div class="empty-state"><div class="spin"></div><p>Analysiere mit vollem RE-Kontext …</p></div>';
+    `<div class="empty-state"><div class="spin"></div><p>Analysiere ${reqs.length} offene Anforderung(en) mit vollem RE-Kontext …</p></div>`;
 
   try {
     // Vollständiger RE-Kontext laden
@@ -131,7 +176,10 @@ async function runQS() {
       }
     }
 
-    // Scores speichern
+    // Scores + volles QS-Ergebnis speichern (inkl. Inhalts-Hash) — solange
+    // sich Titel/Beschreibung/Kategorie/Priorität danach nicht ändern, wird
+    // diese Anforderung beim nächsten Öffnen aus dem gespeicherten Ergebnis
+    // wiederhergestellt statt erneut analysiert.
     for (const r of allResults) {
       const req = reqs.find(x => x.id === r.reqId);
       if (!req) continue;
@@ -140,16 +188,22 @@ async function runQS() {
         quality_score:            r.score,
         acceptance_criteria_text: r.acceptanceCriteria?.join('\n') || req.acceptance_criteria_text || '',
         iso_category:             req.iso_category || '',
+        qsDetail:                 r,
+        qsContentHash:            hashReqContent(req),
       }).catch(() => {});
     }
 
-    renderQSResults(allResults, reqs, batchErrors);
+    // Frisch analysierte + aus dem Cache wiederverwendete Ergebnisse zusammen
+    // anzeigen — der Nutzer sieht immer den vollständigen Stand des Systems.
+    const combined = [...cachedResults, ...allResults];
+    const stillOpen = reqs.filter(r => !allResults.some(x => x.reqId === r.id)).length;
+    renderQSResults(combined, allReqs, batchErrors, stillOpen);
     if (!allResults.length) {
       toast('❌ QS fehlgeschlagen: ' + (batchErrors[0] || 'Keine Ergebnisse von der KI erhalten'));
     } else {
-      const avg = (allResults.reduce((s, r) => s + (r.score||0), 0) / allResults.length).toFixed(0);
+      const avg = (combined.reduce((s, r) => s + (r.score||0), 0) / combined.length).toFixed(0);
       const failedNote = batchErrors.length ? ` — ${batchErrors.length} von ${Math.ceil(reqs.length / BATCH)} Batches fehlgeschlagen` : '';
-      toast(`✅ ${allResults.length} bewertet — Ø Score: ${avg}/100${failedNote}`);
+      toast(`✅ ${allResults.length} neu bewertet (${combined.length} gesamt) — Ø Score: ${avg}/100${failedNote}`);
     }
 
   } catch(e) {
@@ -159,8 +213,23 @@ async function runQS() {
   }
 }
 
-function renderQSResults(results, reqs, batchErrors) {
+function renderQSResults(results, reqs, batchErrors, openCount) {
   if (!$('qs-results')) return;
+  batchErrors = batchErrors || [];
+  openCount = openCount || 0;
+
+  if (!results.length && !batchErrors.length) {
+    // Kein Fehlschlag — es wurde nur noch nichts (gültig) bewertet: entweder
+    // Erstaufruf, oder alle vorherigen Ergebnisse sind wegen Änderungen an
+    // den Anforderungen veraltet und wieder offen.
+    $('qs-results').innerHTML = reqs.length ? `
+      <div class="empty-state"><div class="es-icon">🔬</div>
+      <h3>Noch keine gültige QS-Analyse</h3>
+      <p>${reqs.length} Anforderung(en) offen — auf "QS starten" klicken.</p></div>` : `
+      <div class="empty-state"><div class="es-icon">🔬</div>
+      <h3>Keine Anforderungen im System</h3></div>`;
+    return;
+  }
   if (!results.length && reqs.length) {
     // Gleiche Fehlermeldung(en) wie in den einzelnen Batches — dedupliziert,
     // damit z.B. bei 3 identisch fehlgeschlagenen Batches nicht 3x derselbe
@@ -203,6 +272,7 @@ function renderQSResults(results, reqs, batchErrors) {
         ['Ø Score', results.length ? Math.round(results.reduce((s,r)=>s+(r.score||0),0)/results.length) + '/100' : '—', 'var(--t1)'],
         ['Kritisch', results.filter(r=>(r.issues||[]).some(i=>i.severity==='kritisch')).length, 'var(--red)'],
         ['Gut (≥80)', results.filter(r=>(r.score||0)>=80).length, 'var(--grn)'],
+        ...(openCount > 0 ? [['Offen', openCount, 'var(--amb)']] : []),
       ].map(([label, val, color]) => `
         <div style="background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);
           padding:8px 14px;text-align:center;min-width:80px">
@@ -210,6 +280,9 @@ function renderQSResults(results, reqs, batchErrors) {
           <div style="font-size:10px;color:var(--t3)">${label}</div>
         </div>`).join('')}
     </div>
+    ${openCount > 0 ? `<p style="font-size:11px;color:var(--t3);margin:-6px 0 14px">
+      ${openCount} Anforderung(en) noch nicht bewertet oder seit der letzten QS geändert —
+      "QS starten" bewertet nur diese neu.</p>` : ''}
 
     <!-- Karten -->
     ${sorted.map(r => {

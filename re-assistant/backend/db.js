@@ -107,6 +107,7 @@ function mapSystem(row) {
     docs:      row.docs      || [],
     idPrefix:  row.id_prefix  || 'REQ',
     idCounter: row.id_counter || 0,
+    analysisCache: row.analysis_cache || {},
     createdAt: ts(row.created_at), updatedAt: ts(row.updated_at),
   };
 }
@@ -148,6 +149,10 @@ function mapReq(row) {
     subcategory:   row.subcategory,
     sourceAnalysis:  row.source_analysis || null,
     sourceSuggestion:row.source_suggestion,
+    qsDetail:        row.qs_detail || null,
+    qsContentHash:   row.qs_content_hash || null,
+    smartDetail:       row.smart_detail || null,
+    smartContentHash:  row.smart_content_hash || null,
     lastChangedBy: row.last_changed_by,
     createdBy:     row.created_by,
     createdByName: row.created_by_name,

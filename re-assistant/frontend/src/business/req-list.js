@@ -61,8 +61,15 @@ async function loadBizReqs() {
     };
   }
 
-  $('btn-new-req-biz').onclick  = () => openReqModal(null, S.activeSystemId);
-  $('btn-dedup-global').onclick = runGlobalDedup;
+  // Business Analyst: reine Leseansicht — kein Anlegen/Bearbeiten/Löschen
+  // (der BA soll die Anforderungen einsehen, nicht verändern können).
+  const readOnly = S.user.role === 'businessanalyst';
+  $('btn-new-req-biz').style.display  = readOnly ? 'none' : '';
+  $('btn-dedup-global').style.display = readOnly ? 'none' : '';
+  if (!readOnly) {
+    $('btn-new-req-biz').onclick  = () => openReqModal(null, S.activeSystemId);
+    $('btn-dedup-global').onclick = runGlobalDedup;
+  }
 
   // Globale Referenz für Pagination-Buttons
   window.__pg_biz_reqs_list = _bizPgCtrl;
@@ -100,6 +107,10 @@ function _renderBizReqCard(r) {
   const sys = S.systems?.find(s => s.id === r.systemId);
   const ac  = r.acceptanceCriteria || [];
   const acDone = ac.filter(a => a.done).length;
+  // Business Analyst: reine Leseansicht — nur "Details" (inkl. Kommentare/
+  // Historie), keine Buttons die die Anforderung verändern (Bearbeiten,
+  // AC generieren, Review, Löschen).
+  const readOnly = S.user.role === 'businessanalyst';
   return `
     <div class="req-card" data-id="${r.id}" id="brc-${r.id}">
       <div style="padding:10px 14px">
@@ -115,6 +126,10 @@ function _renderBizReqCard(r) {
         ${ac.length ? `<div style="font-size:10px;color:var(--t3);margin-top:4px">AC: ${acDone}/${ac.length}</div>` : ''}
       </div>
       <div style="padding:6px 14px 10px;display:flex;gap:6px;border-top:1px solid var(--b1)">
+        ${readOnly ? `
+        <button class="btn-secondary" style="font-size:11px;padding:3px 9px"
+          onclick="openReqDetail('${r.id}')" title="Details, Kommentare &amp; Historie">📋 Details</button>
+        ` : `
         <button class="btn-secondary" style="font-size:11px;padding:3px 9px"
           onclick="openReqModal('${r.id}', '${r.systemId}')" title="Bearbeiten">✏ Bearbeiten</button>
           <button class="btn-secondary" style="font-size:11px;padding:3px 8px"
@@ -125,6 +140,7 @@ function _renderBizReqCard(r) {
           onclick="openReviewDetail('${r.id}')">🔍 Review</button>
         <button class="btn-danger" style="font-size:11px;padding:3px 9px;margin-left:auto"
           onclick="delPaneReq('${r.id}')">✕</button>
+        `}
       </div>
     </div>`;
 }

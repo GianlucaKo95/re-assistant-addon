@@ -73,6 +73,7 @@ const NAV = {
   ],
   businessanalyst: [
     { id:'ba-dashboard',   icon:ICONS.dash,     label:'Dashboard'         },
+    { id:'business-reqs',  icon:ICONS.list,     label:'Anforderungen'     },
     { id:'req-analysis',   icon:ICONS.check,    label:'RE-Analyse'        },
     { id:'ba-quality',      icon:ICONS.check,    label:'QS (ISO 29148)'    },
     { id:'ba-docanalysis',  icon:ICONS.doc,      label:'Dokumentenanalyse' },
@@ -82,7 +83,6 @@ const NAV = {
     { id:'ba-workshop',     icon:ICONS.workshop, label:'Workshop'          },
     { id:'dependencies',    icon:ICONS.deps,     label:'Abhängigkeiten'    },
     { id:'req-network',     icon:ICONS.network,  label:'Netzwerk'          },
-    { id:'templates',       icon:ICONS.tmpl,     label:'Vorlagen'          },
     { id:'review-workflow',   icon:ICONS.check,    label:'Review'            },
     { id:'business-chat',     icon:ICONS.chat,     label:'Chat & Prozesse'   },
     { id:'req-analysis',     icon:ICONS.check,    label:'RE-Analyse'        },

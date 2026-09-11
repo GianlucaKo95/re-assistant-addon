@@ -393,25 +393,32 @@ async function renderSmartCheck(el, sysId) {
   el.innerHTML = `
     <p style="font-size:12px;color:var(--t3);margin-bottom:12px">
       Klicke auf eine Anforderung um eine KI-gestützte SMART-Qualitätsprüfung nach IEEE-830 und ISO-25010 durchzuführen.
+      Ein gespeichertes Ergebnis bleibt erhalten, solange sich die Anforderung nicht ändert.
     </p>
     <div style="display:flex;flex-direction:column;gap:6px">
       ${reqs.map(r => {
         const score = r.quality_score;
         const scoreColor = score >= 80 ? 'var(--grn)' : score >= 50 ? 'var(--amb)' : score ? 'var(--red)' : 'var(--t3)';
+        // Gespeichertes Ergebnis nur anzeigen, wenn sich die Anforderung seit
+        // der letzten Prüfung nicht geändert hat (gleiches Muster wie QS).
+        const isCurrent = r.smartDetail && r.smartContentHash && r.smartContentHash === hashReqContent(r);
         return `<div style="background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);
           padding:10px 12px;display:flex;gap:10px;align-items:center">
           <div style="flex:1;min-width:0">
             <div style="font-size:12px;font-weight:600">${esc(r.title)}</div>
             <div style="font-size:10px;color:var(--t3);margin-top:2px">${esc(r.id)} · ${esc(r.category||'')} · ${esc(r.priority||'')}</div>
             ${r.iso_category ? `<div style="font-size:10px;color:var(--ab);margin-top:2px">ISO: ${esc(r.iso_category)}</div>` : ''}
+            ${score != null && !isCurrent ? `<div style="font-size:10px;color:var(--amb);margin-top:2px">⚠ Geändert seit letzter Prüfung</div>` : ''}
           </div>
           <div style="text-align:right;flex-shrink:0">
             <div style="font-size:20px;font-weight:700;color:${scoreColor}">${score != null ? score : '—'}</div>
             <div style="font-size:9px;color:var(--t3)">/100</div>
           </div>
+          ${isCurrent ? `<button class="btn-secondary" style="font-size:11px;padding:5px 10px;flex-shrink:0"
+            onclick="showSmartResult('${r.id}', ${esc(JSON.stringify(r.smartDetail))})">👁 Ansehen</button>` : ''}
           <button class="btn-secondary" style="font-size:11px;padding:5px 10px;flex-shrink:0"
             onclick="runSmartCheck('${r.id}', this)">
-            ${score != null ? '🔄 Neu prüfen' : '⭐ Prüfen'}
+            ${isCurrent ? '🔄 Neu prüfen' : score != null ? '🔄 Neu prüfen' : '⭐ Prüfen'}
           </button>
         </div>`;
       }).join('')}
@@ -434,7 +441,17 @@ async function runSmartCheck(reqId, btn) {
     });
     const data = await res.json();
     if (!data.ok) { toast('❌ ' + (data.error||'Fehler')); return; }
+
+    // Lokalen Stand direkt aktualisieren, damit die Liste ohne Neuladen
+    // das frische Ergebnis (Score + "aktuell"-Status) zeigt.
+    if (req) {
+      req.quality_score   = data.result.overall_score;
+      req.iso_category     = data.result.iso_category || '';
+      req.smartDetail      = data.result;
+      req.smartContentHash = data.contentHash || hashReqContent(req);
+    }
     showSmartResult(reqId, data.result);
+    loadAnalysisTab('smart-check');
   } catch(e) {
     toast('❌ ' + e.message);
   } finally {
@@ -448,12 +465,14 @@ async function renderConsistencyTab(el, sysId) {
     <div style="padding:8px 0 14px">
       <p style="font-size:13px;color:var(--t2);margin-bottom:12px">
         Prüft alle Anforderungen dieses Systems auf inhaltliche Widersprüche (z.B. sich gegenseitig ausschließende Vorgaben).
+        Ein gespeichertes Ergebnis bleibt erhalten, solange sich keine der geprüften Anforderungen ändert.
       </p>
       <button class="btn-primary" id="btn-consistency-check" onclick="runConsistencyCheck('${sysId}')">
         🔍 Konsistenz prüfen
       </button>
     </div>
     <div id="consistency-results"></div>`;
+  if (typeof loadCachedConsistency === 'function') loadCachedConsistency(sysId);
 }
 
 function showSmartResult(reqId, result) {

@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.37';
+const APP_VERSION = '4.3.41';
 
 const app      = express();
 
@@ -340,6 +340,31 @@ async function aiCallUnified(apiCfg, prompt, maxTokens = 1000, tier = 'balanced'
   throw lastErr;
 }
 
+// Bereinigt typische KI-Ausgabe-Artefakte (Code-Fences, Text vor/nach dem
+// eigentlichen JSON, trailing commas) vor JSON.parse — serverseitiges
+// Gegenstück zu core/helpers.js' cleanJsonText() im Frontend, für die
+// wenigen Stellen, an denen der Server selbst eine KI-JSON-Antwort parst.
+function cleanAiJsonText(text) {
+  let r = String(text ?? '').trim().replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  const fi = r.indexOf('['), li = r.lastIndexOf(']');
+  const fo = r.indexOf('{'), lo = r.lastIndexOf('}');
+  const arrFirst = fi !== -1 && (fo === -1 || fi < fo);
+  if (arrFirst && li > fi) r = r.substring(fi, li + 1);
+  else if (fo !== -1 && lo > fo) r = r.substring(fo, lo + 1);
+  return r.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+}
+
+// Deterministischer Inhalts-Hash — MUSS identisch zu core/helpers.js'
+// hashReqContent() sein, da beide Seiten denselben Hash für dieselbe
+// Anforderung berechnen müssen (Server beim Speichern eines Analyse-
+// ergebnisses, Client beim Prüfen ob es noch aktuell ist).
+function hashReqContent(req) {
+  const s = [req.title||'', req.description||'', req.category||'', req.priority||''].join('');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; }
+  return String(h);
+}
+
 // ── AUTH ──────────────────────────────────────────────────────
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -487,6 +512,23 @@ app.post('/api/systems', requireAuth, async (req, res) => {
       await query('INSERT INTO systems (id,name,description,docs,id_prefix) VALUES ($1,$2,$3,$4,$5)',
         [s.id||crypto.randomUUID(), s.name, s.description||'', JSON.stringify(s.docs||[]), s.idPrefix||'REQ']);
     }
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// System-weite Analyseergebnisse (z.B. Konsistenzprüfung) speichern — der
+// Client liefert result + einen Inhalts-Hash über die aktuellen
+// Anforderungen mit; ein späterer Abgleich (Hash stimmt noch überein?)
+// entscheidet ob das Ergebnis noch gültig ist, ohne dass der Server dafür
+// selbst etwas berechnen muss.
+app.post('/api/systems/:id/analysis-cache', requireAuth, async (req, res) => {
+  try {
+    const { kind, result, contentHash } = req.body;
+    if (!kind) return res.status(400).json({ error: 'kind erforderlich' });
+    await query(
+      `UPDATE systems SET analysis_cache = COALESCE(analysis_cache,'{}'::jsonb) || $1::jsonb WHERE id=$2`,
+      [JSON.stringify({ [kind]: { result, contentHash, at: Date.now() } }), req.params.id]
+    );
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -1037,7 +1079,8 @@ app.post('/api/requirements', requireAuth, async (req, res) => {
         last_changed_by=$23,archived=$24,archived_at=$25,archived_by=$26,
         decomposed=$27,decomposed_into=$28,
         acceptance_criteria_text=$29,verification_method=$30,iso_category=$31,
-        risk_level=$32,business_value=$33,stakeholders=$34,source=$35
+        risk_level=$32,business_value=$33,stakeholders=$34,source=$35,
+        qs_detail=$36,qs_content_hash=$37
         WHERE id=$1`, [
         clean.id,
         clean.title ?? existing.title,
@@ -1074,6 +1117,8 @@ app.post('/api/requirements', requireAuth, async (req, res) => {
         clean.business_value ?? clean.businessValue ?? existing.business_value ?? 0,
         JSON.stringify(clean.stakeholders || jparse(existing.stakeholders, [])),
         clean.source ?? existing.source ?? '',
+        clean.qsDetail !== undefined ? (clean.qsDetail ? JSON.stringify(clean.qsDetail) : null) : existing.qs_detail,
+        clean.qsContentHash !== undefined ? clean.qsContentHash : existing.qs_content_hash,
       ]);
     } else {
       const id = clean.id || `${clean.systemId?.substring(0,4)||'REQ'}-${Date.now()}`;
@@ -3485,6 +3530,7 @@ app.post('/api/requirements/:id/quality-check', requireAuth, async (req, res) =>
     );
 
     const othersText = others.map(o => '- ' + o.id + ': ' + o.title).join('\n');
+    const ragContext = typeof req.body?.ragContext === 'string' ? req.body.ragContext.substring(0, 8000) : '';
     const smartSchema = '{"smart":{"specific":{"score":"0-10","issue":"...","suggestion":"..."},"measurable":{"score":"0-10","issue":"...","suggestion":"..."},"achievable":{"score":"0-10","issue":"...","suggestion":"..."},"relevant":{"score":"0-10","issue":"...","suggestion":"..."},"timebound":{"score":"0-10","issue":"...","suggestion":"..."}},"overall_score":"0-100","iso_category":"Funktionale Eignung|Leistungseffizienz|Kompatibilitaet|Gebrauchstauglichkeit|Zuverlaessigkeit|Sicherheit|Wartbarkeit|Portierbarkeit","ieee_issues":["..."],"conflicts":["REQ-ID: Begruendung"],"improved_title":"...","improved_description":"...","acceptance_criteria":["Gegeben...Wenn...Dann..."],"verification_method":"Test|Inspektion|Review|Analyse|Demo","risk_level":"hoch|mittel|niedrig","complexity":"hoch|mittel|niedrig","business_value":"1-10"}';
     const prompt = 'Du bist ein zertifizierter Requirements Engineer (CPRE). Analysiere diese Anforderung nach IEEE-830, SMART und ISO-25010.\n\n'
       + 'ANFORDERUNG:\n'
@@ -3495,23 +3541,48 @@ app.post('/api/requirements/:id/quality-check', requireAuth, async (req, res) =>
       + 'Begruendung: ' + (req_.rationale || '(keine)') + '\n'
       + 'Akzeptanzkriterien: ' + (req_.acceptance_criteria_text || '(keine)') + '\n\n'
       + 'ANDERE ANFORDERUNGEN (fuer Konflikt-Check):\n' + othersText + '\n\n'
+      + (ragContext ? 'IMPLEMENTIERUNGSKONTEXT (Code/Doku, fuer Genauigkeit):\n' + ragContext + '\n\n' : '')
       + 'Antworte NUR mit JSON (keine Backticks):\n' + smartSchema;
-    const text = await aiCallUnified(apiCfg, prompt, 2000, 'fast', 40000, 1);
-    const result = JSON.parse(text.replace(/\`\`\`json|\`\`\`/g,'').trim());
+    // 6000 statt 2000: das Schema fasst 5 SMART-Kriterien (je Score +
+    // Issue + Suggestion) sowie improved_title/improved_description,
+    // acceptance_criteria, ieee_issues und conflicts zusammen — bei nur
+    // 2000 Tokens riss die Antwort regelmäßig mitten im JSON ab, JSON.parse
+    // warf dann und der Button zeigte nur einen kryptischen Fehler.
+    let text;
+    try {
+      text = await aiCallUnified(apiCfg, prompt, 6000, 'fast', 60000, 1);
+    } catch(e) {
+      return res.status(502).json({ error: 'KI-Anfrage fehlgeschlagen: ' + e.message });
+    }
+    let result;
+    try {
+      result = JSON.parse(cleanAiJsonText(text));
+    } catch(e) {
+      log('error', `Quality-Check ${req.params.id}: Antwort nicht als JSON parsbar: ${text.substring(0,300)}`);
+      return res.status(502).json({ error: 'Antwort der KI war unvollständig oder kein gültiges JSON — bitte erneut versuchen.' });
+    }
 
-    // Ergebnis in DB speichern
+    // Volles Ergebnis + Inhalts-Hash speichern (wie qs_detail/qs_content_hash
+    // bei der QS) — damit die Prüfung beim nächsten Öffnen ohne erneuten
+    // KI-Call angezeigt werden kann, solange sich die Anforderung nicht
+    // geändert hat. Die einzelnen abgeleiteten Felder bleiben zusätzlich
+    // bestehen, da andere Ansichten (QS, Priorisierung) sie direkt lesen.
+    const contentHash = hashReqContent(req_);
     await query(`UPDATE requirements SET
       smart_score=$1, iso_category=$2, quality_score=$3,
       acceptance_criteria_text=$4, verification_method=$5,
-      risk_level=$6, complexity=$7, business_value=$8, conflicts=$9
-      WHERE id=$10`,
+      risk_level=$6, complexity=$7, business_value=$8, conflicts=$9,
+      smart_detail=$10, smart_content_hash=$11
+      WHERE id=$12`,
       [JSON.stringify(result.smart), result.iso_category,
        result.overall_score, (result.acceptance_criteria||[]).join('\n'),
        result.verification_method||'', result.risk_level||'',
        result.complexity||'', result.business_value||0,
-       JSON.stringify(result.conflicts||[]), req.params.id]);
+       JSON.stringify(result.conflicts||[]),
+       JSON.stringify(result), contentHash,
+       req.params.id]);
 
-    res.json({ ok:true, result });
+    res.json({ ok:true, result, contentHash });
   } catch(e) {
     log('error', `Quality-Check ${req.params.id}: ${e.message}`);
     res.status(500).json({ error: e.message });
@@ -3570,8 +3641,16 @@ app.post('/api/systems/:id/analyze-requirements', requireAuth, async (req, res) 
     }
 
     const promptText = makePrompt(aspect);
-    const text = await aiCallUnified(apiCfg, promptText, 4000, 'fast', 90000, 1);
-    const result = JSON.parse(text.replace(/\`\`\`json|\`\`\`/g,'').trim());
+    // 'full' fragt vier Kategorien plus Lücken/Konflikte/Empfehlungen in
+    // einer Antwort ab — 4000 Tokens reichten dafür oft nicht.
+    const text = await aiCallUnified(apiCfg, promptText, aspect === 'full' ? 8000 : 4000, 'fast', 90000, 1);
+    let result;
+    try {
+      result = JSON.parse(cleanAiJsonText(text));
+    } catch(e) {
+      log('error', `analyze-requirements ${req.params.id}: Antwort nicht als JSON parsbar: ${text.substring(0,300)}`);
+      return res.status(502).json({ error: 'Antwort der KI war unvollständig oder kein gültiges JSON — bitte erneut versuchen.' });
+    }
     res.json({ ok:true, aspect, result });
   } catch(e) {
     log('error', `analyze-requirements ${req.params.id}: ${e.message}`);
