@@ -45,17 +45,29 @@ Antworte NUR mit JSON ohne Backticks:
 Wenn keine Widersprüche: {"conflicts":[],"warnings":[],"summary":"Keine Widersprüche gefunden."}
 
 Anforderungen:
-${rl}` }], langNote(), 2500);
+${rl}` }], langNote(), 4000);
 
   if (btn) { btn.disabled = false; btn.innerHTML = '🔍 Konsistenz prüfen'; }
   if (!res.ok) { toast('❌ ' + res.text); return; }
 
   try {
-    const result = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
+    const result = JSON.parse(cleanJsonText(res.text));
     renderConsistencyResults(result, reqs);
     if (typeof addNotif === 'function' && result.conflicts.length)
       addNotif('⚠', 'Widersprüche gefunden', `${result.conflicts.length} Konflikte in Requirements`, () => {});
-  } catch(e) { toast('❌ Parsing-Fehler'); }
+  } catch(e) {
+    // Bei max_tokens abgeschnitten: vollständige Konflikte/Warnungen retten
+    const conflicts = extractJsonObjects(res.text, 'conflicts');
+    const warnings  = extractJsonObjects(res.text, 'warnings');
+    if (conflicts.length || warnings.length) {
+      const result = { conflicts, warnings, summary: 'Antwort unvollständig (Token-Limit) — evtl. nicht alle Widersprüche erkannt.' };
+      renderConsistencyResults(result, reqs);
+      if (typeof addNotif === 'function' && conflicts.length)
+        addNotif('⚠', 'Widersprüche gefunden', `${conflicts.length} Konflikte in Requirements (unvollständige Analyse)`, () => {});
+    } else {
+      toast('❌ Parsing-Fehler' + (res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : ''));
+    }
+  }
 }
 
 function renderConsistencyResults(result, reqs) {
@@ -161,7 +173,7 @@ Angefangener Titel: "${title}"` }], langNote(), 400);
 
   if (!res.ok) return;
   try {
-    const sugg = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
+    const sugg = JSON.parse(cleanJsonText(res.text));
     showACSuggestions(sugg, titleInputId, descInputId);
   } catch(e) {}
 }

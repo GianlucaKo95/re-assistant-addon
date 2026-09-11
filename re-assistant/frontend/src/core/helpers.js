@@ -13,6 +13,65 @@ function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── KI-JSON-Antworten robust parsen ───────────────────────────
+// Bereinigt typische KI-Ausgabe-Artefakte (Code-Fences, Text vor/nach dem
+// eigentlichen JSON, trailing commas) bevor JSON.parse versucht wird.
+// Ersetzt die ~25x im Code duplizierte Inline-Variante.
+function cleanJsonText(text) {
+  let r = String(text ?? '').trim().replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  const fi = r.indexOf('['), li = r.lastIndexOf(']');
+  const fo = r.indexOf('{'), lo = r.lastIndexOf('}');
+  const arrFirst = fi !== -1 && (fo === -1 || fi < fo);
+  if (arrFirst && li > fi) r = r.substring(fi, li + 1);
+  else if (fo !== -1 && lo > fo) r = r.substring(fo, lo + 1);
+  return r.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+}
+
+// Extrahiert einzelne vollständige {...}-Objekte aus einer (z.B. durch
+// max_tokens mitten drin abgeschnittenen) KI-Antwort — entweder aus einem
+// Array auf oberster Ebene (kein arrayKey) oder aus einem benannten Array
+// irgendwo im Text (z.B. extractJsonObjects(text, 'dependencies') für
+// {"dependencies":[...], "summary":"..."}). Jedes Objekt wird einzeln
+// geparst; ein durch den Abbruch unvollständiges letztes Objekt schlägt
+// dabei fehl und wird übersprungen statt die ganze Antwort zu verwerfen —
+// selbst wenn der umschließende Wrapper (z.B. das "summary"-Objekt) nie
+// schließt, weil der Text mitten im Array abbricht.
+function extractJsonObjects(text, arrayKey) {
+  text = String(text ?? '');
+  let scanStart = 0;
+  if (arrayKey) {
+    const keyIdx = text.indexOf(`"${arrayKey}"`);
+    if (keyIdx === -1) return [];
+    const bracketIdx = text.indexOf('[', keyIdx);
+    if (bracketIdx === -1) return [];
+    scanStart = bracketIdx + 1;
+  }
+  const objects = [];
+  let depth = 0, start = -1, inString = false, escape = false;
+  for (let i = scanStart; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (escape) escape = false;
+      else if (c === '\\') escape = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') { inString = true; continue; }
+    if (c === '{') { if (depth === 0) start = i; depth++; }
+    else if (c === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) { objects.push(text.substring(start, i + 1)); start = -1; }
+    } else if (arrayKey && depth === 0 && c === ']') {
+      break; // Array sauber geschlossen — Rest des Texts (weitere Felder) ignorieren
+    }
+  }
+  const results = [];
+  for (const obj of objects) {
+    try { results.push(JSON.parse(obj)); } catch(e) { /* abgeschnitten/kaputt — überspringen */ }
+  }
+  return results;
+}
+
 // ── Zeit ──────────────────────────────────────────────────────
 function now() {
   return new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
@@ -332,6 +391,8 @@ window.setVal = setVal;
 window.$      = $;
 window.setVal = setVal;
 window.esc    = esc;
+window.cleanJsonText     = cleanJsonText;
+window.extractJsonObjects = extractJsonObjects;
 window.now = now;
 window.timeSince = timeSince;
 window.statusLabel = statusLabel;

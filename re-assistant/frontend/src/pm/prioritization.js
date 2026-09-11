@@ -124,18 +124,26 @@ async function runPrio() {
     const res = await callAPI(
       [{ role: 'user', content: prompt }],
       `Du bist zertifizierter Product Owner und Projektmanager. ${langNote()}`,
-      5000
+      6000
     );
 
     if (!res.ok) { toast('❌ ' + res.text); return; }
 
     let pr;
+    let partial = false;
     try {
-      pr = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
-    } catch(e) { toast('❌ Parsing-Fehler'); return; }
+      pr = JSON.parse(cleanJsonText(res.text));
+    } catch(e) {
+      // Bei max_tokens mitten in "items" abgeschnitten: vollständig
+      // priorisierte Einträge retten statt die ganze Priorisierung zu verwerfen.
+      const items = extractJsonObjects(res.text, 'items');
+      if (!items.length) { toast('❌ Parsing-Fehler' + (res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : '')); return; }
+      pr = { items, groups: {}, summary: 'Antwort unvollständig (Token-Limit)', recommendations: [] };
+      partial = true;
+    }
 
     renderPrioResults(pr, reqs, method, m.label);
-    toast(`✅ ${m.label} abgeschlossen`);
+    toast(partial ? `⚠ ${m.label} unvollständig — ${pr.items.length} von ${reqs.length} priorisiert` : `✅ ${m.label} abgeschlossen`);
 
   } catch(e) {
     toast('❌ Fehler: ' + e.message);
@@ -384,14 +392,24 @@ async function runQSDashboard() {
       + '"recommendations":["..."]}'
     }],
       `Du bist CPRE-zertifizierter QS-Experte und Requirements Auditor. ${langNote()}`,
-      5000
+      6000
     );
 
     let analysis = null;
     if (res.ok) {
       try {
-        analysis = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
-      } catch(e) {}
+        analysis = JSON.parse(cleanJsonText(res.text));
+      } catch(e) {
+        // Bei max_tokens mitten in "issues" abgeschnitten: vollständige
+        // Befunde retten statt die ganze QS-Auswertung zu verlieren.
+        const issues = extractJsonObjects(res.text, 'issues');
+        if (issues.length) {
+          analysis = { overallQuality: null, summary: 'Antwort unvollständig (Token-Limit) — evtl. nicht alle Befunde erkannt.',
+            issues, gaps: [], duplicates: [], coverageByStakeholder: {}, coverageByUseCase: {}, recommendations: [] };
+        } else {
+          console.warn('QS-Dashboard: Antwort konnte nicht verarbeitet werden', e);
+        }
+      }
     }
 
     renderQSDashboard(stats, analysis, reqs, sysId);

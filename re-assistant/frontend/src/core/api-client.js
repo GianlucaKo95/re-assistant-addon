@@ -51,7 +51,12 @@ function abortCurrentRequest() {
   return false;
 }
 
-async function callAPI(messages, system = '', maxTokens = 2000, feature = null) {
+// autoContinue: bei true UND abgeschnittener Antwort (max_tokens) wird die
+// KI automatisch gebeten weiterzuschreiben, statt dem Aufrufer nur ein
+// "truncated"-Flag für einen Hinweistext zu geben — für Freitext-Chats
+// (business/chat.js, pm/chat.js), wo der Nutzer die VOLLSTÄNDIGE Antwort
+// will, nicht nur die Information dass sie unvollständig war.
+async function callAPI(messages, system = '', maxTokens = 2000, feature = null, _reserved = null, streamCb = null, autoContinue = false) {
   if (_activeAbortController) _activeAbortController.abort();
   _activeAbortController = new AbortController();
   const signal = _activeAbortController.signal;
@@ -67,9 +72,9 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
   // deshalb sofort mit Retry-After statt selbst zu warten.
   const maxAttempts = 6;
   const maxTotalWaitMs = 300000;
-  let totalWaitMs = 0;
 
-  try {
+  const fetchOnce = async (msgs) => {
+    let totalWaitMs = 0;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const res = await fetch('api/ai/chat', {
         method: 'POST', credentials: 'include',
@@ -83,7 +88,7 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
           model:        S.settings?.model || undefined,
           max_tokens:   maxTokens,
           system:       system || undefined,
-          messages,
+          messages:     msgs,
           _feature:     feat,
           _systemId:    sysId,
           // Anhänge (Bilder/Dateien) aus dem Chat
@@ -130,9 +135,39 @@ async function callAPI(messages, system = '', maxTokens = 2000, feature = null) 
       }
 
       const text = data.content?.find(c => c.type === 'text')?.text || '';
-      return { ok: true, text };
+      // truncated: max_tokens hat die Antwort abgeschnitten, bevor die KI
+      // fertig war.
+      return { ok: true, text, truncated: data.stop_reason === 'max_tokens' };
     }
     return { ok: false, text: 'API-Fehler: Rate-Limit — maximale Wartezeit überschritten', status: 429 };
+  };
+
+  try {
+    // Bis zu MAX_CONTINUATIONS weitere Anfragen, wenn die Antwort wegen
+    // max_tokens abbricht: die abgeschnittene Antwort wird als eigener
+    // Assistant-Turn angehängt und die KI gebeten, exakt dort fortzufahren.
+    // So kommt bei "erkläre im Detail"-Anfragen die vollständige Antwort
+    // an, statt nur ein Hinweis dass sie unvollständig war.
+    const MAX_CONTINUATIONS = autoContinue ? 5 : 0;
+    let msgs = messages;
+    let combined = '';
+    let result;
+    for (let i = 0; i <= MAX_CONTINUATIONS; i++) {
+      result = await fetchOnce(msgs);
+      if (!result.ok) {
+        // Bei Fehler mitten in einer Fortsetzung: das bereits Empfangene
+        // trotzdem zurückgeben (als unvollständig markiert), statt alles
+        // zu verwerfen.
+        return combined ? { ok: true, text: combined, truncated: true } : result;
+      }
+      combined += result.text;
+      if (typeof streamCb === 'function') streamCb(result.text, combined);
+      if (!autoContinue || !result.truncated || i === MAX_CONTINUATIONS) break;
+      msgs = [...msgs,
+        { role: 'assistant', content: result.text },
+        { role: 'user', content: 'Fahre exakt dort fort, wo du aufgehört hast — keine Wiederholung, keine neue Einleitung, keine Zusammenfassung.' }];
+    }
+    return { ok: true, text: combined, truncated: !!result.truncated };
   } catch(e) {
     if (e.name === 'AbortError') {
       return { ok: true, text: '', _aborted: true };

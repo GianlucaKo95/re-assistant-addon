@@ -132,12 +132,7 @@ async function generateFachkonzept() {
 
   if (!res.ok) { toast('❌ ' + res.text); $('fk-preview').innerHTML = ''; return; }
   try {
-    const data = JSON.parse((() => {
-      let _r = res.text.trim().replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-      const _fo = _r.indexOf('{'), _lo = _r.lastIndexOf('}');
-      if (_fo !== -1 && _lo > _fo) _r = _r.substring(_fo, _lo + 1);
-      return _r.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
-    })());
+    const data = JSON.parse(cleanJsonText(res.text));
     _fkData = data;
     _fkMeta = { reqId, reqTitle: reqTitle || data.title || '', systemName: sys?.name || '' };
     renderFachkonzeptPreview(data);

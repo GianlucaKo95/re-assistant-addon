@@ -475,14 +475,24 @@ JSON ohne Backticks:
 [{"title":"...","description":"...","priority":"medium","category":"Funktional","rationale":""}]
 
 Text:
-${text.substring(0, 3000)}` }], langNote(), 1500);
+${text.substring(0, 3000)}` }], langNote(), 3000);
 
   if (!res.ok) { toast('❌ ' + res.text); return; }
   try {
-    const reqs = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
+    const reqs = JSON.parse(cleanJsonText(res.text));
     closeModal();
     showImportPreview(reqs, sysId, 'Eingefügter Text');
-  } catch(e) { toast('❌ Parsing-Fehler'); }
+  } catch(e) {
+    // Bei max_tokens abgeschnitten: vollständig extrahierte Anforderungen retten
+    const recovered = extractJsonObjects(res.text);
+    if (recovered.length) {
+      closeModal();
+      showImportPreview(recovered, sysId, 'Eingefügter Text');
+      toast(`⚠ Antwort unvollständig — ${recovered.length} Anforderung(en) erkannt (evtl. nicht alle)`);
+    } else {
+      toast('❌ Parsing-Fehler' + (res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : ''));
+    }
+  }
 }
 
 window.loadImportView      = loadImportView;

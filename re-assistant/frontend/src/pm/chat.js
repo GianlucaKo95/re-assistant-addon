@@ -66,11 +66,13 @@ Antworte immer strukturiert mit konkreten Handlungsempfehlungen.`,
   let pmStreamedText = '';
   const pmBub = pmBubble.querySelector('.bubble');
 
-  const res=await callAPI(S.chatHistory.pmc, pmSystem, 3500, 'pmc', null, (token, full) => {
+  // autoContinue=true: bei abgeschnittener Antwort (max_tokens) lässt die
+  // KI selbst automatisch weiterschreiben statt nur einen Hinweis zu zeigen.
+  const res=await callAPI(S.chatHistory.pmc, pmSystem, 8000, 'pmc', null, (token, full) => {
     pmStreamedText = full;
     if (pmBub) pmBub.innerHTML = renderMD(full) + '<span class="stream-cursor">▋</span>';
     if (pmMsgs) pmMsgs.scrollTop = pmMsgs.scrollHeight;
-  });
+  }, true);
 
   if (pmBub) pmBub.innerHTML = renderMD(res.ok ? res.text : pmStreamedText || '');
   if (!res.ok && pmBubble) pmBubble.remove();
@@ -78,7 +80,11 @@ Antworte immer strukturiert mit konkreten Handlungsempfehlungen.`,
   document.getElementById('pmc-stop')?.style.setProperty('display','none');
   document.getElementById('pmc-send')?.style.setProperty('display','flex');
   if(res._aborted) return;
-  pushMsg('pm-chat-msgs','a',res.ok?res.text:`❌ ${res.text}`);
+  const pmReply = res.ok ? res.text : `❌ ${res.text}`;
+  pushMsg('pm-chat-msgs','a', res.ok && res.truncated
+    // Nur falls selbst nach den automatischen Fortsetzungen noch abgeschnitten
+    ? pmReply + '\n\n*(⚠ Antwort auch nach automatischer Fortsetzung noch unvollständig — bitte "weiter" schreiben)*'
+    : pmReply);
   if(res.ok){S.chatHistory.pmc.push({role:'assistant',content:res.text});if(S.chatHistory.pmc.length>40){compressHistory('pmc').catch(()=>{S.chatHistory.pmc=S.chatHistory.pmc.slice(-40);});}if(typeof scheduleConvAutoSave==='function')scheduleConvAutoSave('pmc');}
 }
 
