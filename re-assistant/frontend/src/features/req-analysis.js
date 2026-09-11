@@ -465,12 +465,14 @@ async function renderConsistencyTab(el, sysId) {
     <div style="padding:8px 0 14px">
       <p style="font-size:13px;color:var(--t2);margin-bottom:12px">
         Prüft alle Anforderungen dieses Systems auf inhaltliche Widersprüche (z.B. sich gegenseitig ausschließende Vorgaben).
+        Ein gespeichertes Ergebnis bleibt erhalten, solange sich keine der geprüften Anforderungen ändert.
       </p>
       <button class="btn-primary" id="btn-consistency-check" onclick="runConsistencyCheck('${sysId}')">
         🔍 Konsistenz prüfen
       </button>
     </div>
     <div id="consistency-results"></div>`;
+  if (typeof loadCachedConsistency === 'function') loadCachedConsistency(sysId);
 }
 
 function showSmartResult(reqId, result) {

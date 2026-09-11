@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.40';
+const APP_VERSION = '4.3.41';
 
 const app      = express();
 
@@ -512,6 +512,23 @@ app.post('/api/systems', requireAuth, async (req, res) => {
       await query('INSERT INTO systems (id,name,description,docs,id_prefix) VALUES ($1,$2,$3,$4,$5)',
         [s.id||crypto.randomUUID(), s.name, s.description||'', JSON.stringify(s.docs||[]), s.idPrefix||'REQ']);
     }
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// System-weite Analyseergebnisse (z.B. Konsistenzprüfung) speichern — der
+// Client liefert result + einen Inhalts-Hash über die aktuellen
+// Anforderungen mit; ein späterer Abgleich (Hash stimmt noch überein?)
+// entscheidet ob das Ergebnis noch gültig ist, ohne dass der Server dafür
+// selbst etwas berechnen muss.
+app.post('/api/systems/:id/analysis-cache', requireAuth, async (req, res) => {
+  try {
+    const { kind, result, contentHash } = req.body;
+    if (!kind) return res.status(400).json({ error: 'kind erforderlich' });
+    await query(
+      `UPDATE systems SET analysis_cache = COALESCE(analysis_cache,'{}'::jsonb) || $1::jsonb WHERE id=$2`,
+      [JSON.stringify({ [kind]: { result, contentHash, at: Date.now() } }), req.params.id]
+    );
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

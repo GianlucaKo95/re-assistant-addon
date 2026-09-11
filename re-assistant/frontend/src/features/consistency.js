@@ -50,9 +50,21 @@ ${rl}` }], langNote(), 4000);
   if (btn) { btn.disabled = false; btn.innerHTML = '🔍 Konsistenz prüfen'; }
   if (!res.ok) { toast('❌ ' + res.text); return; }
 
+  // Ergebnis system-weit speichern, solange die geprüften Anforderungen
+  // unverändert bleiben — gleiches Muster wie QS/SMART, nur pro System
+  // statt pro Anforderung (die Prüfung betrifft ja alle zusammen).
+  const saveCache = (result) => {
+    fetch(`api/systems/${systemId}/analysis-cache`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'consistency', result, contentHash: hashSystemReqs(reqs) }),
+    }).catch(() => {});
+  };
+
   try {
     const result = JSON.parse(cleanJsonText(res.text));
     renderConsistencyResults(result, reqs);
+    saveCache(result);
     if (typeof addNotif === 'function' && result.conflicts.length)
       addNotif('⚠', 'Widersprüche gefunden', `${result.conflicts.length} Konflikte in Requirements`, () => {});
   } catch(e) {
@@ -62,11 +74,30 @@ ${rl}` }], langNote(), 4000);
     if (conflicts.length || warnings.length) {
       const result = { conflicts, warnings, summary: 'Antwort unvollständig (Token-Limit) — evtl. nicht alle Widersprüche erkannt.' };
       renderConsistencyResults(result, reqs);
+      saveCache(result);
       if (typeof addNotif === 'function' && conflicts.length)
         addNotif('⚠', 'Widersprüche gefunden', `${conflicts.length} Konflikte in Requirements (unvollständige Analyse)`, () => {});
     } else {
       toast('❌ Parsing-Fehler' + (res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : ''));
     }
+  }
+}
+
+// Lädt beim Öffnen des Konsistenz-Tabs ein zuvor gespeichertes Ergebnis,
+// solange sich keine der geprüften Anforderungen seitdem geändert hat
+// (Anforderung hinzugefügt/gelöscht/bearbeitet → Hash weicht ab → Ergebnis
+// gilt als veraltet, der Nutzer sieht stattdessen wieder den "Prüfen"-Button).
+async function loadCachedConsistency(systemId) {
+  const wrap = $('consistency-results');
+  if (!wrap || !systemId) return;
+  const [reqs, systems] = await Promise.all([
+    window.api.getRequirements({ systemId }),
+    window.api.getSystems(),
+  ]);
+  const sys = systems.find(s => s.id === systemId);
+  const cached = sys?.analysisCache?.consistency;
+  if (cached?.result && cached.contentHash === hashSystemReqs(reqs)) {
+    renderConsistencyResults(cached.result, reqs);
   }
 }
 
@@ -235,6 +266,7 @@ function applyACDescription(descId, desc) {
 
 window.runConsistencyCheck   = runConsistencyCheck;
 window.renderConsistencyResults = renderConsistencyResults;
+window.loadCachedConsistency = loadCachedConsistency;
 window.initReqAutocomplete   = initReqAutocomplete;
 window.hideACSuggestions     = hideACSuggestions;
 window.applyACSuggestion     = applyACSuggestion;

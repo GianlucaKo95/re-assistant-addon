@@ -85,6 +85,20 @@ function hashReqContent(req) {
   return String(h);
 }
 
+// System-weites Gegenstück zu hashReqContent(): fasst den Inhalt ALLER
+// Anforderungen eines Systems (sortiert nach ID, damit die Reihenfolge der
+// Liste den Hash nicht beeinflusst) zu einem Hash zusammen. Genutzt um
+// system-weite Analysen (z.B. Konsistenzprüfung) genauso wie einzelne
+// Anforderungen als "noch aktuell" oder "seit Änderung/Neuzugang/Löschung
+// veraltet" zu erkennen.
+function hashSystemReqs(reqs) {
+  const sorted = [...reqs].sort((a, b) => (a.id||'').localeCompare(b.id||''));
+  const s = sorted.map(r => [r.id||'', r.title||'', r.description||'', r.category||'', r.priority||''].join('')).join('');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; }
+  return String(h);
+}
+
 // ── Zeit ──────────────────────────────────────────────────────
 function now() {
   return new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
@@ -405,6 +419,8 @@ window.$      = $;
 window.setVal = setVal;
 window.esc    = esc;
 window.cleanJsonText     = cleanJsonText;
+window.hashReqContent    = hashReqContent;
+window.hashSystemReqs    = hashSystemReqs;
 window.extractJsonObjects = extractJsonObjects;
 window.now = now;
 window.timeSince = timeSince;

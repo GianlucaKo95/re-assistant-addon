@@ -107,6 +107,7 @@ function mapSystem(row) {
     docs:      row.docs      || [],
     idPrefix:  row.id_prefix  || 'REQ',
     idCounter: row.id_counter || 0,
+    analysisCache: row.analysis_cache || {},
     createdAt: ts(row.created_at), updatedAt: ts(row.updated_at),
   };
 }
