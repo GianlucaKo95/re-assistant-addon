@@ -148,6 +148,8 @@ function mapReq(row) {
     subcategory:   row.subcategory,
     sourceAnalysis:  row.source_analysis || null,
     sourceSuggestion:row.source_suggestion,
+    qsDetail:        row.qs_detail || null,
+    qsContentHash:   row.qs_content_hash || null,
     lastChangedBy: row.last_changed_by,
     createdBy:     row.created_by,
     createdByName: row.created_by_name,

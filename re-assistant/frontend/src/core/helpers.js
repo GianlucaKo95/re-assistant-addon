@@ -72,6 +72,19 @@ function extractJsonObjects(text, arrayKey) {
   return results;
 }
 
+// ── Inhalts-Hash (Staleness-Erkennung) ─────────────────────────
+// Deterministischer Hash über die Felder, die eine Anforderung inhaltlich
+// ausmachen. Genutzt um zu erkennen, ob eine Anforderung sich seit einer
+// früheren KI-Analyse (z.B. QS) verändert hat, ohne dafür updated_at zu
+// vergleichen (das ändert sich auch bei Feldern, die für die Analyse
+// irrelevant sind, z.B. Status oder Zuweisung).
+function hashReqContent(req) {
+  const s = [req.title||'', req.description||'', req.category||'', req.priority||''].join('');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; }
+  return String(h);
+}
+
 // ── Zeit ──────────────────────────────────────────────────────
 function now() {
   return new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });

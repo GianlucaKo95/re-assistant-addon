@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.38';
+const APP_VERSION = '4.3.39';
 
 const app      = express();
 
@@ -1037,7 +1037,8 @@ app.post('/api/requirements', requireAuth, async (req, res) => {
         last_changed_by=$23,archived=$24,archived_at=$25,archived_by=$26,
         decomposed=$27,decomposed_into=$28,
         acceptance_criteria_text=$29,verification_method=$30,iso_category=$31,
-        risk_level=$32,business_value=$33,stakeholders=$34,source=$35
+        risk_level=$32,business_value=$33,stakeholders=$34,source=$35,
+        qs_detail=$36,qs_content_hash=$37
         WHERE id=$1`, [
         clean.id,
         clean.title ?? existing.title,
@@ -1074,6 +1075,8 @@ app.post('/api/requirements', requireAuth, async (req, res) => {
         clean.business_value ?? clean.businessValue ?? existing.business_value ?? 0,
         JSON.stringify(clean.stakeholders || jparse(existing.stakeholders, [])),
         clean.source ?? existing.source ?? '',
+        clean.qsDetail !== undefined ? (clean.qsDetail ? JSON.stringify(clean.qsDetail) : null) : existing.qs_detail,
+        clean.qsContentHash !== undefined ? clean.qsContentHash : existing.qs_content_hash,
       ]);
     } else {
       const id = clean.id || `${clean.systemId?.substring(0,4)||'REQ'}-${Date.now()}`;
