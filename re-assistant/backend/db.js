@@ -150,6 +150,8 @@ function mapReq(row) {
     sourceSuggestion:row.source_suggestion,
     qsDetail:        row.qs_detail || null,
     qsContentHash:   row.qs_content_hash || null,
+    smartDetail:       row.smart_detail || null,
+    smartContentHash:  row.smart_content_hash || null,
     lastChangedBy: row.last_changed_by,
     createdBy:     row.created_by,
     createdByName: row.created_by_name,
