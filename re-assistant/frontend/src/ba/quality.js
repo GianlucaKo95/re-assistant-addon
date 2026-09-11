@@ -5,6 +5,38 @@ const $ = window.$ || (id => document.getElementById(id));
  * ISO 29148 + SMART + IEEE-830 Qualitätssicherung mit vollem RE-Kontext.
  */
 
+// Extrahiert einzelne Top-Level-{...}-Objekte aus einem JSON-Array-String,
+// auch wenn dieser (z.B. durch max_tokens) mitten in einem Objekt abbricht.
+// Jedes Objekt wird einzeln geparst — ein unvollständiges letztes Objekt
+// schlägt fehl und wird übersprungen, statt den ganzen Batch zu verwerfen.
+function extractJsonObjects(text) {
+  const objects = [];
+  let depth = 0, start = -1, inString = false, escape = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (escape) escape = false;
+      else if (c === '\\') escape = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') { inString = true; continue; }
+    if (c === '{') { if (depth === 0) start = i; depth++; }
+    else if (c === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        objects.push(text.substring(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  const results = [];
+  for (const obj of objects) {
+    try { results.push(JSON.parse(obj)); } catch(e) { /* abgeschnitten/kaputt — überspringen */ }
+  }
+  return results;
+}
+
 async function loadBaQS() {
   S.systems = await window.api.getSystems();
   const sel = $('qs-sys-sel');
@@ -56,8 +88,12 @@ async function runQS() {
 
     const sys = S.systems.find(s => s.id === sysId);
 
-    // Anforderungen in Batches analysieren (max 15 pro Call)
-    const BATCH = 15;
+    // Anforderungen in Batches analysieren. Jede Anforderung erzeugt bei
+    // vollständiger Analyse (issues[], improvedDescription, acceptanceCriteria[],
+    // suggestions[]) leicht 600-900 Tokens Output — 15 pro Batch bei nur 4000
+    // max_tokens riss die Antwort regelmäßig mitten im JSON ab. Kleinerer
+    // Batch + mehr Tokens (unten bei callAPI) beugt dem vor.
+    const BATCH = 6;
     const allResults = [];
     const batchErrors = [];
 
@@ -101,16 +137,25 @@ async function runQS() {
       const res = await callAPI(
         [{ role: 'user', content: prompt }],
         `Du bist CPRE-zertifizierter QS-Experte. ${langNote()}`,
-        4000
+        8000
       );
 
       if (!res.ok) { batchErrors.push(res.text); continue; }
       try {
-        const batchResults = JSON.parse((() => { let _r=res.text.trim().replace(/```json\\s*/gi,'').replace(/```\\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\\s*}/g,'}').replace(/,\\s*]/g,']'); })());
+        const batchResults = JSON.parse((() => { let _r=res.text.trim().replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim(); const _fi=_r.indexOf('['),_li=_r.lastIndexOf(']'),_fo=_r.indexOf('{'),_lo=_r.lastIndexOf('}'); if(_fi!==-1&&_li>_fi)_r=_r.substring(_fi,_li+1); else if(_fo!==-1&&_lo>_fo)_r=_r.substring(_fo,_lo+1); return _r.replace(/,\s*}/g,'}').replace(/,\s*]/g,']'); })());
         allResults.push(...(Array.isArray(batchResults) ? batchResults : []));
       } catch(e) {
-        console.error('QS: Antwort konnte nicht als JSON verarbeitet werden', e, res.text);
-        batchErrors.push('Antwort der KI konnte nicht verarbeitet werden');
+        // Antwort durch max_tokens mitten im JSON abgeschnitten: statt den
+        // ganzen Batch zu verwerfen, alle vollständigen {...}-Objekte vor
+        // dem Abbruch retten (extractJsonObjects parst jedes einzeln).
+        const recovered = extractJsonObjects(res.text);
+        if (recovered.length) {
+          allResults.push(...recovered);
+          batchErrors.push(`Antwort unvollständig (Token-Limit erreicht) — ${recovered.length}/${batch.length} Anforderungen aus diesem Batch gerettet`);
+        } else {
+          console.error('QS: Antwort konnte nicht als JSON verarbeitet werden', e, res.text);
+          batchErrors.push('Antwort der KI konnte nicht verarbeitet werden');
+        }
       }
 
       if (i + BATCH < reqs.length) {
