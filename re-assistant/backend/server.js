@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.42';
+const APP_VERSION = '4.3.43';
 
 const app      = express();
 
@@ -624,7 +624,12 @@ async function extractFileText(file) {
 }
 
 // Dokument-Upload
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10*1024*1024 } });
+// Limit an nginx' client_max_body_size (50m) angeglichen — war zuvor bei nur
+// 10MB gedeckelt, während nginx bereits 50MB durchließ. Bei Überschreitung
+// bricht multer den Multipart-Stream ab, bevor der Client fertig gesendet hat;
+// ohne den Error-Handler unten sieht das im Browser wie ein Netzwerkfehler
+// ("Failed to fetch") statt einer sauberen Fehlermeldung aus.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50*1024*1024 } });
 app.post('/api/systems/:id/docs', requireAuth, upload.array('files'), async (req, res) => {
   try {
     const sys = mapSystem(await queryOne('SELECT * FROM systems WHERE id=$1', [req.params.id]));
@@ -4333,6 +4338,19 @@ app.get('/api/requirements/:id/workflow/history', requireAuth, async (req, res) 
 // ── SPA Fallback ──────────────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+});
+
+// ── Globaler Error-Handler ──────────────────────────────────────
+// Fängt u.a. multer-Fehler (z.B. Datei über dem Limit) ab, die sonst als
+// abgebrochene Verbindung beim Client ankommen ("Failed to fetch" statt
+// einer lesbaren Fehlermeldung).
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: 'Datei zu groß (max. 50 MB)' });
+  }
+  log('error', `Unbehandelter Fehler: ${err?.stack || err}`);
+  res.status(500).json({ error: err?.message || 'Interner Serverfehler' });
 });
 
 // ── Start ─────────────────────────────────────────────────────
