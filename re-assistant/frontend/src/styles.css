@@ -145,6 +145,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);font-
 .view-header{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 22px 14px;border-bottom:1px solid var(--b1);flex-shrink:0;background:rgba(7,7,15,.9)}
 .view-header h2{font-size:18px;font-weight:600;letter-spacing:-.3px}
 .view-sub{font-size:12px;color:var(--t3);margin-top:2px}
+/* Ohne eigenes flex:1;overflow-y:auto wächst .view-body mit seinem Inhalt
+   über die verfügbare Höhe hinaus und wird vom overflow:hidden der .view
+   einfach abgeschnitten, statt scrollbar zu sein (z.B. Anforderungsanalyse). */
+.view-body{flex:1;overflow-y:auto}
 
 /* BUTTONS */
 .btn-primary{padding:8px 16px;background:var(--ag);border:none;border-radius:var(--r);color:white;font-size:13px;font-weight:600;font-family:var(--font);cursor:pointer;transition:opacity .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
@@ -306,7 +310,11 @@ input::placeholder,textarea::placeholder{color:var(--t3)}
 
 /* Word-Analyse (ohne Systembindung) — teilt Layout-Maße mit BA: Doc Analysis */
 #wa-layout{display:grid;grid-template-columns:220px 1fr;flex:1;overflow:hidden}
-#wa-left{border-right:1px solid var(--b1);background:rgba(6,6,14,.98);display:flex;flex-direction:column}
+/* overflow-y statt hidden: #wa-left hat (anders als z.B. #fk-left) keinen
+   internen flex:1-Bereich, der variable Inhaltslänge (Datei-Upload-Status)
+   abfedert — ohne eigenes Scrollen würde langer Inhalt den "Analysieren"-
+   Button aus dem sichtbaren Bereich schieben. */
+#wa-left{border-right:1px solid var(--b1);background:rgba(6,6,14,.98);display:flex;flex-direction:column;overflow-y:auto}
 #wa-right{display:flex;flex-direction:column;overflow:hidden}
 #wa-results{display:flex;flex-direction:column;gap:12px}
 .da-group{background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);overflow:hidden;box-shadow:0 3px 10px rgba(0,0,0,.18)}
@@ -524,7 +532,9 @@ input::placeholder,textarea::placeholder{color:var(--t3)}
 .notif-icon{font-size:16px;flex-shrink:0}.notif-title{font-size:12px;font-weight:600}.notif-sub{font-size:11px;color:var(--t3);margin-top:2px}
 
 /* ── Vorlagen ────────────────────────────────────────────────── */
-.tmpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;padding:16px 20px}
+/* flex:1;overflow-y:auto: direktes .view-Kind ohne eigenes Scrollen würde
+   bei vielen Vorlagen von .view{overflow:hidden} abgeschnitten statt zu scrollen. */
+.tmpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;padding:16px 20px;flex:1;overflow-y:auto}
 .tmpl-card{background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);padding:16px;cursor:pointer;transition:all .15s;box-shadow:0 3px 10px rgba(0,0,0,.18)}
 .tmpl-card:hover{background:var(--s2);border-color:rgba(157,123,245,.3);transform:translateY(-1px);box-shadow:0 6px 16px rgba(0,0,0,.24)}
 .tmpl-icon{font-size:28px;margin-bottom:10px}.tmpl-name{font-size:13px;font-weight:600;margin-bottom:4px}.tmpl-desc{font-size:11px;color:var(--t3);line-height:1.5}

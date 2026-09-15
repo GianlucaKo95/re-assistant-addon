@@ -48,49 +48,51 @@ function renderLicenseView(lic) {
       <h2>Lizenz</h2>
     </div>
 
-    ${graceNote}${lockedNote}
+    <div class="scroll-body" style="flex:1">
+      ${graceNote}${lockedNote}
 
-    <div class="card" style="margin-bottom:18px">
-      <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-        <div style="font-size:28px">${licenseIcon(lic.status)}</div>
-        <div>
-          <div style="font-size:18px;font-weight:600">${st.label}</div>
-          ${lic.customer ? `<div style="color:var(--t2);font-size:13px">${esc(lic.customer)}</div>` : ''}
+      <div class="card" style="margin-bottom:18px">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+          <div style="font-size:28px">${licenseIcon(lic.status)}</div>
+          <div>
+            <div style="font-size:18px;font-weight:600">${st.label}</div>
+            ${lic.customer ? `<div style="color:var(--t2);font-size:13px">${esc(lic.customer)}</div>` : ''}
+          </div>
+          <span class="sbadge ${st.cls}" style="margin-left:auto">${st.label}</span>
         </div>
-        <span class="sbadge ${st.cls}" style="margin-left:auto">${st.label}</span>
+
+        <table class="data-table" style="margin-bottom:0">
+          <tbody>
+            <tr><td style="color:var(--t2);width:160px">Kunde</td><td>${esc(lic.customer || '—')}</td></tr>
+            <tr><td style="color:var(--t2)">Gültig bis</td><td>${expiry}</td></tr>
+            <tr><td style="color:var(--t2)">Seats</td><td>${lic.seats || 1}</td></tr>
+            <tr>
+              <td style="color:var(--t2)">Hardware-Fingerprint</td>
+              <td>
+                <code id="fp-code" style="font-size:12px;background:var(--s2);padding:2px 8px;border-radius:4px;cursor:pointer"
+                  title="Klicken zum Kopieren" onclick="copyFingerprint()">${esc(lic.fingerprint || '—')}</code>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      <table class="data-table" style="margin-bottom:0">
-        <tbody>
-          <tr><td style="color:var(--t2);width:160px">Kunde</td><td>${esc(lic.customer || '—')}</td></tr>
-          <tr><td style="color:var(--t2)">Gültig bis</td><td>${expiry}</td></tr>
-          <tr><td style="color:var(--t2)">Seats</td><td>${lic.seats || 1}</td></tr>
-          <tr>
-            <td style="color:var(--t2)">Hardware-Fingerprint</td>
-            <td>
-              <code id="fp-code" style="font-size:12px;background:var(--s2);padding:2px 8px;border-radius:4px;cursor:pointer"
-                title="Klicken zum Kopieren" onclick="copyFingerprint()">${esc(lic.fingerprint || '—')}</code>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="card">
-      <h3 style="margin:0 0 14px">Lizenzschlüssel ${lic.status === 'valid' ? 'erneuern' : 'aktivieren'}</h3>
-      <p style="color:var(--t2);font-size:13px;margin-bottom:14px">
-        Den Hardware-Fingerprint (oben) an Ihren Lizenzgeber schicken, um einen passenden Schlüssel zu erhalten.
-      </p>
-      <div style="display:flex;gap:10px;align-items:flex-start">
-        <textarea id="lic-key-input" rows="3"
-          placeholder="RE-eyJ…"
-          style="flex:1;font-family:var(--mono);font-size:12px;resize:vertical;padding:8px;border-radius:6px;border:1px solid var(--b1);background:var(--s1);color:var(--t1)"></textarea>
+      <div class="card">
+        <h3 style="margin:0 0 14px">Lizenzschlüssel ${lic.status === 'valid' ? 'erneuern' : 'aktivieren'}</h3>
+        <p style="color:var(--t2);font-size:13px;margin-bottom:14px">
+          Den Hardware-Fingerprint (oben) an Ihren Lizenzgeber schicken, um einen passenden Schlüssel zu erhalten.
+        </p>
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <textarea id="lic-key-input" rows="3"
+            placeholder="RE-eyJ…"
+            style="flex:1;font-family:var(--mono);font-size:12px;resize:vertical;padding:8px;border-radius:6px;border:1px solid var(--b1);background:var(--s1);color:var(--t1)"></textarea>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:12px">
+          <button class="btn-primary" onclick="activateLicenseKey()">Aktivieren</button>
+          ${lic.status === 'valid' ? '<button class="btn-danger" style="font-size:12px" onclick="removeLicenseKey()">Lizenz entfernen</button>' : ''}
+        </div>
+        <div id="lic-result" style="margin-top:12px;font-size:13px"></div>
       </div>
-      <div style="display:flex;gap:10px;margin-top:12px">
-        <button class="btn-primary" onclick="activateLicenseKey()">Aktivieren</button>
-        ${lic.status === 'valid' ? '<button class="btn-danger" style="font-size:12px" onclick="removeLicenseKey()">Lizenz entfernen</button>' : ''}
-      </div>
-      <div id="lic-result" style="margin-top:12px;font-size:13px"></div>
     </div>`;
 }
 
