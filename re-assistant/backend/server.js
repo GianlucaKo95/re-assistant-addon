@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.47';
+const APP_VERSION = '4.3.48';
 
 const app      = express();
 
@@ -1032,8 +1032,21 @@ app.get('/api/requirements', requireAuth, async (req, res) => {
     const page   = parseInt(req.query.page)   || 0;
     const offset = parseInt(req.query.offset) || page * limit;
 
-    const sortCol = ['created_at','updated_at','title','priority','quality_score'].includes(req.query.sort)
-      ? req.query.sort : 'created_at';
+    // sortCol: Whitelist gegen SQL-Injection, da direkt (nicht parametrisiert)
+    // in die ORDER BY-Klausel eingesetzt. priority ist ein Text-Feld
+    // ('high'|'medium'|'low') — alphabetisch sortiert ergäbe keine
+    // sinnvolle Reihenfolge, daher eine explizite Dringlichkeits-Rangfolge.
+    const SORT_COLUMNS = {
+      created_at:    'created_at',
+      updated_at:    'updated_at',
+      title:         'title',
+      id:            'id',
+      status:        'status',
+      category:      'category',
+      quality_score: 'quality_score',
+      priority:      `CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END`,
+    };
+    const sortCol = SORT_COLUMNS[req.query.sort] || SORT_COLUMNS.created_at;
     const sortDir = req.query.dir === 'desc' ? 'DESC' : 'ASC';
 
     // Abwärtskompatibilität: kein Paging → alle (bis 500)
