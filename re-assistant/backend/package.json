@@ -1,6 +1,6 @@
 {
   "name": "re-assistant-backend",
-  "version": "4.3.46",
+  "version": "4.3.47",
   "description": "RE-Assistent Backend — PostgreSQL + WebSockets + Notifications",
   "main": "server.js",
   "scripts": {
