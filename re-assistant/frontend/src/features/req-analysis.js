@@ -26,6 +26,29 @@ const SMART_LABELS = {
 
 // ── Haupt-View laden ──────────────────────────────────────────
 async function loadReqAnalysis() {
+  S.systems = S.systems?.length ? S.systems : await window.api.getSystems();
+  const sel = document.getElementById('ra-sys-select');
+  if (sel) {
+    const mySystems = S.systems.filter(s => (S.user.systems || []).includes(s.id));
+    sel.innerHTML = '<option value="">System wählen …</option>' +
+      mySystems.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    // Bereits gesetztes S.activeSystemId (z.B. aus einer anderen Ansicht)
+    // übernehmen, sofern es zu den eigenen Systemen gehört — sonst bei
+    // genau einem zugeordneten System automatisch vorauswählen.
+    if (S.activeSystemId && mySystems.some(s => s.id === S.activeSystemId)) {
+      sel.value = S.activeSystemId;
+    } else if (mySystems.length === 1) {
+      sel.value = mySystems[0].id;
+      S.activeSystemId = mySystems[0].id;
+    } else {
+      S.activeSystemId = sel.value || null;
+    }
+    sel.onchange = () => { S.activeSystemId = sel.value || null; loadReqAnalysisContent(); };
+  }
+  loadReqAnalysisContent();
+}
+
+function loadReqAnalysisContent() {
   if (!S.activeSystemId) {
     document.getElementById('req-analysis-content').innerHTML =
       '<div class="empty-state"><div class="es-icon">📊</div><h3>Kein System ausgewählt</h3></div>';
