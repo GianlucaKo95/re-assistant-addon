@@ -162,11 +162,19 @@ async function mergeWithAI(serverVersion, clientVersion) {
     + 'Priorität: ' + clientVersion.priority + '\n\n'
     + 'Antworte NUR mit JSON ohne Backticks:\n' + schema;
 
+  // 1500→2500: description/rationale/AC sind hier Prosa-Zusammenführungen
+  // zweier vollständiger Texte plus RAG-Kontext — bei 1500 war das knapp,
+  // und ein Abbruch hätte den ganzen Merge-Versuch des Nutzers gekostet.
   const res = await callAPI([{ role:'user', content: prompt }],
-    'Du bist CPRE-zertifizierter Requirements Engineer.', 1500);
+    'Du bist CPRE-zertifizierter Requirements Engineer.', 2500);
 
   if (!res.ok) throw new Error(res.text);
-  const merged = JSON.parse(cleanJsonText(res.text));
+  let merged;
+  try {
+    merged = JSON.parse(cleanJsonText(res.text));
+  } catch(e) {
+    merged = JSON.parse(repairTruncatedJson(cleanJsonText(res.text)));
+  }
   return { ...serverVersion, ...merged };
 }
 

@@ -67,7 +67,7 @@ Anforderungen (Format: ID|Titel|Status|Priorität|Kategorie|ReviewStatus|Zugewie
 ${reqSummary}
 
 Frage: "${q}"` }
-  ], langNote(), 1500);
+  ], langNote(), 2500); // 1500→2500: reqIds[] kann bei breiten Abfragen leicht über 100 Treffer enthalten
 
   if (!res.ok) {
     if (wrap) wrap.innerHTML = `<div style="color:var(--red);padding:16px;font-size:13px">❌ ${esc(res.text)}</div>`;
@@ -75,13 +75,21 @@ Frage: "${q}"` }
   }
 
   try {
-    const result = JSON.parse(cleanJsonText(res.text));
+    let result;
+    try {
+      result = JSON.parse(cleanJsonText(res.text));
+    } catch(e) {
+      // reqIds ist eine reine String-Liste (kein Array aus Objekten), daher
+      // hilft extractJsonObjects hier nicht — repairTruncatedJson rettet
+      // stattdessen so viel vom Gesamtobjekt wie möglich.
+      result = JSON.parse(repairTruncatedJson(cleanJsonText(res.text)));
+    }
     _nlHistory.push({ role:'user', content: q });
     _nlHistory.push({ role:'assistant', content: JSON.stringify(result) });
     if (_nlHistory.length > 20) _nlHistory = _nlHistory.slice(-20);
     renderNLQResult(result, q);
   } catch(e) {
-    if (wrap) wrap.innerHTML = `<div style="color:var(--red);padding:16px;font-size:13px">❌ Parsing-Fehler</div>`;
+    if (wrap) wrap.innerHTML = `<div style="color:var(--red);padding:16px;font-size:13px">❌ Parsing-Fehler${res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : ''}</div>`;
   }
 }
 
