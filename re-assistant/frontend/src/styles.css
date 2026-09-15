@@ -317,7 +317,12 @@ input::placeholder,textarea::placeholder{color:var(--t3)}
 #wa-left{border-right:1px solid var(--b1);background:rgba(6,6,14,.98);display:flex;flex-direction:column;overflow-y:auto}
 #wa-right{display:flex;flex-direction:column;overflow:hidden}
 #wa-results{display:flex;flex-direction:column;gap:12px}
-.da-group{background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);overflow:hidden;box-shadow:0 3px 10px rgba(0,0,0,.18)}
+/* flex-shrink:0: #wa-results/#da-results sind selbst display:flex;column —
+   ohne das schrumpft ein .da-group (wegen seines eigenen overflow:hidden
+   für die abgerundeten Ecken) auf Kosten seines Inhalts, statt dass der
+   umgebende scroll-body-Container überläuft und scrollt. Anforderungen
+   wurden dadurch nach den ersten paar Einträgen einfach abgeschnitten. */
+.da-group{background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);overflow:hidden;box-shadow:0 3px 10px rgba(0,0,0,.18);flex-shrink:0}
 .da-group-head{padding:11px 15px;font-size:12px;font-weight:600;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between}
 .da-group-body{padding:12px 15px;display:flex;flex-direction:column;gap:8px}
 .da-item{display:flex;gap:10px;font-size:13px;padding:8px 0;border-bottom:1px solid var(--b1);line-height:1.6}.da-item:last-child{border-bottom:none}
