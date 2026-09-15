@@ -48,12 +48,18 @@ async function loadReqAnalysis() {
   loadReqAnalysisContent();
 }
 
-function loadReqAnalysisContent() {
+async function loadReqAnalysisContent() {
   if (!S.activeSystemId) {
     document.getElementById('req-analysis-content').innerHTML =
       '<div class="empty-state"><div class="es-icon">📊</div><h3>Kein System ausgewählt</h3></div>';
     return;
   }
+  // SMART-Prüfung (und ggf. andere Tabs) liest Anforderungen aus S.requirements
+  // statt eigenständig nachzuladen — ohne diesen Fetch blieb die Liste leer
+  // (oder zeigte veraltete Daten eines anderen Systems), sobald RE-Analyse
+  // als erste Ansicht aufgerufen wurde und kein anderer View S.requirements
+  // zuvor befüllt hatte. Der "Prüfen"-Button selbst wirkte dadurch wirkungslos.
+  S.requirements = await window.api.getRequirements({ systemId: S.activeSystemId });
   renderReqAnalysisTabs();
   loadAnalysisTab('stakeholders');
 }
