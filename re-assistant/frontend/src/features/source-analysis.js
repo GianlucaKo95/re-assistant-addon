@@ -78,7 +78,7 @@ ${req.rationale ? `Begründung: ${req.rationale}` : ''}
 System: ${sys?.name || ''}
 
 Quellcode:
-${codeContext}` }], langNote(), 3000);
+${codeContext}` }], langNote(), 5000); // 3000→5000: diffSuggestion allein kann für eine substantielle Änderung schon viel Platz brauchen
 
   if (!res.ok) return null;
 

@@ -125,22 +125,38 @@ async function generateFachkonzept() {
     schema,
   ].filter(Boolean).join('\n');
 
+  // 7000 statt 4500: das Schema hat 13 Top-Level-Felder (mehrere davon
+  // mehrabsätzige Fließtexte oder Arrays) für ein komplettes Word-Dokument —
+  // bei 4500 riss die Antwort bei ausführlicheren Anforderungen ab.
   const res = await callAPI([{ role: 'user', content: prompt }],
-    'Du bist CPRE-zertifizierter Requirements Engineer, spezialisiert auf Fachkonzepte. ' + langNote(), 4500, 'fachkonzept');
+    'Du bist CPRE-zertifizierter Requirements Engineer, spezialisiert auf Fachkonzepte. ' + langNote(), 7000, 'fachkonzept');
 
   btn.disabled = false; btn.innerHTML = '📝 Fachkonzept generieren';
 
   if (!res.ok) { toast('❌ ' + res.text); $('fk-preview').innerHTML = ''; return; }
   try {
-    const data = JSON.parse(cleanJsonText(res.text));
+    let data, salvaged = false;
+    try {
+      data = JSON.parse(cleanJsonText(res.text));
+    } catch(e) {
+      // Bei Abbruch mitten im JSON so viel wie möglich retten (z.B. war
+      // Ausgangslage/Zielsetzung/Beschreibung schon vollständig, nur das
+      // Glossar riss ab) statt das ganze Fachkonzept zu verwerfen.
+      data = JSON.parse(repairTruncatedJson(cleanJsonText(res.text)));
+      salvaged = true;
+    }
     _fkData = data;
     _fkMeta = { reqId, reqTitle: reqTitle || data.title || '', systemName: sys?.name || '' };
     renderFachkonzeptPreview(data);
     $('btn-fk-download').style.display = '';
-    toast('✅ Fachkonzept erstellt');
+    toast(salvaged
+      ? '⚠ Antwort unvollständig — teilweise gerettet, ggf. fehlen hintere Abschnitte'
+      : '✅ Fachkonzept erstellt');
     if (typeof logAuditEvent === 'function')
       logAuditEvent('create', 'fachkonzept', sysId || null, `Fachkonzept generiert: ${data.title || reqTitle || '(ohne Titel)'}`, {});
-  } catch(e) { toast('❌ Parsing-Fehler'); }
+  } catch(e) {
+    toast('❌ Parsing-Fehler' + (res.truncated ? ' (Antwort wegen Längenbegrenzung abgeschnitten)' : ''));
+  }
 }
 
 // ── Vorschau ────────────────────────────────────────────────────────────

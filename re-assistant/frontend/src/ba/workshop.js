@@ -94,9 +94,15 @@ async function sendWsMsg(){
 async function updateWsStructured(ws){
   const allText=ws.entries.filter(e=>e.role==='user').map(e=>e.text).join('\n');
   const schema = '{"themes":["Thema"],"decisions":["Entscheidung (inkl. Begründung)"],"openPoints":["Offener Punkt (inkl. Verantwortlicher)"],"requirements":["Das System MUSS/SOLL/KANN..."],"risks":["Erkanntes Risiko"],"assumptions":["Getroffene Annahme"]}';
-  const res=await callAPI([{role:'user',content:'Extrahiere strukturiert aus dem Workshop-Transkript. Anforderungen im Format "Das System MUSS/SOLL/KANN...". JSON ohne Backticks:\n' + schema + '\n\nTranskript:\n' + allText}],langNote(),2000);
+  // 2000→3000: dies läuft nach jeder Nachricht erneut über das GESAMTE
+  // bisherige Transkript — je länger der Workshop, desto eher reicht 2000
+  // nicht mehr für alle sechs Kategorien.
+  const res=await callAPI([{role:'user',content:'Extrahiere strukturiert aus dem Workshop-Transkript. Anforderungen im Format "Das System MUSS/SOLL/KANN...". JSON ohne Backticks:\n' + schema
+    + (ws._reCtx ? '\n\n' + ws._reCtx : '')
+    + '\n\nTranskript:\n' + allText}],langNote(),3000);
   if(!res.ok)return;
-  try{ws.structured=JSON.parse(cleanJsonText(res.text));}catch(e){}
+  try{ws.structured=JSON.parse(cleanJsonText(res.text));}
+  catch(e){ try{ws.structured=JSON.parse(repairTruncatedJson(cleanJsonText(res.text)));}catch(e2){} }
 }
 function renderWsTranscript(ws){
   const el=$('ws-transcript');

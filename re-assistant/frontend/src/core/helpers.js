@@ -72,6 +72,42 @@ function extractJsonObjects(text, arrayKey) {
   return results;
 }
 
+// Rettet ein durch max_tokens mitten im JSON abgeschnittenes EINZELNES
+// Objekt (kein Array — dafür gibt es extractJsonObjects): kürzt auf die
+// letzte Stelle, an der ein Objekt/Array sauber geschlossen wurde, und
+// schließt die zu diesem Zeitpunkt noch offenen Klammern nach. Ein zuletzt
+// unvollständiges Feld geht dabei verloren, alles zuvor vollständig
+// Erzeugte bleibt als gültiges JSON erhalten. Backend-Pendant in
+// backend/server.js MUSS bei Änderungen mitgepflegt werden.
+function repairTruncatedJson(text) {
+  const s = String(text ?? '');
+  try { JSON.parse(s); return s; } catch(e) { /* tatsächlich abgeschnitten */ }
+
+  let inString = false, escape = false;
+  const stack = [];
+  let lastSafeEnd = -1, lastSafeStack = null;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inString) {
+      if (escape) escape = false;
+      else if (c === '\\') escape = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') { inString = true; continue; }
+    if (c === '{' || c === '[') stack.push(c);
+    else if (c === '}' || c === ']') {
+      stack.pop();
+      lastSafeEnd = i;
+      lastSafeStack = stack.slice();
+    }
+  }
+  if (lastSafeEnd === -1 || !lastSafeStack) return s;
+  let repaired = s.substring(0, lastSafeEnd + 1).replace(/,\s*$/, '');
+  for (let i = lastSafeStack.length - 1; i >= 0; i--) repaired += lastSafeStack[i] === '{' ? '}' : ']';
+  try { JSON.parse(repaired); return repaired; } catch(e) { return s; }
+}
+
 // ── Inhalts-Hash (Staleness-Erkennung) ─────────────────────────
 // Deterministischer Hash über die Felder, die eine Anforderung inhaltlich
 // ausmachen. Genutzt um zu erkennen, ob eine Anforderung sich seit einer
@@ -422,6 +458,7 @@ window.cleanJsonText     = cleanJsonText;
 window.hashReqContent    = hashReqContent;
 window.hashSystemReqs    = hashSystemReqs;
 window.extractJsonObjects = extractJsonObjects;
+window.repairTruncatedJson = repairTruncatedJson;
 window.now = now;
 window.timeSince = timeSince;
 window.statusLabel = statusLabel;

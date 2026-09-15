@@ -196,20 +196,25 @@ async function extractFromConversation() {
     + 'Antworte NUR mit JSON-Array (keine Backticks, keine Erklärungen):\n'
     + schemaExample
     + '\nWenn keine Anforderungen erkennbar: []'
-  }], langNote(), 3500);
+  }], langNote(), 5000); // 3500→5000: Anzahl extrahierter Anforderungen skaliert mit der Gesprächslänge, nicht mit einem festen Limit
 
   btn.disabled = false;
   btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Extrahieren';
 
   if (!res.ok) { toast('❌ ' + res.text); return; }
   try {
-    let _rawReqs = res.text.trim().replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
-    const _fReqs = _rawReqs.indexOf('['), _lReqs = _rawReqs.lastIndexOf(']');
-    if (_fReqs!==-1 && _lReqs>_fReqs) _rawReqs = _rawReqs.substring(_fReqs,_lReqs+1);
-    _rawReqs = _rawReqs.replace(/,\s*}/g,'}').replace(/,\s*]/g,']');
     let reqs;
-    try { reqs = JSON.parse(_rawReqs); } catch(e) { const _m = res.text.match(/\[\s*\{[\s\S]*?\}\s*\]/); reqs = _m ? JSON.parse(_m[0]) : []; }
-    if (!Array.isArray(reqs)) reqs = Object.values(reqs)[0] || [];
+    try {
+      reqs = JSON.parse(cleanJsonText(res.text));
+      if (!Array.isArray(reqs)) reqs = Object.values(reqs)[0] || [];
+    } catch(e) {
+      // Bei mitten im Array abgeschnittener Antwort: vollständige
+      // Anforderungen einzeln retten statt bei einem kaputten letzten
+      // Eintrag die ganze Extraktion zu verwerfen (der alte Regex-Fallback
+      // griff nur, wenn das Array sauber schloss).
+      reqs = extractJsonObjects(res.text);
+      if (reqs.length) toast(`⚠ Antwort unvollständig — ${reqs.length} Anforderung(en) gerettet`);
+    }
     if (!reqs.length) { toast('ℹ Keine neuen Anforderungen gefunden'); return; }
     for (const r of reqs) {
       await window.api.saveRequirement({

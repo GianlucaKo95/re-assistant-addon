@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.49';
+const APP_VERSION = '4.3.50';
 
 const app      = express();
 
@@ -352,6 +352,43 @@ function cleanAiJsonText(text) {
   if (arrFirst && li > fi) r = r.substring(fi, li + 1);
   else if (fo !== -1 && lo > fo) r = r.substring(fo, lo + 1);
   return r.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+}
+
+// Rettet ein durch max_tokens mitten im JSON abgeschnittenes Ergebnis, statt
+// es komplett zu verwerfen: kürzt auf die letzte Stelle, an der ein
+// Objekt/Array sauber geschlossen wurde, und schließt die zu diesem
+// Zeitpunkt noch offenen Klammern nach. Ein zuletzt unvollständiges Feld
+// (z.B. ein Array, das gerade erst begonnen hatte) geht dabei verloren,
+// aber alles zuvor vollständig Erzeugte bleibt als gültiges JSON erhalten —
+// Pendant zu core/helpers.js' extractJsonObjects() für Fälle, in denen das
+// Ergebnis ein einzelnes Objekt statt eines Arrays ist.
+function repairTruncatedJson(text) {
+  const s = String(text ?? '');
+  try { JSON.parse(s); return s; } catch(e) { /* tatsächlich abgeschnitten */ }
+
+  let inString = false, escape = false;
+  const stack = [];
+  let lastSafeEnd = -1, lastSafeStack = null;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inString) {
+      if (escape) escape = false;
+      else if (c === '\\') escape = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') { inString = true; continue; }
+    if (c === '{' || c === '[') stack.push(c);
+    else if (c === '}' || c === ']') {
+      stack.pop();
+      lastSafeEnd = i;
+      lastSafeStack = stack.slice();
+    }
+  }
+  if (lastSafeEnd === -1 || !lastSafeStack) return s;
+  let repaired = s.substring(0, lastSafeEnd + 1).replace(/,\s*$/, '');
+  for (let i = lastSafeStack.length - 1; i >= 0; i--) repaired += lastSafeStack[i] === '{' ? '}' : ']';
+  try { JSON.parse(repaired); return repaired; } catch(e) { return s; }
 }
 
 // Deterministischer Inhalts-Hash — MUSS identisch zu core/helpers.js'
@@ -3541,13 +3578,23 @@ app.post('/api/requirements/:id/quality-check', requireAuth, async (req, res) =>
     const apiCfg = await resolveApiConfig(req.session.userId);
     if (!apiCfg.key) return res.status(400).json({ error: 'Kein API-Key' });
 
-    // Kontext: andere Anforderungen für Konflikt-Check
-    const others = await queryAll(
-      'SELECT id,title,description FROM requirements WHERE system_id=$1 AND id!=$2 LIMIT 50',
-      [req_.system_id, req.params.id]
-    );
+    // Kontext: andere Anforderungen für Konflikt-Check (mit kurzer
+    // Beschreibung statt nur Titel — sonst erkennt die KI inhaltliche
+    // Widersprüche nur, wenn sie schon im Titel sichtbar sind) sowie
+    // Stakeholder/Use-Cases/Qualitätsziele des Systems, damit "relevant"/
+    // "achievable" nicht ohne den eigentlichen RE-Kontext bewertet werden.
+    const [others, stakeholders, useCases, qualityGoals] = await Promise.all([
+      queryAll('SELECT id,title,description FROM requirements WHERE system_id=$1 AND id!=$2 LIMIT 50',
+        [req_.system_id, req.params.id]),
+      queryAll('SELECT name,role FROM system_stakeholders WHERE system_id=$1', [req_.system_id]),
+      queryAll('SELECT title FROM use_cases WHERE system_id=$1', [req_.system_id]),
+      queryAll('SELECT iso_char,description FROM quality_goals WHERE system_id=$1', [req_.system_id]),
+    ]);
 
-    const othersText = others.map(o => '- ' + o.id + ': ' + o.title).join('\n');
+    const othersText = others.map(o => '- ' + o.id + ': ' + o.title + (o.description ? ' — ' + o.description.substring(0,150) : '')).join('\n');
+    const shText = stakeholders.length ? 'Stakeholder: ' + stakeholders.map(s => s.name + ' (' + s.role + ')').join(', ') : '';
+    const ucText = useCases.length ? 'Bekannte Use Cases: ' + useCases.map(u => u.title).join(', ') : '';
+    const qgText = qualityGoals.length ? 'Qualitätsziele: ' + qualityGoals.map(g => g.iso_char + ': ' + g.description).join(' | ') : '';
     const ragContext = typeof req.body?.ragContext === 'string' ? req.body.ragContext.substring(0, 8000) : '';
     const smartSchema = '{"smart":{"specific":{"score":"0-10","issue":"...","suggestion":"..."},"measurable":{"score":"0-10","issue":"...","suggestion":"..."},"achievable":{"score":"0-10","issue":"...","suggestion":"..."},"relevant":{"score":"0-10","issue":"...","suggestion":"..."},"timebound":{"score":"0-10","issue":"...","suggestion":"..."}},"overall_score":"0-100","iso_category":"Funktionale Eignung|Leistungseffizienz|Kompatibilitaet|Gebrauchstauglichkeit|Zuverlaessigkeit|Sicherheit|Wartbarkeit|Portierbarkeit","ieee_issues":["..."],"conflicts":["REQ-ID: Begruendung"],"improved_title":"...","improved_description":"...","acceptance_criteria":["Gegeben...Wenn...Dann..."],"verification_method":"Test|Inspektion|Review|Analyse|Demo","risk_level":"hoch|mittel|niedrig","complexity":"hoch|mittel|niedrig","business_value":"1-10"}';
     const prompt = 'Du bist ein zertifizierter Requirements Engineer (CPRE). Analysiere diese Anforderung nach IEEE-830, SMART und ISO-25010.\n\n'
@@ -3558,8 +3605,10 @@ app.post('/api/requirements/:id/quality-check', requireAuth, async (req, res) =>
       + 'Kategorie: ' + req_.category + '\n'
       + 'Begruendung: ' + (req_.rationale || '(keine)') + '\n'
       + 'Akzeptanzkriterien: ' + (req_.acceptance_criteria_text || '(keine)') + '\n\n'
+      + (shText || ucText || qgText ? 'SYSTEMKONTEXT:\n' + [shText, ucText, qgText].filter(Boolean).join('\n') + '\n\n' : '')
       + 'ANDERE ANFORDERUNGEN (fuer Konflikt-Check):\n' + othersText + '\n\n'
       + (ragContext ? 'IMPLEMENTIERUNGSKONTEXT (Code/Doku, fuer Genauigkeit):\n' + ragContext + '\n\n' : '')
+      + '"relevant" bewertest du gegen die obigen Qualitätsziele/Use-Cases (falls vorhanden), nicht nur gegen die Anforderung selbst.\n\n'
       + 'Antworte NUR mit JSON (keine Backticks):\n' + smartSchema;
     // 6000 statt 2000: das Schema fasst 5 SMART-Kriterien (je Score +
     // Issue + Suggestion) sowie improved_title/improved_description,
@@ -3576,8 +3625,17 @@ app.post('/api/requirements/:id/quality-check', requireAuth, async (req, res) =>
     try {
       result = JSON.parse(cleanAiJsonText(text));
     } catch(e) {
-      log('error', `Quality-Check ${req.params.id}: Antwort nicht als JSON parsbar: ${text.substring(0,300)}`);
-      return res.status(502).json({ error: 'Antwort der KI war unvollständig oder kein gültiges JSON — bitte erneut versuchen.' });
+      // Bei mitten im JSON abgeschnittener Antwort: so viel wie möglich
+      // retten statt die ganze Prüfung zu verwerfen (der Nutzer sähe sonst
+      // nur einen Fehler, obwohl z.B. die SMART-Scores längst vollständig
+      // in der Antwort standen).
+      try {
+        result = JSON.parse(repairTruncatedJson(cleanAiJsonText(text)));
+        log('warning', `Quality-Check ${req.params.id}: Antwort abgeschnitten, teilweise gerettet`);
+      } catch(e2) {
+        log('error', `Quality-Check ${req.params.id}: Antwort nicht als JSON parsbar: ${text.substring(0,300)}`);
+        return res.status(502).json({ error: 'Antwort der KI war unvollständig oder kein gültiges JSON — bitte erneut versuchen.' });
+      }
     }
 
     // Volles Ergebnis + Inhalts-Hash speichern (wie qs_detail/qs_content_hash
@@ -3592,7 +3650,7 @@ app.post('/api/requirements/:id/quality-check', requireAuth, async (req, res) =>
       risk_level=$6, complexity=$7, business_value=$8, conflicts=$9,
       smart_detail=$10, smart_content_hash=$11
       WHERE id=$12`,
-      [JSON.stringify(result.smart), result.iso_category,
+      [JSON.stringify(result.smart||{}), result.iso_category,
        result.overall_score, (result.acceptance_criteria||[]).join('\n'),
        result.verification_method||'', result.risk_level||'',
        result.complexity||'', result.business_value||0,
@@ -3659,15 +3717,26 @@ app.post('/api/systems/:id/analyze-requirements', requireAuth, async (req, res) 
     }
 
     const promptText = makePrompt(aspect);
-    // 'full' fragt vier Kategorien plus Lücken/Konflikte/Empfehlungen in
-    // einer Antwort ab — 4000 Tokens reichten dafür oft nicht.
-    const text = await aiCallUnified(apiCfg, promptText, aspect === 'full' ? 8000 : 4000, 'fast', 90000, 1);
+    // 'full' fragt sieben Kategorien (Stakeholder/Grenzen/Use-Cases/
+    // Qualitätsziele/Lücken/Konflikte/Empfehlungen) in einer Antwort ab —
+    // 8000 Tokens waren dafür noch knapp, 9000 hat sich beim Aufbau des
+    // System-Context-Caches (selbe Modellklasse) bereits als verlässlich
+    // erwiesen.
+    const text = await aiCallUnified(apiCfg, promptText, aspect === 'full' ? 9000 : 4000, 'fast', 90000, 1);
     let result;
     try {
       result = JSON.parse(cleanAiJsonText(text));
     } catch(e) {
-      log('error', `analyze-requirements ${req.params.id}: Antwort nicht als JSON parsbar: ${text.substring(0,300)}`);
-      return res.status(502).json({ error: 'Antwort der KI war unvollständig oder kein gültiges JSON — bitte erneut versuchen.' });
+      // Wie beim Quality-Check: bei mitten im JSON abgeschnittener Antwort
+      // die bis dahin vollständigen Kategorien retten statt alles zu
+      // verwerfen (z.B. Stakeholder waren fertig, nur Use-Cases rissen ab).
+      try {
+        result = JSON.parse(repairTruncatedJson(cleanAiJsonText(text)));
+        log('warning', `analyze-requirements ${req.params.id}: Antwort abgeschnitten, teilweise gerettet`);
+      } catch(e2) {
+        log('error', `analyze-requirements ${req.params.id}: Antwort nicht als JSON parsbar: ${text.substring(0,300)}`);
+        return res.status(502).json({ error: 'Antwort der KI war unvollständig oder kein gültiges JSON — bitte erneut versuchen.' });
+      }
     }
     res.json({ ok:true, aspect, result });
   } catch(e) {

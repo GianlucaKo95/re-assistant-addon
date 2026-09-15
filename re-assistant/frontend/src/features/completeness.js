@@ -45,10 +45,10 @@ async function loadCompleteness() {
 }
 
 async function runCompletenessCheck() {
-  setAPIContext('completeness', sysId);
   const sysId    = $('comp-sys-sel')?.value;
   const template = $('comp-template-sel')?.value || 'general';
   if (!sysId) { toast('⚠ System auswählen'); return; }
+  setAPIContext('completeness', sysId);
 
   const btn = $('btn-run-completeness');
   btn.disabled=true; btn.innerHTML='<span class="spin"></span> Prüfe …';
@@ -60,6 +60,19 @@ async function runCompletenessCheck() {
   const reqList = reqs.map(r=>
     `${r.id} [${r.category}]: ${r.title}`
   ).join('\n');
+
+  // Stakeholder/Qualitätsziele mitgeben — ohne sie kann die KI Lücken nur
+  // gegen die generische Branchen-Checkliste beurteilen, nicht gegen das,
+  // was für DIESES System tatsächlich schon als relevant festgehalten wurde.
+  let shText = '', qgText = '';
+  try {
+    const [shs, qgs] = await Promise.all([
+      fetch(`api/systems/${sysId}/stakeholders`,  {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+      fetch(`api/systems/${sysId}/quality-goals`, {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+    ]);
+    if (shs.length) shText = 'Stakeholder: ' + shs.map(s => s.name + ' (' + s.role + ')').join(', ');
+    if (qgs.length) qgText = 'Qualitätsziele: ' + qgs.map(g => g.iso_char + ': ' + g.description).join(' | ');
+  } catch(e) {}
 
   const res = await callAPI([{ role:'user', content:
     `Du bist ein Requirements-Experte. Prüfe ob diese Anforderungsliste vollständig ist für ein ${tmpl.label}-System. ${langNote()}
@@ -95,7 +108,8 @@ status: complete = >80% abgedeckt, partial = 20-80%, missing = <20%
 Bestehende Anforderungen:
 ${reqList || '(keine Anforderungen vorhanden)'}
 
-System: ${sys?.name || ''} — ${sys?.description || ''}` }], langNote(), 4500);
+System: ${sys?.name || ''} — ${sys?.description || ''}
+${[shText, qgText].filter(Boolean).join('\n')}` }], langNote(), 6000);
 
   btn.disabled=false; btn.innerHTML='🔍 Vollständigkeit prüfen';
 

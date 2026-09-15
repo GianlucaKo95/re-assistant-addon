@@ -101,7 +101,10 @@ async function analyzeDependencies() {
   if (!S.requirements.length) { toast('ℹ Keine Anforderungen'); return; }
   const btn = $('btn-analyze-deps'); btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Analysiere …';
   const rl = S.requirements.map(r => `${r.id}: ${r.title} — ${(r.description||'').substring(0,100)}`).join('\n');
-  const res = await callAPI([{role:'user', content:`Analysiere Abhängigkeiten zwischen diesen Anforderungen. Erkenne:\n- "blocks": A muss vor B fertig sein\n- "needs": A braucht B als Voraussetzung\n- "related": A und B sind thematisch verbunden\n\nJSON ohne Backticks:\n{"dependencies":[{"from":"REQ-001","to":"REQ-002","type":"blocks","note":"Kurze Begründung"}],"summary":"..."}\n\nAnforderungen:\n${rl}`}], langNote(), 4000);
+  // 6000 statt 4000: die Anzahl möglicher Abhängigkeiten wächst mit der
+  // Anzahl Anforderungen quadratisch (jedes Paar ist ein Kandidat) — bei
+  // größeren Systemen riss die Antwort bei 4000 Tokens ab.
+  const res = await callAPI([{role:'user', content:`Analysiere Abhängigkeiten zwischen diesen Anforderungen. Erkenne:\n- "blocks": A muss vor B fertig sein\n- "needs": A braucht B als Voraussetzung\n- "related": A und B sind thematisch verbunden\n\nJSON ohne Backticks:\n{"dependencies":[{"from":"REQ-001","to":"REQ-002","type":"blocks","note":"Kurze Begründung"}],"summary":"..."}\n\nAnforderungen:\n${rl}`}], langNote(), 6000);
   btn.disabled = false; btn.innerHTML = '⚡ KI analysieren';
   if (!res.ok) { toast('❌ ' + res.text); return; }
 

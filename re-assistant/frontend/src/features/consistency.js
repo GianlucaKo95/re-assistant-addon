@@ -21,10 +21,27 @@ async function runConsistencyCheck(systemId) {
 
   const rl = reqs.map(r => `${r.id}: ${r.title} — ${(r.description||'').substring(0,150)}`).join('\n');
 
+  // Stakeholder/Qualitätsziele mitgeben — ein "Widerspruch" ist nicht nur
+  // Anforderung-gegen-Anforderung, sondern z.B. auch eine Anforderung, die
+  // einem festgelegten Qualitätsziel widerspricht (ohne diesen Kontext kann
+  // die KI solche Fälle gar nicht erkennen).
+  let shText = '', qgText = '';
+  try {
+    const [shs, qgs] = await Promise.all([
+      fetch(`api/systems/${systemId}/stakeholders`,  {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+      fetch(`api/systems/${systemId}/quality-goals`, {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
+    ]);
+    if (shs.length) shText = 'Stakeholder: ' + shs.map(s => s.name + ' (' + s.role + ')').join(', ');
+    if (qgs.length) qgText = 'Qualitätsziele: ' + qgs.map(g => g.iso_char + ': ' + g.description).join(' | ');
+  } catch(e) {}
+
   const res = await callAPI([{ role:'user', content:
     `Du bist Requirements-Analyst. Prüfe diese Anforderungen auf inhaltliche Widersprüche.
 Widerspruch = zwei Anforderungen fordern einander ausschließende Dinge
-(z.B. "offline-fähig" vs. "permanente Internetverbindung", "maximale Performance" vs. "minimaler Ressourcenverbrauch").
+(z.B. "offline-fähig" vs. "permanente Internetverbindung", "maximale Performance" vs. "minimaler Ressourcenverbrauch"),
+oder eine Anforderung widerspricht einem der unten genannten Qualitätsziele bzw. Stakeholder-Interessen.
+
+${[shText, qgText].filter(Boolean).join('\n')}
 
 Antworte NUR mit JSON ohne Backticks:
 {
@@ -45,7 +62,7 @@ Antworte NUR mit JSON ohne Backticks:
 Wenn keine Widersprüche: {"conflicts":[],"warnings":[],"summary":"Keine Widersprüche gefunden."}
 
 Anforderungen:
-${rl}` }], langNote(), 4000);
+${rl}` }], langNote(), 6000);
 
   if (btn) { btn.disabled = false; btn.innerHTML = '🔍 Konsistenz prüfen'; }
   if (!res.ok) { toast('❌ ' + res.text); return; }
