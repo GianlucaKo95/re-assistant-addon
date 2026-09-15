@@ -306,7 +306,11 @@ input::placeholder,textarea::placeholder{color:var(--t3)}
 
 /* Word-Analyse (ohne Systembindung) — teilt Layout-Maße mit BA: Doc Analysis */
 #wa-layout{display:grid;grid-template-columns:220px 1fr;flex:1;overflow:hidden}
-#wa-left{border-right:1px solid var(--b1);background:rgba(6,6,14,.98);display:flex;flex-direction:column}
+/* overflow-y statt hidden: #wa-left hat (anders als z.B. #fk-left) keinen
+   internen flex:1-Bereich, der variable Inhaltslänge (Datei-Upload-Status)
+   abfedert — ohne eigenes Scrollen würde langer Inhalt den "Analysieren"-
+   Button aus dem sichtbaren Bereich schieben. */
+#wa-left{border-right:1px solid var(--b1);background:rgba(6,6,14,.98);display:flex;flex-direction:column;overflow-y:auto}
 #wa-right{display:flex;flex-direction:column;overflow:hidden}
 #wa-results{display:flex;flex-direction:column;gap:12px}
 .da-group{background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);overflow:hidden;box-shadow:0 3px 10px rgba(0,0,0,.18)}

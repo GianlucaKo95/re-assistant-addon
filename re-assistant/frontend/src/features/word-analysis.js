@@ -74,15 +74,15 @@ async function pickWordFile() {
     }
     _waText = data.text;
     _waFileName = data.name;
-    const preview = _waText.trim().substring(0, 400);
+    // Nur eine kompakte Bestätigung statt Textvorschau — ein Auszug hilft
+    // beim Prüfen des Inhalts nicht wirklich, drückt aber (v.a. bei viel
+    // Text) den Rest der Seitenleiste (inkl. "Analysieren"-Button) aus dem
+    // sichtbaren Bereich, da #wa-left nicht scrollt.
     $('wa-upload-status').innerHTML = `
-      <div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);padding:14px 16px;box-shadow:0 3px 10px rgba(0,0,0,.18)">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <span style="font-size:18px">📄</span>
-          <strong style="font-size:13px">${esc(_waFileName)}</strong>
-          <span style="font-size:11px;color:var(--t3)">${_waText.length.toLocaleString('de-DE')} Zeichen</span>
-        </div>
-        <div style="font-size:12px;color:var(--t2);line-height:1.6;white-space:pre-wrap">${esc(preview)}${_waText.length > 400 ? '…' : ''}</div>
+      <div style="display:flex;align-items:center;gap:8px;background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);padding:10px 14px;box-shadow:0 3px 10px rgba(0,0,0,.18)">
+        <span style="font-size:18px;flex-shrink:0">📄</span>
+        <strong style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">${esc(_waFileName)}</strong>
+        <span style="font-size:11px;color:var(--t3);flex-shrink:0">${_waText.length.toLocaleString('de-DE')} Zeichen</span>
       </div>`;
     $('btn-wa-analyze').disabled = false;
   } catch(e) {
