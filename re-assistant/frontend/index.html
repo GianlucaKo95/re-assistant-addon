@@ -190,7 +190,18 @@
         <div class="view-header"><div><h2>Alle Anforderungen</h2><p class="view-sub">Systemübergreifende Übersicht</p></div><div style="display:flex;gap:8px"><button class="btn-secondary" onclick="switchView('import')">↓ Importieren</button>
           <button class="btn-primary" id="btn-new-req-biz">+ Neue</button><button class="btn-secondary" id="btn-dedup-global">🔍 Duplikate prüfen</button></div></div>
         <div id="biz-stats" class="stats-row" style="flex-shrink:0"></div>
-        <div id="biz-req-filters" class="filter-bar"><select id="biz-filter-sys"><option value="">Alle Systeme</option></select><select id="biz-filter-status"><option value="">Alle Status</option><option value="open">Offen</option><option value="assigned">Zugewiesen</option><option value="in-progress">In Bearbeitung</option><option value="done">Erledigt</option></select><select id="biz-filter-cat-global"><option value="">Alle Kategorien</option></select><input type="text" id="biz-filter-q" placeholder="Suchen …"/></div>
+        <div id="biz-req-filters" class="filter-bar"><select id="biz-filter-sys"><option value="">Alle Systeme</option></select><select id="biz-filter-status"><option value="">Alle Status</option><option value="open">Offen</option><option value="assigned">Zugewiesen</option><option value="in-progress">In Bearbeitung</option><option value="done">Erledigt</option></select><select id="biz-filter-cat-global"><option value="">Alle Kategorien</option></select><input type="text" id="biz-filter-q" placeholder="Suchen …"/><select id="biz-sort-sel">
+          <option value="created_at:asc">Sortieren: Neu angelegt zuerst</option>
+          <option value="created_at:desc">Sortieren: Zuletzt angelegt zuerst</option>
+          <option value="id:asc">Anforderungsnummer ↑</option>
+          <option value="id:desc">Anforderungsnummer ↓</option>
+          <option value="status:asc">Status A–Z</option>
+          <option value="status:desc">Status Z–A</option>
+          <option value="priority:asc">Priorität: hoch → niedrig</option>
+          <option value="priority:desc">Priorität: niedrig → hoch</option>
+          <option value="category:asc">Kategorie A–Z</option>
+          <option value="category:desc">Kategorie Z–A</option>
+        </select></div>
         <div id="biz-reqs-list" class="scroll-body" style="flex:1"></div>
       </div>
 

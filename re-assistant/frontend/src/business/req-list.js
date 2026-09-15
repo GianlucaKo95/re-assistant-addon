@@ -51,6 +51,18 @@ async function loadBizReqs() {
     };
   });
 
+  // Sortierung (Anforderungsnummer, Status, Priorität, Kategorie, Datum)
+  const sortEl = $('biz-sort-sel');
+  if (sortEl) {
+    sortEl.onchange = () => {
+      const [sort, dir] = sortEl.value.split(':');
+      _bizPgCtrl._filters.sort = sort;
+      _bizPgCtrl._filters.dir  = dir;
+      _bizPgCtrl._page = 0;
+      _bizPgCtrl.load(true);
+    };
+  }
+
   // Freitext-Suche mit Debounce
   const qEl = $('biz-filter-q');
   if (qEl) {
