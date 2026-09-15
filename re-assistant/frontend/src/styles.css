@@ -491,7 +491,11 @@ input::placeholder,textarea::placeholder{color:var(--t3)}
 /* TOAST */
 #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(12px);opacity:0;background:rgba(14,14,24,.98);border:1px solid var(--b2);border-radius:10px;padding:10px 18px;font-size:13px;color:var(--t1);backdrop-filter:blur(12px);z-index:999;pointer-events:none;transition:opacity .3s,transform .3s;white-space:nowrap}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.15)}
+/* Sichtbarer Scroll-Indikator: 7px statt 5px, Thumb bei 8% Deckkraft war auf
+   dunklem Hintergrund praktisch unsichtbar — Nutzer sahen keinen Hinweis,
+   dass eine Liste überhaupt scrollbar ist. */
+*{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) transparent}
+::-webkit-scrollbar{width:7px;height:7px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22);border-radius:4px}::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.38)}
 .spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.15);border-top-color:white;border-radius:50%;animation:sp .55s linear infinite;vertical-align:middle;margin-right:5px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:60px 20px;text-align:center;color:var(--t3)}
@@ -1701,6 +1705,7 @@ select option:hover {
 }
 
 /* Scrollbar */
+[data-theme="light"] { scrollbar-color: #c0c8d4 #f6f8fa; }
 [data-theme="light"] ::-webkit-scrollbar-track { background: #f6f8fa; }
 [data-theme="light"] ::-webkit-scrollbar-thumb { background: #c0c8d4; }
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #9ba8b6; }
