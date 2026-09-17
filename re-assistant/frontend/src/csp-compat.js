@@ -132,7 +132,7 @@
       if (lastDot === -1) return; // Top-Level-Variablenzuweisung — nicht unterstützt
       const obj = resolveChain(lhs.slice(0, lastDot), thisArg);
       if (obj == null) return;
-      obj[lhs.slice(lastDot + 1)] = evalArg(rhs);
+      obj[lhs.slice(lastDot + 1)] = evalArg(rhs, thisArg);
       return;
     }
 
@@ -155,10 +155,10 @@
       console.warn('csp-compat: nicht gefunden:', stmt);
       return;
     }
-    fn.apply(obj, parseArgs(argsStr));
+    fn.apply(obj, parseArgs(argsStr, thisArg));
   }
 
-  function parseArgs(argsStr) {
+  function parseArgs(argsStr, thisArg) {
     if (!argsStr) return [];
     const args = [];
     let current = '';
@@ -175,15 +175,22 @@
       } else if ('([{'.includes(ch)) { depth++; current += ch; }
       else if (')]}'.includes(ch)) { depth--; current += ch; }
       else if (ch === ',' && depth === 0) {
-        args.push(evalArg(current.trim())); current = '';
+        args.push(evalArg(current.trim(), thisArg)); current = '';
       } else { current += ch; }
     }
-    if (current.trim()) args.push(evalArg(current.trim()));
+    if (current.trim()) args.push(evalArg(current.trim(), thisArg));
     return args;
   }
 
-  function evalArg(arg) {
+  // "this" als eigenständiges Argument (nicht Teil einer Punkt-Kette, das
+  // übernimmt resolveChain) muss auf das Element auflösen, an dem der Klick
+  // registriert wurde — sonst landet der literale String "this" als Wert
+  // im Aufruf (z.B. runSmartCheck('id', this) → btn === "this" → btn.disabled
+  // wirft eine TypeError, weil man auf einem String-Primitive keine
+  // Eigenschaft anlegen kann).
+  function evalArg(arg, thisArg) {
     if (!arg) return undefined;
+    if (arg === 'this') return thisArg;
     if (arg === 'null') return null;
     if (arg === 'undefined') return undefined;
     if (arg === 'true') return true;
