@@ -71,7 +71,11 @@ async function migrate() {
   }
 }
 
-migrate().catch(e => {
-  console.error('[MIGRATE] Fatal:', e.message);
-  process.exit(1);
-});
+module.exports = migrate;
+
+if (require.main === module) {
+  migrate().catch(e => {
+    console.error('[MIGRATE] Fatal:', e.message);
+    process.exit(1);
+  });
+}

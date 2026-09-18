@@ -70,8 +70,17 @@ async function buildRAGContext(systemId, userQuery, signal) {
   const q = (userQuery || '').toLowerCase();
   const detail = getDetailLevel();
 
+  // Regel-/Ablauffragen ("was sind die Spielregeln", "erklär die Regeln")
+  // brauchen die VOLLEN Detailinhalte aus Code/Dokumentation statt nur der
+  // groben Systemzusammenfassung — sonst vermischt die KI generische
+  // Systemfakten mit unvollständig zitierten Regeldetails (führt zu
+  // Verwechslungen zwischen "was sind die Regeln" und "was sind die
+  // Gegebenheiten des Systems"). Deshalb Vorrang vor der Überblicks-
+  // Erkennung unten und wie eine "tiefe" Frage behandelt.
+  const isRulesQuery = /\bregel(?!mäßig)|geschäftsregel|spielregel/i.test(q);
+
   // 1. Überblick-Fragen → gecachte Zusammenfassung nutzen
-  const isOverviewQuery = /überblick|übersicht|zusammenfassung|alles|komplett|gesamt|alle funk|was kann|was macht|erklär|beschreib|zeig mir|worum geht|vorstell/i.test(q);
+  const isOverviewQuery = !isRulesQuery && /überblick|übersicht|zusammenfassung|alles|komplett|gesamt|alle funk|was kann|was macht|erklär|beschreib|zeig mir|worum geht|vorstell/i.test(q);
 
   if (isOverviewQuery) {
     const cached = await getCachedContext(systemId, signal);
@@ -82,7 +91,7 @@ async function buildRAGContext(systemId, userQuery, signal) {
   }
 
   // 2. Erkenne "tiefe" Fragen — wollen detaillierten Code/Funktionsverständnis
-  const isDeepQuery = /wie funktioniert|erklär.*code|erklär.*funktion|implementier|im detail|genauer|funktionsweise|wie ist.*aufgebaut|wie wird.*umgesetzt|zeig.*code|quellcode|logik von|ablauf von/i.test(q);
+  const isDeepQuery = isRulesQuery || /wie funktioniert|erklär.*code|erklär.*funktion|implementier|im detail|genauer|funktionsweise|wie ist.*aufgebaut|wie wird.*umgesetzt|zeig.*code|quellcode|logik von|ablauf von/i.test(q);
 
   // 3. Spezifische Fragen → semantische Suche + Kontext-Cache als Basis
   const topK         = isDeepQuery ? detail.deepTopK         : detail.topK;
@@ -133,11 +142,27 @@ async function buildRAGContext(systemId, userQuery, signal) {
       parts.push(`Systemkontext (Überblick):\n${cached.substring(0, 1000)}\n…`);
     }
 
-    // Vollständige Dateien (Top-3)
+    // Vollständige Dateien (Top-3) — mit Gesamt-Obergrenze: ohne die würde
+    // eine einzelne sehr große Datei (z.B. eine 300-KB-Frontend-Komponente,
+    // die zufällig unter den Top-3-Treffern landet) den kompletten Kontext
+    // für sich beanspruchen und andere relevante Treffer verdrängen.
+    const MAX_FULLTEXT_CHARS = 40000;
+    let fullTextCharsUsed = 0;
     for (const docResult of fullDocChunks) {
       if (!docResult) continue;
-      const allText = docResult.chunks.join('\n\n');
-      parts.push(`[${docResult.docName}] (vollständig, ${docResult.chunks.length} Abschnitte):\n${allText}`);
+      if (fullTextCharsUsed >= MAX_FULLTEXT_CHARS) {
+        parts.push(`[${docResult.docName}] — übersprungen (Obergrenze für Volltext-Kontext erreicht)`);
+        continue;
+      }
+      let allText = docResult.chunks.join('\n\n');
+      const remaining = MAX_FULLTEXT_CHARS - fullTextCharsUsed;
+      let truncatedNote = '';
+      if (allText.length > remaining) {
+        allText = allText.substring(0, remaining);
+        truncatedNote = '\n… (gekürzt, Obergrenze für Volltext-Kontext erreicht)';
+      }
+      fullTextCharsUsed += allText.length;
+      parts.push(`[${docResult.docName}] (vollständig, ${docResult.chunks.length} Abschnitte):\n${allText}${truncatedNote}`);
     }
 
     // Weitere relevante Chunks
@@ -292,8 +317,11 @@ async function getRAGContextForQuery(systemId, query, opts = {}) {
 
   // Frage-Typ bestimmen
   const q = (query || '').toLowerCase();
-  const isOverview = /überblick|übersicht|zusammenfassung|alles|komplett|gesamt|was kann|was macht|vorstell|worum geht/i.test(q);
-  const isDeep     = /wie funktioniert|erklär.*code|erklär.*funktion|implementier|im detail|genauer|funktionsweise|wie ist.*aufgebaut|wie wird.*umgesetzt|zeig.*code|quellcode|logik von|ablauf von|zeig.*implementier/i.test(q);
+  // Regelfragen brauchen volle Detailinhalte statt der groben Zusammenfassung
+  // (siehe ausführliche Begründung in buildRAGContext oben) — Vorrang vor isOverview.
+  const isRulesQuery = /\bregel(?!mäßig)|geschäftsregel|spielregel/i.test(q);
+  const isOverview = !isRulesQuery && /überblick|übersicht|zusammenfassung|alles|komplett|gesamt|was kann|was macht|vorstell|worum geht/i.test(q);
+  const isDeep     = isRulesQuery || /wie funktioniert|erklär.*code|erklär.*funktion|implementier|im detail|genauer|funktionsweise|wie ist.*aufgebaut|wie wird.*umgesetzt|zeig.*code|quellcode|logik von|ablauf von|zeig.*implementier/i.test(q);
 
   // Für role='deep' immer Deep-Query-Strategie erzwingen
   const forceDeep     = role === 'deep';
