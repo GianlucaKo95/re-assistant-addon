@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.53';
+const APP_VERSION = '4.3.54';
 
 const app      = express();
 
@@ -614,10 +614,29 @@ async function getPdfjs() {
   return _pdfjsLib;
 }
 
+// Bekannte Binärformate ohne sinnvoll extrahierbaren Text — dieselbe Klasse
+// Problem wie beim PDF-Fix weiter unten: ohne diese Sperre werden sie über den
+// "alles andere → Rohtext"-Zweig als vermeintliches UTF-8/Latin-1 dekodiert
+// und der resultierende Datenmüll landet trotzdem (oberhalb der 50-Zeichen-
+// Mindestlänge) erfolgreich im RAG-Index, statt sauber als "nicht indexiert"
+// erkennbar zu sein.
+const BINARY_FILE_EXTENSIONS = new Set([
+  'png','jpg','jpeg','gif','webp','bmp','ico','tiff','tif','heic','avif',
+  'mp3','mp4','wav','ogg','mov','avi','webm','flac','m4a',
+  'zip','tar','gz','rar','7z',
+  'woff','woff2','ttf','otf','eot',
+  'xlsx','pptx','odt','ods','odp',
+  'exe','dll','so','bin','dat','db','sqlite',
+]);
+
 // ── Textextraktion aus hochgeladenen Dateien ───────────────────
-// .docx → mammoth (echtes XML-Parsing); .pdf → pdfjs-dist; alles andere → Rohtext
+// .docx → mammoth (echtes XML-Parsing); .pdf → pdfjs-dist; bekannte Binärformate → übersprungen; alles andere → Rohtext
 async function extractFileText(file) {
   const ext = (file.originalname.split('.').pop() || '').toLowerCase();
+  if (BINARY_FILE_EXTENSIONS.has(ext)) {
+    log('warning', `Textextraktion übersprungen (Binärformat .${ext}): ${file.originalname}`);
+    return '';
+  }
   if (ext === 'docx') {
     try {
       const { value } = await mammoth.extractRawText({ buffer: file.buffer });
