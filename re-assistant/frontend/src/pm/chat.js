@@ -68,7 +68,10 @@ Antworte immer strukturiert mit konkreten Handlungsempfehlungen.`,
 
   // autoContinue=true: bei abgeschnittener Antwort (max_tokens) lässt die
   // KI selbst automatisch weiterschreiben statt nur einen Hinweis zu zeigen.
-  const res=await callAPI(S.chatHistory.pmc, pmSystem, 8000, 'pmc', null, (token, full) => {
+  // 16000 statt 8000 (Anthropics empfohlene Obergrenze für nicht-gestreamte
+  // Requests) — reduziert, wie oft autoContinue überhaupt greifen muss,
+  // damit ausführliche Antworten weniger "gestückelt" wirken.
+  const res=await callAPI(S.chatHistory.pmc, pmSystem, 16000, 'pmc', null, (token, full) => {
     pmStreamedText = full;
     if (pmBub) pmBub.innerHTML = renderMD(full) + '<span class="stream-cursor">▋</span>';
     if (pmMsgs) pmMsgs.scrollTop = pmMsgs.scrollHeight;

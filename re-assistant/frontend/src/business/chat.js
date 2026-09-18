@@ -266,12 +266,16 @@ Du führst ein rein fachliches Gespräch mit dem Fachbereich — wie ein Kollege
 - Maximale Ausführlichkeit bei fachlichen Fragen — kurze, prägnante Antworten nur wenn explizit gewünscht`,
   ].filter(Boolean).join('\n\n');
 
-  // 8000 statt 4000: der System-Prompt fordert oben explizit "Maximale
-  // Ausführlichkeit" bei fachlichen/technischen Fragen. autoContinue
-  // lässt die KI bei Bedarf zusätzlich automatisch weiterschreiben (bis zu
-  // 5x), statt die Antwort einfach mitten im Satz abzubrechen — der Nutzer
-  // will die vollständige Antwort, keinen Hinweis dass sie unvollständig ist.
-  const res = await callAPI(S.chatHistory.bc, system, 8000, null, null, null, true);
+  // 16000 statt 8000: der System-Prompt fordert oben explizit "Maximale
+  // Ausführlichkeit" bei fachlichen/technischen Fragen — 8000 reichte bei
+  // ausführlichen Antworten (z.B. vollständige Regelerklärungen) oft nicht
+  // und die Antwort kam dadurch spürbar "gestückelt" über mehrere
+  // autoContinue-Fortsetzungen statt in einem Zug. 16000 ist Anthropics
+  // empfohlene Obergrenze für nicht-gestreamte Requests (dieser Endpunkt
+  // /api/ai/chat streamt nicht) — höhere Werte bräuchten Streaming, um
+  // HTTP-Timeouts bei langer Generierung zu vermeiden. autoContinue bleibt
+  // als Fallback aktiv (bis zu 5x), greift jetzt aber seltener.
+  const res = await callAPI(S.chatHistory.bc, system, 16000, null, null, null, true);
   typing.remove();
 
   // Stopp-/Send-Button zurücksetzen

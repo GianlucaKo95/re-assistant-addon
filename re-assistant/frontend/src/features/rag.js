@@ -142,11 +142,27 @@ async function buildRAGContext(systemId, userQuery, signal) {
       parts.push(`Systemkontext (Überblick):\n${cached.substring(0, 1000)}\n…`);
     }
 
-    // Vollständige Dateien (Top-3)
+    // Vollständige Dateien (Top-3) — mit Gesamt-Obergrenze: ohne die würde
+    // eine einzelne sehr große Datei (z.B. eine 300-KB-Frontend-Komponente,
+    // die zufällig unter den Top-3-Treffern landet) den kompletten Kontext
+    // für sich beanspruchen und andere relevante Treffer verdrängen.
+    const MAX_FULLTEXT_CHARS = 40000;
+    let fullTextCharsUsed = 0;
     for (const docResult of fullDocChunks) {
       if (!docResult) continue;
-      const allText = docResult.chunks.join('\n\n');
-      parts.push(`[${docResult.docName}] (vollständig, ${docResult.chunks.length} Abschnitte):\n${allText}`);
+      if (fullTextCharsUsed >= MAX_FULLTEXT_CHARS) {
+        parts.push(`[${docResult.docName}] — übersprungen (Obergrenze für Volltext-Kontext erreicht)`);
+        continue;
+      }
+      let allText = docResult.chunks.join('\n\n');
+      const remaining = MAX_FULLTEXT_CHARS - fullTextCharsUsed;
+      let truncatedNote = '';
+      if (allText.length > remaining) {
+        allText = allText.substring(0, remaining);
+        truncatedNote = '\n… (gekürzt, Obergrenze für Volltext-Kontext erreicht)';
+      }
+      fullTextCharsUsed += allText.length;
+      parts.push(`[${docResult.docName}] (vollständig, ${docResult.chunks.length} Abschnitte):\n${allText}${truncatedNote}`);
     }
 
     // Weitere relevante Chunks
