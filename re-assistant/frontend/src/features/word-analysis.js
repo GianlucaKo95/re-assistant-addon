@@ -15,6 +15,15 @@ let _waText = '';
 let _waFileName = '';
 let _waScope = 'none'; // 'none' | 'system'
 
+// Vorher 12000: /api/docs/extract-text liefert das VOLLSTÄNDIGE Dokument
+// zurück (kein Server-Limit), aber hier wurde still auf die ersten 12000
+// Zeichen (~2 Seiten) gekürzt, ohne jeden Hinweis — bei einem realistischen
+// mehrseitigen Anforderungsdokument gingen dadurch unbemerkt ganze
+// Abschnitte verloren, während die Anzeige "X Zeichen" die volle Länge
+// suggerierte. 60000 Zeichen deckt auch umfangreiche Lastenhefte ab; bei
+// noch längeren Dokumenten wird jetzt sichtbar gewarnt (siehe pickWordFile).
+const MAX_DOC_CHARS = 60000;
+
 async function loadWordAnalysis() {
   S.systems = S.systems?.length ? S.systems : await window.api.getSystems();
   const sel = $('wa-sys-select');
@@ -78,12 +87,16 @@ async function pickWordFile() {
     // beim Prüfen des Inhalts nicht wirklich, drückt aber (v.a. bei viel
     // Text) den Rest der Seitenleiste (inkl. "Analysieren"-Button) aus dem
     // sichtbaren Bereich, da #wa-left nicht scrollt.
+    const willTruncate = _waText.length > MAX_DOC_CHARS;
     $('wa-upload-status').innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);padding:10px 14px;box-shadow:0 3px 10px rgba(0,0,0,.18)">
         <span style="font-size:18px;flex-shrink:0">📄</span>
         <strong style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">${esc(_waFileName)}</strong>
         <span style="font-size:11px;color:var(--t3);flex-shrink:0">${_waText.length.toLocaleString('de-DE')} Zeichen</span>
-      </div>`;
+      </div>
+      ${willTruncate ? `<div style="margin-top:8px;font-size:11px;color:var(--amb);background:var(--ambbg);border-radius:var(--r);padding:8px 12px">
+        ⚠ Dokument ist länger als ${MAX_DOC_CHARS.toLocaleString('de-DE')} Zeichen — nur der Anfang wird analysiert (${(_waText.length - MAX_DOC_CHARS).toLocaleString('de-DE')} Zeichen am Ende bleiben unberücksichtigt).
+      </div>` : ''}`;
     $('btn-wa-analyze').disabled = false;
   } catch(e) {
     $('wa-upload-status').innerHTML = `<div class="empty-state"><h3>Fehler</h3><p>${esc(e.message)}</p></div>`;
@@ -109,16 +122,32 @@ async function runWordAnalysis() {
   let shCtx = '', ucCtx = '', qgCtx = '', ragCtx = '';
   if (_waScope === 'system' && sysId) {
     try {
-      const [shs, ucs, qgs, cache] = await Promise.all([
+      const [shs, ucs, qgs] = await Promise.all([
         fetch(`api/systems/${sysId}/stakeholders`,  {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
         fetch(`api/systems/${sysId}/use-cases`,     {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
         fetch(`api/systems/${sysId}/quality-goals`, {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
-        fetch(`api/embeddings/summary?systemId=${sysId}`, {credentials:'include'}).then(r=>r.json()).catch(()=>null),
       ]);
       if (shs.length) shCtx = 'Stakeholder: ' + shs.map(s => s.name + ' (' + s.role + ')').join(', ');
-      if (ucs.length) ucCtx = 'Bekannte Use Cases: ' + ucs.map(u => u.title).join(', ');
+      // Titel allein reicht für einen echten inhaltlichen Abgleich nicht aus
+      // (die KI kann Widersprüche zu einem Use Case nur erkennen, wenn sie
+      // dessen Ablauf kennt) — Akteur + Beschreibung wie im Business-Chat.
+      if (ucs.length) ucCtx = 'Bekannte Use Cases:\n' + ucs.map(u => `- ${u.title} (Akteur: ${u.actor||'?'}): ${u.description||''}`).join('\n');
       if (qgs.length) qgCtx = 'Qualitätsziele: ' + qgs.map(g => g.iso_char + ': ' + g.description).join(' | ');
-      if (cache?.summary) ragCtx = 'SYSTEMÜBERBLICK (KI-analysiert):\n' + cache.summary.substring(0, 5000);
+
+      // Vorher: statischer, dokumentUNabhängiger Systemüberblick (nur der
+      // Cache, gekappt bei 5000 Zeichen) — die KI bekam denselben Kontext
+      // egal worum es im hochgeladenen Dokument eigentlich geht. Jetzt:
+      // dieselbe zielgerichtete RAG-Suche wie im Business-Chat (rag.js),
+      // mit dem Dokumentanfang als Suchanfrage — findet gezielt die zum
+      // Dokumentinhalt passenden Stellen aus Systemdokumentation/-code,
+      // damit die Qualitätsprüfung echte Widersprüche zu bestehendem
+      // Wissen erkennen kann statt nur einen generischen Überblick zu sehen.
+      // role:'deep' lädt bei Bedarf volle relevante Dateien (mit fester
+      // Obergrenze, siehe rag.js MAX_FULLTEXT_CHARS) statt nur Schnipsel —
+      // angemessen für eine einmalige, gründliche Dokumentprüfung.
+      if (typeof getRAGContextForQuery === 'function') {
+        ragCtx = await getRAGContextForQuery(sysId, _waText.substring(0, 3000), { role: 'deep' }).catch(() => '');
+      }
     } catch(e) {}
   }
   const boundToSystem = _waScope === 'system' && (shCtx || ucCtx || qgCtx || ragCtx);
@@ -142,14 +171,20 @@ async function runWordAnalysis() {
       : '5. Qualitätsprüfung — prüfe den Text kritisch auf Widersprüche, Mehrdeutigkeiten, fehlende Angaben und unrealistische oder nicht verifizierbare Formulierungen. Zitiere für jeden Fund die betroffene Textstelle wörtlich — keine Vermutungen ohne Beleg im Text.',
     '',
     `DOKUMENT: ${_waFileName}`,
-    _waText.substring(0, 12000),
+    _waText.length > MAX_DOC_CHARS
+      ? `HINWEIS: Das Dokument wurde gekürzt — es folgen nur die ersten ${MAX_DOC_CHARS.toLocaleString('de-DE')} von ${_waText.length.toLocaleString('de-DE')} Zeichen. Weise im Feld "summary" darauf hin, dass die Analyse unvollständig ist.`
+      : '',
+    _waText.substring(0, MAX_DOC_CHARS),
     '',
     'Antworte NUR mit JSON (keine Backticks):',
     schema,
   ].filter(Boolean).join('\n');
 
+  // 8000 statt 6000: MAX_DOC_CHARS wurde von 12000 auf 60000 angehoben —
+  // ein entsprechend längeres Dokument enthält typischerweise auch deutlich
+  // mehr Anforderungen/Befunde, wofür 6000 Ausgabe-Tokens oft nicht reichten.
   const res = await callAPI([{ role:'user', content: prompt }],
-    'Du bist CPRE-zertifizierter Requirements Engineer. ' + langNote(), 6000);
+    'Du bist CPRE-zertifizierter Requirements Engineer. ' + langNote(), 8000);
 
   btn.disabled = false;
   btn.innerHTML = '🔍 Analysieren';
