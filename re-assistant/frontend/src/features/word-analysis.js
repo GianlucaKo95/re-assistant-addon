@@ -122,11 +122,10 @@ async function runWordAnalysis() {
   let shCtx = '', ucCtx = '', qgCtx = '', ragCtx = '';
   if (_waScope === 'system' && sysId) {
     try {
-      const [shs, ucs, qgs, cache] = await Promise.all([
+      const [shs, ucs, qgs] = await Promise.all([
         fetch(`api/systems/${sysId}/stakeholders`,  {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
         fetch(`api/systems/${sysId}/use-cases`,     {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
         fetch(`api/systems/${sysId}/quality-goals`, {credentials:'include'}).then(r=>r.json()).catch(()=>[]),
-        fetch(`api/embeddings/summary?systemId=${sysId}`, {credentials:'include'}).then(r=>r.json()).catch(()=>null),
       ]);
       if (shs.length) shCtx = 'Stakeholder: ' + shs.map(s => s.name + ' (' + s.role + ')').join(', ');
       // Titel allein reicht für einen echten inhaltlichen Abgleich nicht aus
@@ -134,7 +133,21 @@ async function runWordAnalysis() {
       // dessen Ablauf kennt) — Akteur + Beschreibung wie im Business-Chat.
       if (ucs.length) ucCtx = 'Bekannte Use Cases:\n' + ucs.map(u => `- ${u.title} (Akteur: ${u.actor||'?'}): ${u.description||''}`).join('\n');
       if (qgs.length) qgCtx = 'Qualitätsziele: ' + qgs.map(g => g.iso_char + ': ' + g.description).join(' | ');
-      if (cache?.summary) ragCtx = 'SYSTEMÜBERBLICK (KI-analysiert):\n' + cache.summary.substring(0, 5000);
+
+      // Vorher: statischer, dokumentUNabhängiger Systemüberblick (nur der
+      // Cache, gekappt bei 5000 Zeichen) — die KI bekam denselben Kontext
+      // egal worum es im hochgeladenen Dokument eigentlich geht. Jetzt:
+      // dieselbe zielgerichtete RAG-Suche wie im Business-Chat (rag.js),
+      // mit dem Dokumentanfang als Suchanfrage — findet gezielt die zum
+      // Dokumentinhalt passenden Stellen aus Systemdokumentation/-code,
+      // damit die Qualitätsprüfung echte Widersprüche zu bestehendem
+      // Wissen erkennen kann statt nur einen generischen Überblick zu sehen.
+      // role:'deep' lädt bei Bedarf volle relevante Dateien (mit fester
+      // Obergrenze, siehe rag.js MAX_FULLTEXT_CHARS) statt nur Schnipsel —
+      // angemessen für eine einmalige, gründliche Dokumentprüfung.
+      if (typeof getRAGContextForQuery === 'function') {
+        ragCtx = await getRAGContextForQuery(sysId, _waText.substring(0, 3000), { role: 'deep' }).catch(() => '');
+      }
     } catch(e) {}
   }
   const boundToSystem = _waScope === 'system' && (shCtx || ucCtx || qgCtx || ragCtx);
