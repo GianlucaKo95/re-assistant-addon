@@ -146,13 +146,13 @@ function renderBacklog(bl){
     <div class="epic-head"><div><div class="epic-title">📦 ${esc(ep.id)}: ${esc(ep.title)}</div><div style="font-size:12px;color:var(--t2)">${esc(ep.description||'')}</div></div><span class="rtag">${(ep.features||[]).length} Features</span></div>
     <div class="epic-body">${(ep.features||[]).map(f=>`<div class="feature-block">
       <div class="feature-head">🔹 ${esc(f.id)}: ${esc(f.title)}</div>
-      ${(f.stories||[]).map(s=>`<div class="story-row" data-id="${esc(s.id)}" data-epic="${esc(ep.id)}" data-feat="${esc(f.id)}"><span class="sp-badge">${s.storyPoints||'?'} SP</span><div style="flex:1"><strong>${esc(s.id)}</strong>: ${esc(s.title)}<br/><span style="font-size:12px;color:var(--t2)">${esc(s.description||'')}</span></div><span class="sbadge p-${s.priority}">${priLabel(s.priority)}</span>${s.reqRef?`<span class="rtag" style="font-size:9px">${esc(s.reqRef)}</span>`:''}</div>`).join('')}
+      ${(f.stories||[]).map(s=>`<div class="story-row" data-id="${esc(s.id)}" data-epic="${esc(ep.id)}" data-feat="${esc(f.id)}"><span class="sp-badge">${s.storyPoints||'?'} SP</span><div style="flex:1"><strong>${esc(s.id)}</strong>: ${esc(s.title)}<br/><span style="font-size:12px;color:var(--t2)">${esc(s.description||'')}</span>${(s.acceptanceCriteria||[]).length?`<div class="story-ac-toggle" onclick="this.nextElementSibling.classList.toggle('open')">✅ ${s.acceptanceCriteria.length} Akzeptanzkriterien</div><div class="story-ac-list">${s.acceptanceCriteria.map(ac=>`<div class="story-ac-item">${esc(ac)}</div>`).join('')}</div>`:''}</div><span class="sbadge p-${s.priority}">${priLabel(s.priority)}</span>${s.reqRef?`<span class="rtag" style="font-size:9px">${esc(s.reqRef)}</span>`:''}</div>`).join('')}
     </div>`).join('')}</div></div>`).join('');
 }
 async function exportBacklogMd(){
   if(!S.currentBacklog){toast('⚠ Kein Backlog');return;}
   let md=`# Backlog: ${S.currentBacklog.systemName||'System'}\n\n`;
-  for(const ep of S.currentBacklog.epics||[]){md+=`## 📦 ${ep.id}: ${ep.title}\n${ep.description||''}\n\n`;for(const f of ep.features||[]){md+=`### 🔹 ${f.id}: ${f.title}\n\n`;for(const s of f.stories||[])md+=`- **${s.id}** (${s.storyPoints||'?'} SP, ${s.priority}): ${s.title}\n  ${s.description||''}\n`;md+='\n';}}
+  for(const ep of S.currentBacklog.epics||[]){md+=`## 📦 ${ep.id}: ${ep.title}\n${ep.description||''}\n\n`;for(const f of ep.features||[]){md+=`### 🔹 ${f.id}: ${f.title}\n\n`;for(const s of f.stories||[]){md+=`- **${s.id}** (${s.storyPoints||'?'} SP, ${s.priority}): ${s.title}\n  ${s.description||''}\n`;for(const ac of s.acceptanceCriteria||[])md+=`  - [ ] ${ac}\n`;}md+='\n';}}
   await window.api.exportMarkdown({requirements:[],stories:[],projectName:S.currentBacklog.systemName,extra:md});toast('✅ Exportiert');
 }
 async function exportBacklogJira(){
@@ -167,7 +167,10 @@ async function exportBacklogJira(){
 }
 async function doBlJiraExport(){
   const pk=$('bl-jira-proj').value;if(!pk)return;
-  const issues=[];for(const ep of S.currentBacklog.epics||[])for(const f of ep.features||[])for(const s of f.stories||[])issues.push({title:s.title,description:s.description||'',type:'Story',priority:s.priority});
+  const issues=[];for(const ep of S.currentBacklog.epics||[])for(const f of ep.features||[])for(const s of f.stories||[]){
+    const acText=(s.acceptanceCriteria||[]).length?`\n\nAkzeptanzkriterien:\n${s.acceptanceCriteria.map(ac=>'- '+ac).join('\n')}`:'';
+    issues.push({title:s.title,description:(s.description||'')+acText,type:'Story',priority:s.priority});
+  }
   const res=await window.api.jiraCreateIssues({url:S.settings.jiraUrl,email:S.settings.jiraEmail,token:S.settings.jiraToken,projectKey:pk,issues});
   closeModal();if(res.ok||(res.errors&&res.errors.length<issues.length))toast(`✅ ${issues.length} Issues nach Jira exportiert`);else toast('❌ Export fehlgeschlagen');
 }

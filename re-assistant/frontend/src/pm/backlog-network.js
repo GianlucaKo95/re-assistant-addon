@@ -46,7 +46,7 @@ function renderBacklogNetwork(bl) {
 
       (f.stories || []).forEach(s => {
         const pColor = { high: '#f85149', medium: '#e3b341', low: '#3fb950' }[s.priority] || '#8b949e';
-        nodes.push({ id: s.id, type: 'story', label: s.title, desc: s.description, sp: s.storyPoints, priority: s.priority, r: 7, color: pColor, epicColor: color, epicId: ep.id, featureId: f.id });
+        nodes.push({ id: s.id, type: 'story', label: s.title, desc: s.description, sp: s.storyPoints, priority: s.priority, ac: s.acceptanceCriteria, r: 7, color: pColor, epicColor: color, epicId: ep.id, featureId: f.id });
         links.push({ source: f.id, target: s.id, type: 'feature-story' });
       });
     });
@@ -198,7 +198,7 @@ function showNetworkDetail(d) {
     panel = document.createElement('div');
     panel.id = 'backlog-network-detail';
     panel.style.cssText = `
-      position:absolute;right:12px;top:12px;width:240px;
+      position:absolute;right:12px;top:12px;width:240px;max-height:calc(100% - 24px);overflow-y:auto;
       background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);
       padding:14px;font-size:12px;z-index:10;box-shadow:0 4px 20px rgba(0,0,0,.4);
     `;
@@ -217,6 +217,10 @@ function showNetworkDetail(d) {
     ${d.desc ? `<div style="color:var(--t2);line-height:1.5;margin-bottom:8px">${esc(d.desc)}</div>` : ''}
     ${d.sp ? `<div style="margin-bottom:4px"><span class="rtag">${d.sp} Story Points</span></div>` : ''}
     ${d.priority ? `<div>${priLabel}</div>` : ''}
+    ${d.ac?.length ? `<div style="margin-top:8px">
+      <div style="font-size:10px;font-weight:600;color:var(--t3);margin-bottom:4px">✅ AKZEPTANZKRITERIEN</div>
+      ${d.ac.map(ac => `<div style="font-size:11px;color:var(--t2);padding:2px 0 2px 8px;border-left:2px solid var(--b1);margin-bottom:3px">${esc(ac)}</div>`).join('')}
+    </div>` : ''}
     <div style="margin-top:8px;font-size:10px;color:var(--t3)">${esc(d.id)}</div>
   `;
 
