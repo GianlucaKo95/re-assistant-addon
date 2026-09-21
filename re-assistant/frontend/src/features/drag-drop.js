@@ -65,13 +65,28 @@ function makeDraggable(item) {
 }
 
 function onDragStart(e) {
+  // stopPropagation ist entscheidend bei VERSCHACHTELTEN draggable-Elementen
+  // (Backlog: .story-row innerhalb eines ebenfalls draggable .epic-block).
+  // dragstart bubbelt sonst zum Epic hoch, dessen eigener (identischer)
+  // Handler _dragItem/_dragList direkt danach mit dem EPIC überschreibt —
+  // der Rest des Drags arbeitete dadurch mit dem falschen Element/Container.
+  e.stopPropagation();
   _dragItem = e.currentTarget;
+  // _dragList aus dem tatsächlichen Elternelement ableiten statt eine
+  // einmalig beim Setup gesetzte Referenz zu erwarten: enableBacklogDragDrop()
+  // ruft makeDraggable() für mehrere unabhängige Listen auf (Stories je
+  // Feature-Block, Epics), ohne _dragList je zu setzen — onDragOver() griff
+  // dadurch auf null (oder eine Listen-Referenz aus einem völlig anderen
+  // Feature wie initDragDrop()) zu und warf beim ersten Drag-Over einen
+  // TypeError, statt das Element sichtbar zu verschieben.
+  _dragList = _dragItem.parentElement;
   _dragItem.style.opacity = '0.4';
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', _dragItem.dataset.id || '');
 }
 
 function onDragEnd(e) {
+  e.stopPropagation();
   if (_dragItem) _dragItem.style.opacity = '1';
   document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
   _dragItem = null;
@@ -79,9 +94,15 @@ function onDragEnd(e) {
 
 function onDragOver(e) {
   e.preventDefault();
+  e.stopPropagation(); // s.o. — verhindert doppelte/falsche Handhabung durch ein verschachteltes Eltern-Draggable
   e.dataTransfer.dropEffect = 'move';
   const target = e.currentTarget;
-  if (target !== _dragItem) {
+  // target muss im selben Container wie das gezogene Element liegen — bei
+  // mehreren unabhängigen Listen auf einer Seite (z.B. je Feature-Block im
+  // Backlog) feuert dragover sonst auch für Zeilen einer ANDEREN Liste,
+  // deren nextSibling nicht zu _dragList gehört. insertBefore warf dann
+  // "node ... is not a child of this node" und brach die Umsortierung ab.
+  if (target !== _dragItem && target.parentElement === _dragList) {
     target.classList.add('drag-over');
     // Position bestimmen
     const rect   = target.getBoundingClientRect();
@@ -92,11 +113,19 @@ function onDragOver(e) {
 }
 
 function onDragLeave(e) {
+  e.stopPropagation();
   e.currentTarget.classList.remove('drag-over');
 }
 
 function onDrop(e) {
   e.preventDefault();
+  // KEIN stopPropagation hier (anders als bei den übrigen Handlern oben):
+  // enableBacklogDragDrop() verlässt sich darauf, dass drop von .story-row
+  // bis zum umschließenden .feature-block/.backlog-area durchblubbert, wo
+  // je ein EIGENER (separater) Listener die neue Reihenfolge einliest und
+  // speichert. _dragCallback ist hier für den Backlog-Fall ohnehin nie
+  // gesetzt, ein doppeltes Ausführen dieser Funktion selbst ist also
+  // wirkungslos — es muss nur bei den übergeordneten Listenern ankommen.
   e.currentTarget.classList.remove('drag-over');
   // Neue Reihenfolge ermitteln
   const newOrder = [..._dragList.children]

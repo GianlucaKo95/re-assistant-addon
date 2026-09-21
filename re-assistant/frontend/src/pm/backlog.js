@@ -148,6 +148,11 @@ function renderBacklog(bl){
       <div class="feature-head">🔹 ${esc(f.id)}: ${esc(f.title)}</div>
       ${(f.stories||[]).map(s=>`<div class="story-row" data-id="${esc(s.id)}" data-epic="${esc(ep.id)}" data-feat="${esc(f.id)}"><span class="sp-badge">${s.storyPoints||'?'} SP</span><div style="flex:1"><strong>${esc(s.id)}</strong>: ${esc(s.title)}<br/><span style="font-size:12px;color:var(--t2)">${esc(s.description||'')}</span>${(s.acceptanceCriteria||[]).length?`<div class="story-ac-toggle" onclick="this.nextElementSibling.classList.toggle('open')">✅ ${s.acceptanceCriteria.length} Akzeptanzkriterien</div><div class="story-ac-list">${s.acceptanceCriteria.map(ac=>`<div class="story-ac-item">${esc(ac)}</div>`).join('')}</div>`:''}</div><span class="sbadge p-${s.priority}">${priLabel(s.priority)}</span>${s.reqRef?`<span class="rtag" style="font-size:9px">${esc(s.reqRef)}</span>`:''}</div>`).join('')}
     </div>`).join('')}</div></div>`).join('');
+  // Drag & Drop zum manuellen Umsortieren von Stories/Epics aktivieren.
+  // Zentral hier statt an jedem der vier renderBacklog()-Aufrufer, damit es
+  // nach JEDEM Render (manuell generiert, aus der DB geladen, automatisch
+  // durch neue Anforderungen aktualisiert) garantiert erneut greift.
+  if (typeof enableBacklogDragDrop === 'function') enableBacklogDragDrop();
 }
 async function exportBacklogMd(){
   if(!S.currentBacklog){toast('⚠ Kein Backlog');return;}

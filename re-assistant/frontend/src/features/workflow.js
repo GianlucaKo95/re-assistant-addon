@@ -117,6 +117,10 @@ async function loadKanbanBoard() {
 
     // Status-Dropdowns
     wrap.querySelectorAll('.wf-select').forEach(sel => {
+      // Verhindert, dass ein Mousedown auf dem Dropdown (z.B. beim Öffnen der
+      // Optionsliste) vom Browser als Drag-Start der Karte interpretiert wird
+      // — die Karte selbst ist seit enableKanbanDragDrop() draggable="true".
+      sel.addEventListener('mousedown', e => e.stopPropagation());
       sel.addEventListener('change', async function(e) {
         e.stopPropagation();
         const reqId = this.dataset.reqId;
@@ -132,9 +136,75 @@ async function loadKanbanBoard() {
       });
     });
 
+    enableKanbanDragDrop(wrap);
+
   } catch(e) {
     wrap.innerHTML = `<div class="empty-state"><h3>Fehler</h3><p>${esc(e.message)}</p></div>`;
   }
+}
+
+// ── Kanban Drag & Drop: Karte in andere Spalte ziehen ändert den Status ──
+// Natives HTML5 Drag & Drop, eigener lokaler State statt der geteilten
+// Variablen aus features/drag-drop.js — dort ist der State auf genau EINE
+// aktive Drag-Operation ausgelegt (Umsortieren innerhalb einer Liste), hier
+// geht es um das Verschieben zwischen Spalten mit Statusänderung, das soll
+// unabhängig von Backlog-/Req-Listen-Drag-Funktionen bleiben.
+function enableKanbanDragDrop(wrap) {
+  let draggedReqId = null;
+  let draggedFromStatus = null;
+
+  wrap.querySelectorAll('.kanban-card').forEach(card => {
+    card.draggable = true;
+    card.addEventListener('dragstart', (e) => {
+      draggedReqId = card.dataset.reqId;
+      draggedFromStatus = card.closest('.kanban-cards')?.dataset.status || null;
+      card.classList.add('kanban-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggedReqId || '');
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('kanban-dragging');
+      wrap.querySelectorAll('.kanban-cards.drag-over').forEach(c => c.classList.remove('drag-over'));
+      draggedReqId = null;
+      draggedFromStatus = null;
+    });
+  });
+
+  wrap.querySelectorAll('.kanban-cards').forEach(col => {
+    col.addEventListener('dragover', (e) => {
+      if (!draggedReqId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      col.classList.add('drag-over');
+    });
+    col.addEventListener('dragleave', (e) => {
+      if (e.target === col) col.classList.remove('drag-over');
+    });
+    col.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      col.classList.remove('drag-over');
+      const reqId     = draggedReqId;
+      const newStatus = col.dataset.status;
+      const oldStatus = draggedFromStatus;
+      draggedReqId = null;
+      draggedFromStatus = null;
+      if (!reqId || !newStatus || newStatus === oldStatus) return;
+
+      const role = S.user?.role || 'business';
+      if (!canSetStatus(role, newStatus)) {
+        toast('⚠ Kein Recht für diesen Status');
+        return;
+      }
+      try {
+        await setWorkflowStatus(reqId, newStatus);
+        toast(`✅ Status geändert: ${getWorkflowState(newStatus).label}`);
+      } catch(err) {
+        toast('❌ ' + err.message);
+      } finally {
+        await loadKanbanBoard();
+      }
+    });
+  });
 }
 
 function kanbanCard(req, colColor) {

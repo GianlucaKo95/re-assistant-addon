@@ -913,16 +913,25 @@ select option:hover {
   flex-direction: column;
   gap: 6px;
   flex: 1;
+  transition: background-color .15s;
+}
+.kanban-cards.drag-over {
+  background: rgba(168,85,247,.08);
+  outline: 2px dashed var(--aa);
+  outline-offset: -2px;
+  border-radius: var(--r);
 }
 .kanban-card {
   background: var(--s2);
   border: 1px solid var(--b1);
   border-radius: var(--r);
   padding: 10px 10px 8px;
-  cursor: pointer;
+  cursor: grab;
   box-shadow: 0 3px 10px rgba(0,0,0,.22);
   transition: border-color .15s, transform .1s;
 }
+.kanban-card:active { cursor: grabbing; }
+.kanban-card.kanban-dragging { opacity: .35; }
 .kanban-card:hover {
   border-color: var(--b2);
   transform: translateY(-1px);
