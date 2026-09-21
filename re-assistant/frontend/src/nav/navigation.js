@@ -97,6 +97,7 @@ const NAV = {
     { id:'pm-integrations', icon:ICONS.integr,  label:'Integrationen'   },
     { id:'dependencies',    icon:ICONS.deps,    label:'Abhängigkeiten'  },
     { id:'req-network',     icon:ICONS.network, label:'Netzwerk'        },
+    { id:'source-analysis', icon:ICONS.code2,   label:'Source-Analyse'  },
     { id:'review-workflow',  icon:ICONS.check,   label:'Review & Freigabe'},
     { id:'traceability',     icon:ICONS.deps,    label:'Traceability'    },
     { id:'audit-log',        icon:ICONS.list,    label:'Audit-Log'       },
@@ -107,6 +108,7 @@ const NAV = {
   developer: [
     { id:'dev-work',   icon:ICONS.code, label:'Meine Aufgaben' },
     { id:'my-tasks',   icon:ICONS.list, label:'Aufgaben'        },
+    { id:'source-analysis', icon:ICONS.code2, label:'Source-Analyse' },
   ],
 };
 

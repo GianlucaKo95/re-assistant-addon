@@ -29,13 +29,17 @@ async function analyzeSourceOnAssign(reqId, systemId) {
 // ── Haupt-Analyse-Funktion ────────────────────────────────────
 async function runSourceAnalysis(req, codeDocs, sys) {
   setAPIContext('source', sys?.id);
-  // Code-Kontext aufbauen — priorisiere relevante Dateien via Keyword-Matching
-  const ranked = rankDocsByRelevance(codeDocs, req);
-  const topDocs = ranked.slice(0, 12); // Max 12 Dateien für Kontext
-
-  const codeContext = topDocs.map(d =>
-    `### ${d.name}\n\`\`\`\n${d.content.substring(0, 3500)}\n\`\`\``
-  ).join('\n\n');
+  // Code-Kontext per RAG statt sys.docs[].content — der Originaltext eines
+  // hochgeladenen Dokuments wird seit dem Chunking-Umbau nirgends mehr
+  // gespeichert (nur Embeddings/Chunks in der embeddings-Tabelle), d.content
+  // ist auf sys.docs-Einträgen daher IMMER undefined. Gleiches Muster wie
+  // devAnalyzeSource (developer/work.js): "implementieren" im Suchtext
+  // erzwingt in buildRAGContext die Deep-Query-Strategie (volle Dateien
+  // statt nur Chunk-Schnipsel).
+  const query = `${req.title} ${req.description || ''} implementieren Code`;
+  const codeContext = typeof buildRAGContext === 'function'
+    ? await buildRAGContext(sys?.id, query)
+    : '';
 
   const res = await callAPI([{ role:'user', content:
     `Du bist ein erfahrener Software-Architekt. Analysiere welche Code-Änderungen für diese Anforderung nötig sind.
@@ -78,7 +82,7 @@ ${req.rationale ? `Begründung: ${req.rationale}` : ''}
 System: ${sys?.name || ''}
 
 Quellcode:
-${codeContext}` }], langNote(), 5000); // 3000→5000: diffSuggestion allein kann für eine substantielle Änderung schon viel Platz brauchen
+${codeContext || '(kein Code-Kontext gefunden — System evtl. noch nicht indexiert)'}` }], langNote(), 5000); // 3000→5000: diffSuggestion allein kann für eine substantielle Änderung schon viel Platz brauchen
 
   if (!res.ok) return null;
 
@@ -106,28 +110,6 @@ ${codeContext}` }], langNote(), 5000); // 3000→5000: diffSuggestion allein kan
     sourceAnalyzedAt:  Date.now(),
   });
   return analysis;
-}
-
-// ── Relevanz-Ranking ──────────────────────────────────────────
-function rankDocsByRelevance(docs, req) {
-  const keywords = extractKeywords(req);
-  return docs.map(d => {
-    let score = 0;
-    const content = (d.name + ' ' + d.content).toLowerCase();
-    for (const kw of keywords) {
-      const matches = (content.match(new RegExp(kw, 'gi')) || []).length;
-      score += matches;
-    }
-    return { ...d, relevanceScore: score };
-  }).sort((a, b) => b.relevanceScore - a.relevanceScore);
-}
-
-function extractKeywords(req) {
-  const text  = `${req.title} ${req.description || ''}`.toLowerCase();
-  const words = text.split(/\W+/).filter(w => w.length > 3);
-  // Stopp-Wörter entfernen
-  const stop  = new Set(['dass','soll','muss','kann','wird','sollen','haben','sein','werden','eine','einen','einem','dieser','diese','dieses','system']);
-  return [...new Set(words.filter(w => !stop.has(w)))].slice(0, 20);
 }
 
 function filterCodeDocs(docs) {
@@ -322,7 +304,6 @@ window.renderSourceAnalysisBlock = renderSourceAnalysisBlock;
 window.reRunSourceAnalysis      = reRunSourceAnalysis;
 window.exportSourceAnalysis     = exportSourceAnalysis;
 window.filterCodeDocs           = filterCodeDocs;
-window.rankDocsByRelevance      = rankDocsByRelevance;
 
 // ── Source Analysis View (für PM und Developer) ───────────────
 async function loadSourceAnalysisView() {
