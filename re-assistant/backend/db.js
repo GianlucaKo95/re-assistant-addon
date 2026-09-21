@@ -153,6 +153,8 @@ function mapReq(row) {
     qsContentHash:   row.qs_content_hash || null,
     smartDetail:       row.smart_detail || null,
     smartContentHash:  row.smart_content_hash || null,
+    implementationCheck:     row.implementation_check || null,
+    implementationCheckHash: row.implementation_check_hash || null,
     lastChangedBy: row.last_changed_by,
     createdBy:     row.created_by,
     createdByName: row.created_by_name,

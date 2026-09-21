@@ -41,6 +41,7 @@ function renderDevReqs(reqs) {
               <span class="sbadge p-${r.priority}">${priLabel(r.priority)}</span>
               ${r.subcategory ? `<span class="rtag">${esc(r.subcategory)}</span>` : ''}
               ${r.sourceAnalysis ? '<span class="sbadge" style="background:var(--bluebg);color:var(--blue)">🔍 Analysiert</span>' : ''}
+              ${r.implementationCheck && typeof renderImplStatusBadge === 'function' ? renderImplStatusBadge(r.implementationCheck) : ''}
               ${r.quality_score != null ? `<span class="sbadge" style="background:var(--s3);color:var(--t2)">⭐ ${r.quality_score}/100</span>` : ''}
             </div>
             <div class="req-title">${esc(r.title)}</div>
@@ -91,6 +92,10 @@ function renderDevReqs(reqs) {
           <button class="btn-primary" style="font-size:11px;padding:5px 11px"
             onclick="devAnalyzeSource('${r.id}')">
             🔍 ${r.sourceAnalysis ? 'Neu analysieren' : 'Implementierung planen'}
+          </button>
+          <button class="btn-secondary" style="font-size:11px;padding:5px 11px"
+            onclick="devCheckImplementation('${r.id}', this)">
+            ${r.implementationCheck ? '🔄 Umsetzung erneut prüfen' : '❓ Ist das schon umgesetzt?'}
           </button>
           <button class="btn-secondary" style="font-size:11px;padding:5px 11px"
             onclick="toggleCommentInput('${r.id}')">💬 Kommentar</button>
@@ -327,6 +332,17 @@ async function devAnalyzeSource(reqId) {
   }
 }
 
+/* ── Umsetzungsstatus prüfen (Gegenrichtung zu devAnalyzeSource) ──── */
+async function devCheckImplementation(reqId, btn) {
+  if (typeof runImplementationCheck !== 'function') return;
+  await runImplementationCheck(reqId, btn, async () => {
+    S.requirements = await window.api.getRequirements({ userId: S.user.id, role: 'developer' });
+    renderDevReqs(S.requirements);
+    const detail = $(`drd-${reqId}`);
+    if (detail && !detail.classList.contains('open')) detail.classList.add('open');
+  });
+}
+
 /* ── Follow-Up Fragen ────────────────────────────────────────── */
 function devAskFollowUp(reqId) {
   const wrap = $(`fu-wrap-${reqId}`);
@@ -421,5 +437,6 @@ window.renderCommentThread  = renderCommentThread;
 window.toggleCommentInput   = toggleCommentInput;
 window.submitComment        = submitComment;
 window.devAnalyzeSource     = devAnalyzeSource;
+window.devCheckImplementation = devCheckImplementation;
 window.devAskFollowUp       = devAskFollowUp;
 window.devFollowUp          = devFollowUp;

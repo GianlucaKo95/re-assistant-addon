@@ -64,6 +64,7 @@ import './features/rag.js';
 import './features/chat-attachments.js';
 import './features/chat-history.js';
 import './features/req-analysis.js';
+import './features/implementation-check.js';
 import './features/source-analysis.js';
 import './features/decomposition.js';
 import './features/nl-query.js';

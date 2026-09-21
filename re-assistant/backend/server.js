@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.58';
+const APP_VERSION = '4.3.59';
 
 const app      = express();
 
@@ -3680,6 +3680,75 @@ app.post('/api/requirements/:id/quality-check', requireAuth, async (req, res) =>
     res.json({ ok:true, result, contentHash });
   } catch(e) {
     log('error', `Quality-Check ${req.params.id}: ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Umsetzungsstatus: Anforderung gegen vorhandenen Code abgleichen ──
+// Beantwortet "Ist das schon implementiert?" — Gegenrichtung zur
+// Implementierungsplanung (devAnalyzeSource in developer/work.js, die
+// eine NEUE Umsetzung plant). Der Code-/Doku-Kontext kommt bereits fertig
+// per RAG-Suche vom Client (ragContext), wie beim Quality-Check oben.
+app.post('/api/requirements/:id/implementation-check', requireAuth, async (req, res) => {
+  try {
+    const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
+    if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
+
+    const apiCfg = await resolveApiConfig(req.session.userId);
+    if (!apiCfg.key) return res.status(400).json({ error: 'Kein API-Key' });
+
+    const ragContext = typeof req.body?.ragContext === 'string' ? req.body.ragContext.substring(0, 20000) : '';
+    if (!ragContext) {
+      return res.status(400).json({ error: 'Kein indexierter Code-/Dokumentationskontext gefunden — System hat evtl. noch keine indexierten Dateien.' });
+    }
+
+    const schema = '{"status":"implemented|partial|not_implemented|unclear","confidence":"0-100","summary":"Kurze Einschätzung auf Deutsch","evidence":[{"file":"pfad/zur/datei.js","function":"Funktions-/Methodenname (optional)","explanation":"Was dort konkret zur Anforderung passt"}],"missing_aspects":["Was laut Anforderung fehlt oder unvollständig ist"],"recommendation":"Konkreter nächster Schritt"}';
+    const prompt = 'Du bist ein erfahrener Software-Architekt. Vergleiche die folgende Anforderung mit dem bereitgestellten Quellcode/der Dokumentation und beurteile, ob sie bereits umgesetzt ist.\n\n'
+      + 'Bedeutung der status-Werte:\n'
+      + '- "implemented": alle wesentlichen Aspekte der Anforderung sind im bereitgestellten Code erkennbar vorhanden.\n'
+      + '- "partial": ein Teil ist umgesetzt, andere Teile fehlen erkennbar.\n'
+      + '- "not_implemented": im bereitgestellten Kontext ist nichts davon zu finden.\n'
+      + '- "unclear": der bereitgestellte Kontext reicht nicht aus, um sicher zu urteilen (z.B. weil vermutlich relevante Dateien fehlen).\n'
+      + 'WICHTIG: Belege jede Einschätzung mit konkreten Datei- (und wenn möglich Funktions-)Namen AUS DEM KONTEXT. '
+      + 'Erfinde KEINE Dateien oder Funktionen, die dort nicht vorkommen — nutze im Zweifel "unclear" statt zu raten.\n\n'
+      + 'ANFORDERUNG:\n'
+      + 'ID: ' + req_.id + '\n'
+      + 'Titel: ' + req_.title + '\n'
+      + 'Beschreibung: ' + req_.description + '\n'
+      + 'Akzeptanzkriterien: ' + (req_.acceptance_criteria_text || '(keine)') + '\n\n'
+      + 'RELEVANTER CODE / DOKUMENTATION (per Suche ermittelt, ggf. nicht vollständig):\n' + ragContext + '\n\n'
+      + 'Antworte NUR mit JSON (keine Backticks):\n' + schema;
+
+    let text;
+    try {
+      text = await aiCallUnified(apiCfg, prompt, 4000, 'fast', 60000, 1);
+    } catch(e) {
+      return res.status(502).json({ error: 'KI-Anfrage fehlgeschlagen: ' + e.message });
+    }
+    let result;
+    try {
+      result = JSON.parse(cleanAiJsonText(text));
+    } catch(e) {
+      try {
+        result = JSON.parse(repairTruncatedJson(cleanAiJsonText(text)));
+        log('warning', `Implementation-Check ${req.params.id}: Antwort abgeschnitten, teilweise gerettet`);
+      } catch(e2) {
+        log('error', `Implementation-Check ${req.params.id}: Antwort nicht als JSON parsbar: ${text.substring(0,300)}`);
+        return res.status(502).json({ error: 'Antwort der KI war unvollständig oder kein gültiges JSON — bitte erneut versuchen.' });
+      }
+    }
+
+    // Volles Ergebnis + Inhalts-Hash speichern (wie smart_detail/
+    // smart_content_hash) — damit die Prüfung beim nächsten Öffnen ohne
+    // erneuten KI-Call angezeigt werden kann, solange sich die Anforderung
+    // nicht geändert hat.
+    const contentHash = hashReqContent(req_);
+    await query(`UPDATE requirements SET implementation_check=$1, implementation_check_hash=$2 WHERE id=$3`,
+      [JSON.stringify(result), contentHash, req.params.id]);
+
+    res.json({ ok:true, result, contentHash });
+  } catch(e) {
+    log('error', `Implementation-Check ${req.params.id}: ${e.message}`);
     res.status(500).json({ error: e.message });
   }
 });
