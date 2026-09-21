@@ -25,11 +25,19 @@ function showOfflineBanner(msg) {
       Erneut versuchen
     </button>`;
   document.body.appendChild(banner);
+  // Platz für den Banner reservieren statt ihn per position:fixed über den
+  // Inhalt zu legen — sonst verdeckt er (z-index:180) unsichtbar die obersten
+  // ~40px jeder Ansicht (Filter-/Auswahlleisten liegen dort oft direkt unter
+  // der Titelleiste) und macht Elemente dort für Klicks/Taps unerreichbar,
+  // ohne dass optisch erkennbar ist warum.
+  const appScreen = document.getElementById('app-screen');
+  if (appScreen) appScreen.style.setProperty('padding-top', banner.offsetHeight + 'px');
 }
 
 function hideOfflineBanner() {
   _offlineBannerShown = false;
   document.getElementById('offline-banner')?.remove();
+  document.getElementById('app-screen')?.style.removeProperty('padding-top');
 }
 
 async function retryConnection() {
@@ -94,6 +102,13 @@ const _originalCallAPI = window.callAPI;
 window.callAPI = async function(messages, system, maxTokens) {
   try {
     const res = await _originalCallAPI(messages, system, maxTokens);
+    // Backend antwortet wieder — Banner (falls von einem vorherigen,
+    // evtl. nur kurzzeitigen Verbindungsabbruch noch sichtbar) entfernen.
+    // Ohne das blieb er nach z.B. einem Tab-Wechsel auf dem Handy (kurzer
+    // Netzwerk-Aussetzer beim Backgrounding) dauerhaft stehen, obwohl die
+    // Verbindung längst wieder da war — und verdeckt per position:fixed
+    // klickbare Elemente in den obersten ~40px jeder Ansicht.
+    if (_offlineBannerShown) hideOfflineBanner();
     if (!res.ok) {
       // "Kein Key konfiguriert" nur zeigen, wenn der Server das wirklich so
       // meldet (res.noKeyConfigured) — ein 401/403 vom Provider selbst (z.B.
@@ -123,6 +138,9 @@ const _originalFetch = window.fetch;
 window.fetch = async function(...args) {
   try {
     const res = await _originalFetch(...args);
+    // Request kam durch — siehe Kommentar bei callAPI oben: ein zuvor
+    // gezeigter Banner ist damit veraltet.
+    if (_offlineBannerShown) hideOfflineBanner();
     // Automatisch ausloggen bei 401
     if (res.status === 401 && args[0]?.toString().startsWith('/api/') && !args[0]?.toString().includes('/auth/')) {
       toast('⚠ Session abgelaufen — bitte neu anmelden.');

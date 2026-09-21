@@ -7,6 +7,11 @@ const $ = window.$ || (id => document.getElementById(id));
 
 /* ══ PM: DASHBOARD ═══════════════════════════════════════════ */
 async function loadPMDash(){
+  // Immer frisch laden statt auf S.systems aus dem Login-Init zu vertrauen —
+  // war dieser eine Request beim Login transient fehlgeschlagen (S.systems
+  // dann dauerhaft []), blieb das PM-Dashboard sonst für die ganze Session
+  // ohne Systeme, ohne dass ein erneuter Login nötig gewesen wäre.
+  S.systems = await window.api.getSystems().catch(() => S.systems || []);
   const my=S.systems.filter(s=>(S.user.systems||[]).includes(s.id));
   if(!S.pmActiveSystemId&&my.length)S.pmActiveSystemId=my[0].id;
   S.requirements=await window.api.getRequirements({});
