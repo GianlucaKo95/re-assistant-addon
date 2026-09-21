@@ -8,16 +8,36 @@ const $ = window.$ || (id => document.getElementById(id));
 /* ══ PM: BACKLOG ═════════════════════════════════════════════ */
 async function loadPMBacklog(){
   S.systems=await window.api.getSystems();
+  const mySystems = S.systems.filter(s=>(S.user.systems||[]).includes(s.id));
   const sel=$('backlog-sys-sel');
-  sel.innerHTML='<option value="">System wählen …</option>'+S.systems.filter(s=>(S.user.systems||[]).includes(s.id)).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  sel.innerHTML='<option value="">System wählen …</option>'+mySystems.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
   $('btn-gen-backlog').onclick=generateBacklog;
   $('btn-bl-export-md').onclick=exportBacklogMd;
   $('btn-bl-export-jira').onclick=exportBacklogJira;
   $('btn-backlog-view-list').onclick=()=>toggleBacklogView('list');
   $('btn-backlog-view-network').onclick=()=>toggleBacklogView('network');
-  const saved=await window.api.getBacklogs('');
-  if(saved.length&&!S.currentBacklog){S.currentBacklog=saved[saved.length-1];renderBacklog(S.currentBacklog);}
-  else if(!saved.length)$('backlog-area').innerHTML='<div class="empty-state"><div class="es-icon">📦</div><h3>System auswählen und Backlog generieren</h3></div>';
+  sel.onchange=()=>loadBacklogForSystem(sel.value);
+  if(mySystems.length===1) sel.value=mySystems[0].id;
+  await loadBacklogForSystem(sel.value);
+}
+
+// Lädt den (einen) Backlog des ausgewählten Systems statt — wie zuvor —
+// ungefiltert über ALLE Systeme hinweg irgendeinen Backlog zu raten
+// (saved[saved.length-1] auf einer nach created_at ABSTEIGEND sortierten
+// Liste griff dabei sogar den ÄLTESTEN statt den neuesten heraus, und
+// ignorierte komplett, welches System gerade ausgewählt war).
+async function loadBacklogForSystem(sysId){
+  if(!sysId){
+    S.currentBacklog=null;
+    $('backlog-area').innerHTML='<div class="empty-state"><div class="es-icon">📦</div><h3>System auswählen und Backlog generieren</h3></div>';
+    return;
+  }
+  const saved=await window.api.getBacklogs(sysId);
+  if(saved.length){ S.currentBacklog=saved[0]; renderBacklog(S.currentBacklog); }
+  else {
+    S.currentBacklog=null;
+    $('backlog-area').innerHTML='<div class="empty-state"><div class="es-icon">📦</div><h3>Noch kein Backlog für dieses System</h3><p>"Backlog generieren" klicken.</p></div>';
+  }
 }
 
 function toggleBacklogView(mode){
@@ -126,7 +146,7 @@ function renderBacklog(bl){
     <div class="epic-head"><div><div class="epic-title">📦 ${esc(ep.id)}: ${esc(ep.title)}</div><div style="font-size:12px;color:var(--t2)">${esc(ep.description||'')}</div></div><span class="rtag">${(ep.features||[]).length} Features</span></div>
     <div class="epic-body">${(ep.features||[]).map(f=>`<div class="feature-block">
       <div class="feature-head">🔹 ${esc(f.id)}: ${esc(f.title)}</div>
-      ${(f.stories||[]).map(s=>`<div class="story-row" data-id=\"${s.id}\" data-epic=\"${ep.id}\" data-feat=\"${f.id}\"><span class="sp-badge">${s.storyPoints||'?'} SP</span><div style="flex:1"><strong>${esc(s.id)}</strong>: ${esc(s.title)}<br/><span style="font-size:12px;color:var(--t2)">${esc(s.description||'')}</span></div><span class="sbadge p-${s.priority}">${priLabel(s.priority)}</span>${s.reqRef?`<span class="rtag" style="font-size:9px">${esc(s.reqRef)}</span>`:''}</div>`).join('')}
+      ${(f.stories||[]).map(s=>`<div class="story-row" data-id="${esc(s.id)}" data-epic="${esc(ep.id)}" data-feat="${esc(f.id)}"><span class="sp-badge">${s.storyPoints||'?'} SP</span><div style="flex:1"><strong>${esc(s.id)}</strong>: ${esc(s.title)}<br/><span style="font-size:12px;color:var(--t2)">${esc(s.description||'')}</span></div><span class="sbadge p-${s.priority}">${priLabel(s.priority)}</span>${s.reqRef?`<span class="rtag" style="font-size:9px">${esc(s.reqRef)}</span>`:''}</div>`).join('')}
     </div>`).join('')}</div></div>`).join('');
 }
 async function exportBacklogMd(){

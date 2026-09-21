@@ -1446,11 +1446,20 @@ function crudTable(table, idPrefix) {
   app.post(`/api/${table}`, requireAuth, async (req, res) => {
     try {
       const item = req.body;
-      const existing = item.id ? await queryOne(`SELECT id FROM ${table} WHERE id=$1`, [item.id]) : null;
       const sysId = item.systemId || item.system_id || '';
+      let existing = item.id ? await queryOne(`SELECT id FROM ${table} WHERE id=$1`, [item.id]) : null;
+      // Backlogs: pro System nur EIN aktueller Datensatz. Der Client kennt
+      // die id des vorhandenen Backlogs beim Neu-Generieren oft nicht (id
+      // wird dort bewusst nicht mitgeführt) — ohne diesen Fallback legte
+      // jeder Klick auf "Backlog generieren" eine weitere Zeile an, statt
+      // die bestehende zu ersetzen, und "zuletzt generiert" ließ sich beim
+      // nächsten Laden nicht mehr zuverlässig bestimmen.
+      if (!existing && table === 'backlogs' && sysId) {
+        existing = await queryOne('SELECT id FROM backlogs WHERE system_id=$1', [sysId]);
+      }
       if (existing) {
         if (table === 'backlogs')
-          await query('UPDATE backlogs SET system_name=$1,epics=$2 WHERE id=$3', [item.systemName||'', JSON.stringify(item.epics||[]), item.id]);
+          await query('UPDATE backlogs SET system_name=$1,epics=$2,updated_at=NOW() WHERE id=$3', [item.systemName||'', JSON.stringify(item.epics||[]), existing.id]);
         else if (table === 'workshops')
           await query('UPDATE workshops SET name=$1,goal=$2,entries=$3,structured=$4 WHERE id=$5', [item.name||'',item.goal||'',JSON.stringify(item.entries||[]),item.structured?JSON.stringify(item.structured):null,item.id]);
         else if (table === 'diagrams')
