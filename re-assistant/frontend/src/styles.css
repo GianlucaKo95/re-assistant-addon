@@ -81,7 +81,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);font-
 #login-btn{padding:11px;background:var(--ag);border:none;border-radius:var(--r);color:white;font-size:14px;font-weight:600;font-family:var(--font);cursor:pointer;transition:opacity .2s;box-shadow:0 8px 24px rgba(108,147,248,.28)}
 #login-btn:hover{opacity:.85}
 #login-btn:disabled{opacity:.7;cursor:default}
-#login-hint{font-size:11px;color:var(--t3);text-align:center;margin-top:16px;line-height:1.6}
 
 /* ── Login: Marken-Panel (Desktop) ──────────────────────────── */
 @media (min-width:1025px){
