@@ -46,10 +46,17 @@ async function registerServiceWorker() {
 }
 
 // ── Online/Offline Handling ───────────────────────────────────
+// showOfflineBanner()/hideOfflineBanner() kommen aus core/error-handler.js
+// — hier früher eine zweite, eigene Definition mit gleichem Namen UND
+// gleicher DOM-id ("offline-banner"), die die aus error-handler.js
+// (später importiert, gewinnt daher zur Laufzeit) unbemerkt überschattete:
+// ein "offline"-Event rief dadurch showOfflineBanner() ohne Argument auf
+// die (msg)-Variante aus error-handler.js — Banner-Text "⚠ undefined"
+// statt der hier beabsichtigten Meldung.
 function onOffline() {
   if (_isOffline) return;
   _isOffline = true;
-  showOfflineBanner();
+  showOfflineBanner('Offline — Änderungen werden gespeichert und synchronisiert wenn die Verbindung zurückkehrt.');
 }
 
 function onOnline() {
@@ -61,37 +68,6 @@ function onOnline() {
   // SW Background Sync anfordern
   _swRegistration?.sync?.register('re-sync').catch(() => {});
   toast('✅ Verbindung wiederhergestellt — synchronisiere …');
-}
-
-function showOfflineBanner() {
-  const existing = document.getElementById('offline-banner');
-  if (existing) return;
-  const banner = document.createElement('div');
-  banner.id = 'offline-banner';
-  banner.style.cssText = `
-    position:fixed;top:0;left:0;right:0;z-index:999;
-    background:linear-gradient(90deg,rgba(217,119,6,.95),rgba(251,191,36,.95));
-    color:#1c1917;padding:8px 16px;font-size:12px;font-weight:600;
-    display:flex;align-items:center;justify-content:space-between;
-    backdrop-filter:blur(8px)`;
-  banner.innerHTML = `
-    <span>📡 Offline — Änderungen werden gespeichert und synchronisiert wenn die Verbindung zurückkehrt</span>
-    <span id="offline-queue-count" style="font-size:11px;opacity:.8"></span>`;
-  document.body.prepend(banner);
-  // App nach unten verschieben
-  document.getElementById('app-screen')?.style.setProperty('padding-top', '36px');
-}
-
-function hideOfflineBanner() {
-  const banner = document.getElementById('offline-banner');
-  if (banner) {
-    banner.style.transition = 'opacity .3s';
-    banner.style.opacity = '0';
-    setTimeout(() => {
-      banner.remove();
-      document.getElementById('app-screen')?.style.removeProperty('padding-top');
-    }, 300);
-  }
 }
 
 function showUpdateBanner() {

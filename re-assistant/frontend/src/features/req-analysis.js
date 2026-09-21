@@ -75,6 +75,7 @@ function renderReqAnalysisTabs() {
         ['use-cases','📋 Use Cases'],
         ['quality-goals','🎯 Qualitätsziele'],
         ['smart-check','⭐ SMART-Prüfung'],
+        ['impl-check','🔍 Umsetzungsstatus'],
         ['consistency','⚡ Konsistenz'],
       ].map(([id, label]) => `
         <button class="ra-tab" id="ra-tab-${id}" onclick="loadAnalysisTab('${id}')"
@@ -113,6 +114,7 @@ async function loadAnalysisTab(tab) {
       case 'use-cases':      await renderUseCases(el, sysId); break;
       case 'quality-goals':  await renderQualityGoals(el, sysId); break;
       case 'smart-check':    await renderSmartCheck(el, sysId); break;
+      case 'impl-check':     await renderImplementationCheckTab(el, sysId); break;
       case 'consistency':    await renderConsistencyTab(el, sysId); break;
     }
   } catch(e) {

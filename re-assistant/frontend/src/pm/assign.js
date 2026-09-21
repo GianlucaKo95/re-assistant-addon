@@ -7,8 +7,21 @@ const $ = window.$ || (id => document.getElementById(id));
 
 /* ══ PM: ASSIGN ══════════════════════════════════════════════ */
 async function loadPMAssign(){
+  // Immer frisch laden statt auf S.systems aus dem Login-Init zu vertrauen —
+  // anders als die meisten anderen Ansichten holte "Zuweisen" S.systems
+  // bisher nie selbst nach. War der eine Request beim Login transient
+  // fehlgeschlagen (S.systems dann dauerhaft []), blieb die System-Auswahl
+  // hier für die ganze Session leer — "kein System auswählbar", obwohl
+  // Systeme existieren.
+  S.systems = await window.api.getSystems().catch(() => S.systems || []);
   S.requirements=await window.api.getRequirements({});
-  S.users=await window.api.getUsers();
+  // .catch() statt ungefangenem Reject — GET /api/users lieferte für PMs
+  // bis vor kurzem ein 403 (admin-only-Endpoint), was hier ungefangen den
+  // gesamten Funktionsaufruf abbrach, BEVOR die Systemauswahl unten befüllt
+  // wurde. Serverseitig jetzt für PM erlaubt; dieser Fallback verhindert,
+  // dass ein künftiger/transienter Fehler hier dieselbe Ursachenkette wieder
+  // auslöst ("Dropdown leer, obwohl Systeme existieren").
+  S.users=await window.api.getUsers().catch(() => S.users || []);
   const devs=S.users.filter(u=>u.role==='developer');
   const mySys=S.systems.filter(s=>(S.user.systems||[]).includes(s.id));
   const sel=$('assign-filter-sys');
@@ -50,8 +63,15 @@ async function analyzeSource(reqId){
   const req=S.requirements.find(r=>r.id===reqId);if(!req)return;
   const sys=S.systems.find(s=>s.id===req.systemId);if(!sys?.docs?.length){toast('⚠ Keine Dokumentation');return;}
   toast('🔍 Analysiere Source …');
-  const code=(sys.docs||[]).filter(d=>['.js','.ts','.py','.java','.cs','.go','.rs','.cpp','.jsx','.tsx'].some(e=>d.name.endsWith(e))).slice(0,8).map(d=>`### ${d.relativePath||d.name}\n\`\`\`\n${d.content.substring(0,3000)}\n\`\`\``).join('\n\n');
-  const res=await callAPI([{role:'user',content:`Analysiere. JSON ohne Backticks:\n{"affectedFiles":[{"file":"...","reason":"..."}],"summary":"...","suggestion":"+ //neu\\n- //alt"}\n\nAnforderung: ${req.title} — ${req.description}\n\nCode:\n${code}`}],'',3000);
+  // Code-Kontext per RAG statt sys.docs[].content — Letzteres ist auf
+  // sys.docs-Einträgen immer undefined (Originaltext wird seit dem
+  // Chunking-Umbau nirgends gespeichert, nur Embeddings/Chunks), ein
+  // direkter Zugriff hätte hier mit "Cannot read properties of undefined
+  // (reading 'substring')" gecrasht. Gleiches Muster wie devAnalyzeSource.
+  const code = typeof buildRAGContext === 'function'
+    ? await buildRAGContext(sys.id, `${req.title} ${req.description || ''} implementieren Code`)
+    : '';
+  const res=await callAPI([{role:'user',content:`Analysiere. JSON ohne Backticks:\n{"affectedFiles":[{"file":"...","reason":"..."}],"summary":"...","suggestion":"+ //neu\\n- //alt"}\n\nAnforderung: ${req.title} — ${req.description}\n\nCode:\n${code || '(kein Code-Kontext gefunden)'}`}],'',3000);
   if(!res.ok){toast('❌ Analyse fehlgeschlagen');return;}
   let a;
   try{ a=JSON.parse(cleanJsonText(res.text)); }

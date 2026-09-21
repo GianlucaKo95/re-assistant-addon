@@ -8,16 +8,36 @@ const $ = window.$ || (id => document.getElementById(id));
 /* ══ PM: BACKLOG ═════════════════════════════════════════════ */
 async function loadPMBacklog(){
   S.systems=await window.api.getSystems();
+  const mySystems = S.systems.filter(s=>(S.user.systems||[]).includes(s.id));
   const sel=$('backlog-sys-sel');
-  sel.innerHTML='<option value="">System wählen …</option>'+S.systems.filter(s=>(S.user.systems||[]).includes(s.id)).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  sel.innerHTML='<option value="">System wählen …</option>'+mySystems.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
   $('btn-gen-backlog').onclick=generateBacklog;
   $('btn-bl-export-md').onclick=exportBacklogMd;
   $('btn-bl-export-jira').onclick=exportBacklogJira;
   $('btn-backlog-view-list').onclick=()=>toggleBacklogView('list');
   $('btn-backlog-view-network').onclick=()=>toggleBacklogView('network');
-  const saved=await window.api.getBacklogs('');
-  if(saved.length&&!S.currentBacklog){S.currentBacklog=saved[saved.length-1];renderBacklog(S.currentBacklog);}
-  else if(!saved.length)$('backlog-area').innerHTML='<div class="empty-state"><div class="es-icon">📦</div><h3>System auswählen und Backlog generieren</h3></div>';
+  sel.onchange=()=>loadBacklogForSystem(sel.value);
+  if(mySystems.length===1) sel.value=mySystems[0].id;
+  await loadBacklogForSystem(sel.value);
+}
+
+// Lädt den (einen) Backlog des ausgewählten Systems statt — wie zuvor —
+// ungefiltert über ALLE Systeme hinweg irgendeinen Backlog zu raten
+// (saved[saved.length-1] auf einer nach created_at ABSTEIGEND sortierten
+// Liste griff dabei sogar den ÄLTESTEN statt den neuesten heraus, und
+// ignorierte komplett, welches System gerade ausgewählt war).
+async function loadBacklogForSystem(sysId){
+  if(!sysId){
+    S.currentBacklog=null;
+    $('backlog-area').innerHTML='<div class="empty-state"><div class="es-icon">📦</div><h3>System auswählen und Backlog generieren</h3></div>';
+    return;
+  }
+  const saved=await window.api.getBacklogs(sysId);
+  if(saved.length){ S.currentBacklog=saved[0]; renderBacklog(S.currentBacklog); }
+  else {
+    S.currentBacklog=null;
+    $('backlog-area').innerHTML='<div class="empty-state"><div class="es-icon">📦</div><h3>Noch kein Backlog für dieses System</h3><p>"Backlog generieren" klicken.</p></div>';
+  }
 }
 
 function toggleBacklogView(mode){
@@ -126,13 +146,18 @@ function renderBacklog(bl){
     <div class="epic-head"><div><div class="epic-title">📦 ${esc(ep.id)}: ${esc(ep.title)}</div><div style="font-size:12px;color:var(--t2)">${esc(ep.description||'')}</div></div><span class="rtag">${(ep.features||[]).length} Features</span></div>
     <div class="epic-body">${(ep.features||[]).map(f=>`<div class="feature-block">
       <div class="feature-head">🔹 ${esc(f.id)}: ${esc(f.title)}</div>
-      ${(f.stories||[]).map(s=>`<div class="story-row" data-id=\"${s.id}\" data-epic=\"${ep.id}\" data-feat=\"${f.id}\"><span class="sp-badge">${s.storyPoints||'?'} SP</span><div style="flex:1"><strong>${esc(s.id)}</strong>: ${esc(s.title)}<br/><span style="font-size:12px;color:var(--t2)">${esc(s.description||'')}</span></div><span class="sbadge p-${s.priority}">${priLabel(s.priority)}</span>${s.reqRef?`<span class="rtag" style="font-size:9px">${esc(s.reqRef)}</span>`:''}</div>`).join('')}
+      ${(f.stories||[]).map(s=>`<div class="story-row" data-id="${esc(s.id)}" data-epic="${esc(ep.id)}" data-feat="${esc(f.id)}"><span class="sp-badge">${s.storyPoints||'?'} SP</span><div style="flex:1"><strong>${esc(s.id)}</strong>: ${esc(s.title)}<br/><span style="font-size:12px;color:var(--t2)">${esc(s.description||'')}</span>${(s.acceptanceCriteria||[]).length?`<div class="story-ac-toggle" onclick="this.nextElementSibling.classList.toggle('open')">✅ ${s.acceptanceCriteria.length} Akzeptanzkriterien</div><div class="story-ac-list">${s.acceptanceCriteria.map(ac=>`<div class="story-ac-item">${esc(ac)}</div>`).join('')}</div>`:''}</div><span class="sbadge p-${s.priority}">${priLabel(s.priority)}</span>${s.reqRef?`<span class="rtag" style="font-size:9px">${esc(s.reqRef)}</span>`:''}</div>`).join('')}
     </div>`).join('')}</div></div>`).join('');
+  // Drag & Drop zum manuellen Umsortieren von Stories/Epics aktivieren.
+  // Zentral hier statt an jedem der vier renderBacklog()-Aufrufer, damit es
+  // nach JEDEM Render (manuell generiert, aus der DB geladen, automatisch
+  // durch neue Anforderungen aktualisiert) garantiert erneut greift.
+  if (typeof enableBacklogDragDrop === 'function') enableBacklogDragDrop();
 }
 async function exportBacklogMd(){
   if(!S.currentBacklog){toast('⚠ Kein Backlog');return;}
   let md=`# Backlog: ${S.currentBacklog.systemName||'System'}\n\n`;
-  for(const ep of S.currentBacklog.epics||[]){md+=`## 📦 ${ep.id}: ${ep.title}\n${ep.description||''}\n\n`;for(const f of ep.features||[]){md+=`### 🔹 ${f.id}: ${f.title}\n\n`;for(const s of f.stories||[])md+=`- **${s.id}** (${s.storyPoints||'?'} SP, ${s.priority}): ${s.title}\n  ${s.description||''}\n`;md+='\n';}}
+  for(const ep of S.currentBacklog.epics||[]){md+=`## 📦 ${ep.id}: ${ep.title}\n${ep.description||''}\n\n`;for(const f of ep.features||[]){md+=`### 🔹 ${f.id}: ${f.title}\n\n`;for(const s of f.stories||[]){md+=`- **${s.id}** (${s.storyPoints||'?'} SP, ${s.priority}): ${s.title}\n  ${s.description||''}\n`;for(const ac of s.acceptanceCriteria||[])md+=`  - [ ] ${ac}\n`;}md+='\n';}}
   await window.api.exportMarkdown({requirements:[],stories:[],projectName:S.currentBacklog.systemName,extra:md});toast('✅ Exportiert');
 }
 async function exportBacklogJira(){
@@ -147,7 +172,10 @@ async function exportBacklogJira(){
 }
 async function doBlJiraExport(){
   const pk=$('bl-jira-proj').value;if(!pk)return;
-  const issues=[];for(const ep of S.currentBacklog.epics||[])for(const f of ep.features||[])for(const s of f.stories||[])issues.push({title:s.title,description:s.description||'',type:'Story',priority:s.priority});
+  const issues=[];for(const ep of S.currentBacklog.epics||[])for(const f of ep.features||[])for(const s of f.stories||[]){
+    const acText=(s.acceptanceCriteria||[]).length?`\n\nAkzeptanzkriterien:\n${s.acceptanceCriteria.map(ac=>'- '+ac).join('\n')}`:'';
+    issues.push({title:s.title,description:(s.description||'')+acText,type:'Story',priority:s.priority});
+  }
   const res=await window.api.jiraCreateIssues({url:S.settings.jiraUrl,email:S.settings.jiraEmail,token:S.settings.jiraToken,projectKey:pk,issues});
   closeModal();if(res.ok||(res.errors&&res.errors.length<issues.length))toast(`✅ ${issues.length} Issues nach Jira exportiert`);else toast('❌ Export fehlgeschlagen');
 }

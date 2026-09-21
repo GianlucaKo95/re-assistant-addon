@@ -25,7 +25,7 @@ const ws    = require('./websocket');
 // jedem Release synchron zu config.json/Dockerfile-LABEL/run.sh gepflegt
 // werden (kein automatischer Read aus config.json, da diese Datei nicht in
 // den Container kopiert wird und dem HA Supervisor vorbehalten ist).
-const APP_VERSION = '4.3.58';
+const APP_VERSION = '4.3.59';
 
 const app      = express();
 
@@ -120,6 +120,17 @@ async function requireAdmin(req, res, next) {
   const u = mapUser(await queryOne('SELECT * FROM users WHERE id=$1', [req.session?.userId]));
   if (u?.role === 'admin') return next();
   res.status(403).json({ error: 'Nur für Administratoren' });
+}
+// Nur für GET /api/users (Lesezugriff): Projektmanager benötigen die
+// Benutzerliste, um Anforderungen Entwicklern zuzuweisen ("Zuweisen"-Tab,
+// pm/assign.js) — ohne diese Erweiterung schlug der Request dort mit 403
+// fehl, wodurch loadPMAssign() abbrach, BEVOR die Systemauswahl befüllt
+// wurde ("Dropdown leer, obwohl Systeme existieren"). Erstellen/Ändern/
+// Löschen von Nutzern (POST/DELETE /api/users) bleibt bewusst admin-only.
+async function requireAdminOrPM(req, res, next) {
+  const u = mapUser(await queryOne('SELECT * FROM users WHERE id=$1', [req.session?.userId]));
+  if (u?.role === 'admin' || u?.role === 'projectmanager') return next();
+  res.status(403).json({ error: 'Nur für Administratoren oder Projektmanager' });
 }
 
 // ── API-Key Resolver ──────────────────────────────────────────
@@ -490,7 +501,7 @@ app.post('/api/auth/admin-reset/:userId', requireAuth, requireAdmin, async (req,
 });
 
 // ── USERS ─────────────────────────────────────────────────────
-app.get('/api/users', requireAuth, requireAdmin, async (req, res) => {
+app.get('/api/users', requireAuth, requireAdminOrPM, async (req, res) => {
   try {
     const users = (await queryAll('SELECT * FROM users ORDER BY created_at')).map(mapUser).map(({password:_p,...u})=>u);
     res.json(users);
@@ -1435,11 +1446,20 @@ function crudTable(table, idPrefix) {
   app.post(`/api/${table}`, requireAuth, async (req, res) => {
     try {
       const item = req.body;
-      const existing = item.id ? await queryOne(`SELECT id FROM ${table} WHERE id=$1`, [item.id]) : null;
       const sysId = item.systemId || item.system_id || '';
+      let existing = item.id ? await queryOne(`SELECT id FROM ${table} WHERE id=$1`, [item.id]) : null;
+      // Backlogs: pro System nur EIN aktueller Datensatz. Der Client kennt
+      // die id des vorhandenen Backlogs beim Neu-Generieren oft nicht (id
+      // wird dort bewusst nicht mitgeführt) — ohne diesen Fallback legte
+      // jeder Klick auf "Backlog generieren" eine weitere Zeile an, statt
+      // die bestehende zu ersetzen, und "zuletzt generiert" ließ sich beim
+      // nächsten Laden nicht mehr zuverlässig bestimmen.
+      if (!existing && table === 'backlogs' && sysId) {
+        existing = await queryOne('SELECT id FROM backlogs WHERE system_id=$1', [sysId]);
+      }
       if (existing) {
         if (table === 'backlogs')
-          await query('UPDATE backlogs SET system_name=$1,epics=$2 WHERE id=$3', [item.systemName||'', JSON.stringify(item.epics||[]), item.id]);
+          await query('UPDATE backlogs SET system_name=$1,epics=$2,updated_at=NOW() WHERE id=$3', [item.systemName||'', JSON.stringify(item.epics||[]), existing.id]);
         else if (table === 'workshops')
           await query('UPDATE workshops SET name=$1,goal=$2,entries=$3,structured=$4 WHERE id=$5', [item.name||'',item.goal||'',JSON.stringify(item.entries||[]),item.structured?JSON.stringify(item.structured):null,item.id]);
         else if (table === 'diagrams')
@@ -3680,6 +3700,75 @@ app.post('/api/requirements/:id/quality-check', requireAuth, async (req, res) =>
     res.json({ ok:true, result, contentHash });
   } catch(e) {
     log('error', `Quality-Check ${req.params.id}: ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Umsetzungsstatus: Anforderung gegen vorhandenen Code abgleichen ──
+// Beantwortet "Ist das schon implementiert?" — Gegenrichtung zur
+// Implementierungsplanung (devAnalyzeSource in developer/work.js, die
+// eine NEUE Umsetzung plant). Der Code-/Doku-Kontext kommt bereits fertig
+// per RAG-Suche vom Client (ragContext), wie beim Quality-Check oben.
+app.post('/api/requirements/:id/implementation-check', requireAuth, async (req, res) => {
+  try {
+    const req_ = await queryOne('SELECT * FROM requirements WHERE id=$1', [req.params.id]);
+    if (!req_) return res.status(404).json({ error: 'Nicht gefunden' });
+
+    const apiCfg = await resolveApiConfig(req.session.userId);
+    if (!apiCfg.key) return res.status(400).json({ error: 'Kein API-Key' });
+
+    const ragContext = typeof req.body?.ragContext === 'string' ? req.body.ragContext.substring(0, 20000) : '';
+    if (!ragContext) {
+      return res.status(400).json({ error: 'Kein indexierter Code-/Dokumentationskontext gefunden — System hat evtl. noch keine indexierten Dateien.' });
+    }
+
+    const schema = '{"status":"implemented|partial|not_implemented|unclear","confidence":"0-100","summary":"Kurze Einschätzung auf Deutsch","evidence":[{"file":"pfad/zur/datei.js","function":"Funktions-/Methodenname (optional)","explanation":"Was dort konkret zur Anforderung passt"}],"missing_aspects":["Was laut Anforderung fehlt oder unvollständig ist"],"recommendation":"Konkreter nächster Schritt"}';
+    const prompt = 'Du bist ein erfahrener Software-Architekt. Vergleiche die folgende Anforderung mit dem bereitgestellten Quellcode/der Dokumentation und beurteile, ob sie bereits umgesetzt ist.\n\n'
+      + 'Bedeutung der status-Werte:\n'
+      + '- "implemented": alle wesentlichen Aspekte der Anforderung sind im bereitgestellten Code erkennbar vorhanden.\n'
+      + '- "partial": ein Teil ist umgesetzt, andere Teile fehlen erkennbar.\n'
+      + '- "not_implemented": im bereitgestellten Kontext ist nichts davon zu finden.\n'
+      + '- "unclear": der bereitgestellte Kontext reicht nicht aus, um sicher zu urteilen (z.B. weil vermutlich relevante Dateien fehlen).\n'
+      + 'WICHTIG: Belege jede Einschätzung mit konkreten Datei- (und wenn möglich Funktions-)Namen AUS DEM KONTEXT. '
+      + 'Erfinde KEINE Dateien oder Funktionen, die dort nicht vorkommen — nutze im Zweifel "unclear" statt zu raten.\n\n'
+      + 'ANFORDERUNG:\n'
+      + 'ID: ' + req_.id + '\n'
+      + 'Titel: ' + req_.title + '\n'
+      + 'Beschreibung: ' + req_.description + '\n'
+      + 'Akzeptanzkriterien: ' + (req_.acceptance_criteria_text || '(keine)') + '\n\n'
+      + 'RELEVANTER CODE / DOKUMENTATION (per Suche ermittelt, ggf. nicht vollständig):\n' + ragContext + '\n\n'
+      + 'Antworte NUR mit JSON (keine Backticks):\n' + schema;
+
+    let text;
+    try {
+      text = await aiCallUnified(apiCfg, prompt, 4000, 'fast', 60000, 1);
+    } catch(e) {
+      return res.status(502).json({ error: 'KI-Anfrage fehlgeschlagen: ' + e.message });
+    }
+    let result;
+    try {
+      result = JSON.parse(cleanAiJsonText(text));
+    } catch(e) {
+      try {
+        result = JSON.parse(repairTruncatedJson(cleanAiJsonText(text)));
+        log('warning', `Implementation-Check ${req.params.id}: Antwort abgeschnitten, teilweise gerettet`);
+      } catch(e2) {
+        log('error', `Implementation-Check ${req.params.id}: Antwort nicht als JSON parsbar: ${text.substring(0,300)}`);
+        return res.status(502).json({ error: 'Antwort der KI war unvollständig oder kein gültiges JSON — bitte erneut versuchen.' });
+      }
+    }
+
+    // Volles Ergebnis + Inhalts-Hash speichern (wie smart_detail/
+    // smart_content_hash) — damit die Prüfung beim nächsten Öffnen ohne
+    // erneuten KI-Call angezeigt werden kann, solange sich die Anforderung
+    // nicht geändert hat.
+    const contentHash = hashReqContent(req_);
+    await query(`UPDATE requirements SET implementation_check=$1, implementation_check_hash=$2 WHERE id=$3`,
+      [JSON.stringify(result), contentHash, req.params.id]);
+
+    res.json({ ok:true, result, contentHash });
+  } catch(e) {
+    log('error', `Implementation-Check ${req.params.id}: ${e.message}`);
     res.status(500).json({ error: e.message });
   }
 });
