@@ -15,7 +15,13 @@ async function loadPMAssign(){
   // Systeme existieren.
   S.systems = await window.api.getSystems().catch(() => S.systems || []);
   S.requirements=await window.api.getRequirements({});
-  S.users=await window.api.getUsers();
+  // .catch() statt ungefangenem Reject — GET /api/users lieferte für PMs
+  // bis vor kurzem ein 403 (admin-only-Endpoint), was hier ungefangen den
+  // gesamten Funktionsaufruf abbrach, BEVOR die Systemauswahl unten befüllt
+  // wurde. Serverseitig jetzt für PM erlaubt; dieser Fallback verhindert,
+  // dass ein künftiger/transienter Fehler hier dieselbe Ursachenkette wieder
+  // auslöst ("Dropdown leer, obwohl Systeme existieren").
+  S.users=await window.api.getUsers().catch(() => S.users || []);
   const devs=S.users.filter(u=>u.role==='developer');
   const mySys=S.systems.filter(s=>(S.user.systems||[]).includes(s.id));
   const sel=$('assign-filter-sys');

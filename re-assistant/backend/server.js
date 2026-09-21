@@ -121,6 +121,17 @@ async function requireAdmin(req, res, next) {
   if (u?.role === 'admin') return next();
   res.status(403).json({ error: 'Nur für Administratoren' });
 }
+// Nur für GET /api/users (Lesezugriff): Projektmanager benötigen die
+// Benutzerliste, um Anforderungen Entwicklern zuzuweisen ("Zuweisen"-Tab,
+// pm/assign.js) — ohne diese Erweiterung schlug der Request dort mit 403
+// fehl, wodurch loadPMAssign() abbrach, BEVOR die Systemauswahl befüllt
+// wurde ("Dropdown leer, obwohl Systeme existieren"). Erstellen/Ändern/
+// Löschen von Nutzern (POST/DELETE /api/users) bleibt bewusst admin-only.
+async function requireAdminOrPM(req, res, next) {
+  const u = mapUser(await queryOne('SELECT * FROM users WHERE id=$1', [req.session?.userId]));
+  if (u?.role === 'admin' || u?.role === 'projectmanager') return next();
+  res.status(403).json({ error: 'Nur für Administratoren oder Projektmanager' });
+}
 
 // ── API-Key Resolver ──────────────────────────────────────────
 async function resolveApiConfig(userId) {
@@ -490,7 +501,7 @@ app.post('/api/auth/admin-reset/:userId', requireAuth, requireAdmin, async (req,
 });
 
 // ── USERS ─────────────────────────────────────────────────────
-app.get('/api/users', requireAuth, requireAdmin, async (req, res) => {
+app.get('/api/users', requireAuth, requireAdminOrPM, async (req, res) => {
   try {
     const users = (await queryAll('SELECT * FROM users ORDER BY created_at')).map(mapUser).map(({password:_p,...u})=>u);
     res.json(users);
