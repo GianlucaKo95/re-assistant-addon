@@ -140,7 +140,18 @@ async function updateDevStatus(reqId, status) {
 /* ── Source-Block rendern ────────────────────────────────────── */
 function renderSourceBlock(r) {
   if (!r.sourceAnalysis) return '';
-  if (typeof renderSourceAnalysisBlock === 'function') return renderSourceAnalysisBlock(r, true);
+  // Zwei unabhängige Analyse-Quellen befüllen dasselbe r.sourceAnalysis-Feld mit
+  // JEWEILS EIGENEM, inkompatiblem Schema: der automatische PM-Zuweisungs-Trigger
+  // (analyzeSourceOnAssign -> runSourceAnalysis in source-analysis.js) liefert
+  // affectedFiles/complexity/riskLevel/estimatedHours/diffSuggestion, während der
+  // "Implementierung planen"-Button hier (devAnalyzeSource, s.u.) affected_files/
+  // steps/tests/risks/estimated_effort liefert. renderSourceAnalysisBlock() aus
+  // source-analysis.js versteht NUR das erste Schema — war hier aber IMMER die
+  // gewählte Anzeige (typeof-Check auf eine global immer vorhandene Funktion),
+  // wodurch der lokale Renderer unten (steps/affected_files/tests/risks) nie
+  // erreicht wurde und der Entwickler nur "undefined · ~?h" ohne echten Inhalt sah.
+  const isDevPlanSchema = !!(r.sourceAnalysis.steps || r.sourceAnalysis.affected_files || r.sourceAnalysis.estimated_effort);
+  if (!isDevPlanSchema && typeof renderSourceAnalysisBlock === 'function') return renderSourceAnalysisBlock(r, true);
 
   const impl = r.sourceAnalysis;
   const filesHtml = (impl.affectedFiles || impl.affected_files || []).map(f => `

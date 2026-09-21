@@ -1469,7 +1469,11 @@ select option:hover {
   #audit-pagination div { flex-wrap: wrap; gap: 6px; padding: 8px 12px; }
 
   /* Toast */
-  #toast { bottom: 70px; right: 10px; left: 10px; max-width: none; }
+  #toast {
+    bottom: 70px; right: 10px; left: 10px; max-width: none;
+    white-space: normal; text-align: center; transform: translateY(12px);
+  }
+  #toast.show { transform: translateY(0); }
 
   /* Onboarding */
   #onboarding-wrap { padding: 16px; }

@@ -48,6 +48,6 @@ LABEL \
     io.hass.name="RE-Assistent" \
     io.hass.description="KI-gestütztes Requirements Engineering" \
     io.hass.type="addon" \
-    io.hass.version="4.3.59"
+    io.hass.version="4.3.60"
 
 CMD ["/run.sh"]
