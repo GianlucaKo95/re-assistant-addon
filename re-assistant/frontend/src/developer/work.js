@@ -291,10 +291,20 @@ async function devAnalyzeSource(reqId) {
       `Antworte NUR mit JSON:\n${schema}`,
     ].filter(Boolean).join('\n');
 
+    // 6000->8000: der Prompt verlangt für JEDE betroffene Datei vollständigen
+    // Code (Diffs/ganze Funktionen, keine abstrakten Beschreibungen) — bei
+    // realistischen Anforderungen mit mehreren betroffenen Dateien reichten
+    // 6000 Ausgabe-Tokens oft nicht, die Antwort brach mitten im JSON ab.
+    // Landete der Abbruch vor dem ersten vollständig geschlossenen
+    // affected_files/steps-Array, fand extractJsonObjects() unten nichts zu
+    // retten — Ergebnis: "Parsing-Fehler — KI-Antwort war kein valides JSON"
+    // trotz eigentlich lauffähiger, nur zu früh abgeschnittener Antwort.
+    // Gleiche Anpassung wie zuvor bei der Word-Analyse (dort 6000->8000 aus
+    // demselben Grund).
     const res = await callAPI(
       [{ role: 'user', content: userPrompt }],
       systemPrompt,
-      6000
+      8000
     );
 
     if (!res.ok) { toast('❌ Analyse fehlgeschlagen: ' + res.text); return; }
